@@ -6867,8 +6867,11 @@ function radioBuildFilterChain() {
   var src = _radioActx.createMediaStreamSource(radioLocalStream);
   var hp = _radioActx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 300;
   var lp = _radioActx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3000;
-  var shaper = _radioActx.createWaveShaper(); shaper.curve = radioMakeDistortionCurve(18); shaper.oversample = '2x';
-  var voiceGain = _radioActx.createGain(); voiceGain.gain.value = 1.6;
+  var shaper = _radioActx.createWaveShaper(); shaper.curve = radioMakeDistortionCurve(6); shaper.oversample = '2x';
+  var voiceGain = _radioActx.createGain(); voiceGain.gain.value = 1.15;
+  // limitador: evita que a distorcao/ganho satarem e virem chiado alto
+  var limiter = _radioActx.createDynamicsCompressor();
+  limiter.threshold.value = -24; limiter.knee.value = 12; limiter.ratio.value = 12; limiter.attack.value = 0.003; limiter.release.value = 0.15;
 
   // chiado de fundo constante
   var noiseBuf = _radioActx.createBuffer(1, _radioActx.sampleRate * 2, _radioActx.sampleRate);
@@ -6876,26 +6879,42 @@ function radioBuildFilterChain() {
   for (var j = 0; j < nd.length; j++) nd[j] = Math.random() * 2 - 1;
   var noiseSrc = _radioActx.createBufferSource(); noiseSrc.buffer = noiseBuf; noiseSrc.loop = true;
   var noiseFilter = _radioActx.createBiquadFilter(); noiseFilter.type = 'bandpass'; noiseFilter.frequency.value = 1800; noiseFilter.Q.value = 0.6;
-  var noiseGain = _radioActx.createGain(); noiseGain.gain.value = 0.03;
+  var noiseGain = _radioActx.createGain(); noiseGain.gain.value = 0.02;
   noiseSrc.connect(noiseFilter); noiseFilter.connect(noiseGain);
   noiseSrc.start();
 
   var mixer = _radioActx.createGain(); mixer.gain.value = 1.0;
   var dest = _radioActx.createMediaStreamDestination();
   var outAnalyser = _radioActx.createAnalyser(); outAnalyser.fftSize = 512;
+  // o Chrome (e outros) suspendem automaticamente um AudioContext em abas em
+  // segundo plano se ele nao estiver ligado a uma saida de audio real —
+  // isso silenciava o filtro sempre que a aba perdia o foco. Ligamos o mixer
+  // tambem ao destino real, em volume quase zero (inaudivel), so' pra manter
+  // o contexto "vivo" e processando mesmo com a aba em background.
+  var keepAliveGain = _radioActx.createGain(); keepAliveGain.gain.value = 0.00001;
 
   src.connect(hp); hp.connect(lp); lp.connect(shaper); shaper.connect(voiceGain);
-  voiceGain.connect(mixer);
+  voiceGain.connect(limiter); limiter.connect(mixer);
   noiseGain.connect(mixer);
   mixer.connect(dest);
   mixer.connect(outAnalyser);
+  mixer.connect(keepAliveGain);
+  keepAliveGain.connect(_radioActx.destination);
   radioAnalysers.self = outAnalyser;
 
-  _radioFilterNodes = { src: src, hp: hp, lp: lp, shaper: shaper, voiceGain: voiceGain, noiseSrc: noiseSrc, noiseFilter: noiseFilter, noiseGain: noiseGain, mixer: mixer, dest: dest, outAnalyser: outAnalyser };
+  _radioFilterNodes = { src: src, hp: hp, lp: lp, shaper: shaper, voiceGain: voiceGain, limiter: limiter, noiseSrc: noiseSrc, noiseFilter: noiseFilter, noiseGain: noiseGain, mixer: mixer, dest: dest, outAnalyser: outAnalyser, keepAliveGain: keepAliveGain };
   radioFilteredStream = dest.stream;
   console.log('radio: cadeia de filtro montada, faixas de saida =', radioFilteredStream.getAudioTracks().length, '| AudioContext state =', _radioActx.state);
   _radioActx.resume().then(function () { console.log('radio: AudioContext resumido, state =', _radioActx.state); }).catch(function (e) { console.warn('radio: erro ao resumir AudioContext', e); });
 }
+
+// Forca retomar o AudioContext sempre que a aba volta ao foco — rede de
+// seguranca extra, caso o navegador ainda assim suspenda o contexto.
+document.addEventListener('visibilitychange', function () {
+  if (_radioActx && _radioActx.state === 'suspended') {
+    _radioActx.resume().then(function () { console.log('radio: AudioContext retomado apos voltar o foco da aba'); }).catch(function () {});
+  }
+});
 
 function radioTeardownFilterChain() {
   if (_radioFilterNodes && _radioFilterNodes.noiseSrc) { try { _radioFilterNodes.noiseSrc.stop(); } catch (e) {} }
