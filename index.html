@@ -493,6 +493,8 @@ body { background:var(--bg); color:var(--g); font-family:'Share Tech Mono',monos
 }
 .music-btn:hover { color: var(--y); }
 .music-btn.off { color: var(--td); }
+.music-btn:disabled { color: var(--bd); cursor: not-allowed; }
+.music-btn:disabled:hover { color: var(--bd); }
 .music-name {
     color: var(--gd);
     font-size: 0.68em;
@@ -1219,9 +1221,10 @@ input[type="range"]::-moz-range-thumb {
         </div>
         <div class="th-l" style="gap:10px;">
             <div id="musicWidget" class="music-w" style="display:none;">
-                <button class="music-btn" onclick="musicPrev()" title="Faixa anterior">&#9198;</button>
+                <span id="musicLock" title="Musica forcada pelo Mestre" style="display:none; color:var(--y); font-size:0.85em;">&#128274;</span>
+                <button class="music-btn" id="musicPrevBtn" onclick="musicPrev()" title="Faixa anterior">&#9198;</button>
                 <button class="music-btn" id="musicPlayBtn" onclick="musicToggle()" title="Tocar/Pausar">&#9654;</button>
-                <button class="music-btn" onclick="musicNext()" title="Proxima faixa">&#9197;</button>
+                <button class="music-btn" id="musicNextBtn" onclick="musicNext()" title="Proxima faixa">&#9197;</button>
                 <span id="musicTrackName" class="music-name">-</span>
                 <input type="range" id="musicVol" min="0" max="1" step="0.05" value="0.3" oninput="musicSetVolume(this.value)" title="Volume">
                 <button class="music-btn" id="sfxBtn" onclick="toggleSfx()" title="Efeitos sonoros">&#128266;</button>
@@ -1342,14 +1345,140 @@ document.addEventListener('DOMContentLoaded', function() {
 // pra proxima (nao trava nem quebra o resto). Pra adicionar mais musicas, so
 // acrescentar entradas nesta lista com o nome do arquivo correspondente.
 var BG_TRACKS = [
-  { name: 'Ambiente 1', src: 'audio_fundo.mp3' },
-  { name: 'Ambiente 2', src: 'audio_fundo2.mp3' },
-  { name: 'Ambiente 3', src: 'audio_fundo3.mp3' },
-  { name: 'Tensao', src: 'audio_tensao.mp3' }
+  { id: 'bg0', name: 'Ambiente 1', src: 'audio_fundo.mp3' },
+  { id: 'bg1', name: 'Ambiente 2', src: 'audio_fundo2.mp3' },
+  { id: 'bg2', name: 'Ambiente 3', src: 'audio_fundo3.mp3' },
+  { id: 'bg3', name: 'Tensao', src: 'audio_tensao.mp3' }
 ];
 var _musicIdx = 0;
 var _musicPlaying = false;
 var _musicStartedOnce = false;
+
+// ============== PLAYLIST CUSTOM DO MESTRE + MUSICA FORCADA (Firebase) ==============
+// customTracks: faixas extras (nome + URL) adicionadas pelo Mestre no painel admin,
+// somadas as BG_TRACKS embutidas pra formar a playlist completa que todo mundo ve.
+// forceMusicState: quando active=true, TODOS os terminais trocam pra essa faixa e
+// ficam com os controles de faixa travados (o jogador so pode pausar/ajustar volume)
+// ate o Mestre clicar em "Liberar controle". Sem isso ativo, cada jogador escolhe a sua.
+var customTracks = {}; // { pushKey: {name, src} }
+var forceMusicState = { active: false };
+var _forceMusicFirstCallback = true;
+
+function fullPlaylist() {
+  var list = BG_TRACKS.slice();
+  for (var k in customTracks) list.push({ id: k, name: customTracks[k].name, src: customTracks[k].src, custom: true });
+  return list;
+}
+
+function musicForceSyncStart() {
+  if (typeof fbDB === 'undefined') return;
+  fbDB.ref('world/customTracks').on('value', function(snap) {
+    customTracks = snap.val() || {};
+    if (nav === 'adm') refreshCurrentPage();
+    musicApplyForceState();
+  });
+  fbDB.ref('events/forceMusic').on('value', function(snap) {
+    var v = snap.val() || { active: false };
+    if (_forceMusicFirstCallback) { _forceMusicFirstCallback = false; forceMusicState = v; if (!v.active) return; }
+    forceMusicState = v;
+    if (nav === 'adm') refreshCurrentPage();
+    musicApplyForceState();
+  });
+}
+
+// Aplica o estado forcado atual ao player deste aparelho (chamado quando o evento
+// chega do Firebase, e tambem ao iniciar o audio, caso ja exista musica forcada).
+function musicApplyForceState() {
+  musicUpdateLockUI();
+  if (!forceMusicState.active) return;
+  var pl = fullPlaylist();
+  var idx = -1;
+  for (var i = 0; i < pl.length; i++) if (pl[i].id === forceMusicState.id) { idx = i; break; }
+  if (idx === -1) return; // faixa custom ainda nao chegou nesta aba; o sync de customTracks reaplica
+  if (_musicIdx !== idx || !_musicStartedOnce) {
+    _musicStartedOnce = true;
+    var w = document.getElementById('musicWidget');
+    if (w) w.style.display = 'flex';
+    musicLoadTrack(idx, true);
+  }
+}
+
+function musicUpdateLockUI() {
+  var lockEl = document.getElementById('musicLock');
+  var prevBtn = document.getElementById('musicPrevBtn');
+  var nextBtn = document.getElementById('musicNextBtn');
+  var locked = !!forceMusicState.active;
+  if (lockEl) lockEl.style.display = locked ? 'inline' : 'none';
+  if (prevBtn) prevBtn.disabled = locked;
+  if (nextBtn) nextBtn.disabled = locked;
+}
+
+// Forca uma faixa (por id, estavel mesmo se a lista mudar de tamanho) pra todos os
+// terminais conectados. Chamado pelos botoes do painel admin (Nivel 6 apenas).
+function adminForceTrack(id, name) {
+  if (lvl < 6 || typeof fbDB === 'undefined') return;
+  fbDB.ref('events/forceMusic').set({ active: true, id: id, name: name, ts: Date.now(), by: (user && user.nm) || userKey });
+}
+function adminReleaseMusic() {
+  if (lvl < 6 || typeof fbDB === 'undefined') return;
+  fbDB.ref('events/forceMusic').set({ active: false, ts: Date.now(), by: (user && user.nm) || userKey });
+}
+function adminAddTrack() {
+  if (lvl < 6 || typeof fbDB === 'undefined') return;
+  var nm = document.getElementById('newTrackName');
+  var src = document.getElementById('newTrackUrl');
+  if (!nm || !src || !nm.value.trim() || !src.value.trim()) { alert('Preencha nome e URL da musica.'); return; }
+  fbDB.ref('world/customTracks').push({ name: nm.value.trim(), src: src.value.trim() });
+  nm.value = ''; src.value = '';
+}
+function adminRemoveTrack(key) {
+  if (lvl < 6 || typeof fbDB === 'undefined') return;
+  fbDB.ref('world/customTracks/' + key).remove();
+}
+
+// ============== SOUNDPAD DE EFEITOS SONOROS (Firebase) ==============
+// sfxLibrary: sons customizados (nome + URL) que o Mestre pode adicionar/remover
+// livremente. Ao clicar "tocar", o som e disparado, na hora, em TODOS os
+// terminais conectados (efeito de mesa) — sem mexer na musica de fundo de ninguem.
+var sfxLibrary = {}; // { pushKey: {name, src} }
+var _soundboardLastTs = 0, _soundboardFirstCallback = true;
+
+function sfxLibSyncStart() {
+  if (typeof fbDB === 'undefined') return;
+  fbDB.ref('world/sfxLibrary').on('value', function(snap) {
+    sfxLibrary = snap.val() || {};
+    if (nav === 'adm') refreshCurrentPage();
+  });
+  fbDB.ref('events/soundboard').on('value', function(snap) {
+    var v = snap.val();
+    if (_soundboardFirstCallback) { _soundboardFirstCallback = false; if (v) _soundboardLastTs = v.ts || 0; return; }
+    if (v && v.ts && v.ts !== _soundboardLastTs) { _soundboardLastTs = v.ts; playSoundboardEffect(v.src); }
+  });
+}
+
+function playSoundboardEffect(src) {
+  if (!sfxEnabled || !src) return;
+  try { var a = new Audio(src); a.volume = 0.7; a.play().catch(function() {}); } catch (e) {}
+}
+
+function adminPlaySfx(key) {
+  if (lvl < 6 || typeof fbDB === 'undefined') return;
+  var s = sfxLibrary[key];
+  if (!s) return;
+  fbDB.ref('events/soundboard').set({ id: key, src: s.src, ts: Date.now(), by: (user && user.nm) || userKey });
+}
+function adminAddSfx() {
+  if (lvl < 6 || typeof fbDB === 'undefined') return;
+  var nm = document.getElementById('newSfxName');
+  var src = document.getElementById('newSfxUrl');
+  if (!nm || !src || !nm.value.trim() || !src.value.trim()) { alert('Preencha nome e URL do som.'); return; }
+  fbDB.ref('world/sfxLibrary').push({ name: nm.value.trim(), src: src.value.trim() });
+  nm.value = ''; src.value = '';
+}
+function adminRemoveSfx(key) {
+  if (lvl < 6 || typeof fbDB === 'undefined') return;
+  fbDB.ref('world/sfxLibrary/' + key).remove();
+}
 
 function musicPrefsKey() { return 'scpMUSIC_v1'; }
 function loadMusicPrefs() {
@@ -1368,14 +1497,16 @@ function initAudio() {
   var music = document.getElementById('bg-music');
   if (!music) return;
   var prefs = loadMusicPrefs();
-  _musicIdx = (prefs.idx >= 0 && prefs.idx < BG_TRACKS.length) ? prefs.idx : 0;
+  var pl0 = fullPlaylist();
+  _musicIdx = (prefs.idx >= 0 && prefs.idx < pl0.length) ? prefs.idx : 0;
   music.volume = (prefs.vol === undefined) ? 0.3 : prefs.vol;
   var volEl = document.getElementById('musicVol');
   if (volEl) volEl.value = music.volume;
   musicLoadTrack(_musicIdx, false);
 
   // So autoplay depois de qualquer interacao (regra dos navegadores). A partir
-  // dai o player fica visivel e sob controle manual do jogador.
+  // dai o player fica visivel e sob controle manual do jogador (a nao ser que o
+  // Mestre esteja forcando uma faixa — nesse caso musicApplyForceState ja cuida).
   function startMusic() {
     if (_musicStartedOnce) return;
     _musicStartedOnce = true;
@@ -1386,27 +1517,39 @@ function initAudio() {
   document.addEventListener('touchstart', startMusic, { once: true });
   document.addEventListener('keydown', startMusic, { once: true });
 
-  music.addEventListener('ended', function() { musicNext(); });
+  music.addEventListener('ended', function() {
+    // Faixa forcada pelo Mestre: repete ela mesma em vez de avancar na playlist.
+    if (forceMusicState.active) { music.currentTime = 0; musicPlay(); return; }
+    musicNext();
+  });
   // Se o arquivo da faixa nao existir/nao carregar, pula pra proxima sozinho
   // em vez de ficar mudo sem explicacao.
   music.addEventListener('error', function() { musicSkipBroken(); });
+
+  // Caso a musica ja esteja sendo forcada pelo Mestre quando este aparelho conectar.
+  musicApplyForceState();
 }
 
 function musicLoadTrack(idx, autoplay) {
   var music = document.getElementById('bg-music');
-  if (!music || !BG_TRACKS.length) return;
-  _musicIdx = ((idx % BG_TRACKS.length) + BG_TRACKS.length) % BG_TRACKS.length;
-  music.src = BG_TRACKS[_musicIdx].src;
+  var pl = fullPlaylist();
+  if (!music || !pl.length) return;
+  _musicIdx = ((idx % pl.length) + pl.length) % pl.length;
+  music.src = pl[_musicIdx].src;
   var nameEl = document.getElementById('musicTrackName');
-  if (nameEl) nameEl.textContent = BG_TRACKS[_musicIdx].name;
+  if (nameEl) nameEl.textContent = pl[_musicIdx].name;
   if (autoplay) musicPlay();
-  saveMusicPrefs();
+  // Enquanto uma faixa esta sendo forcada pelo Mestre, nao grava ela como a
+  // preferencia pessoal do jogador — ao ser liberado, o localStorage continua
+  // guardando a ultima escolha de fato do jogador.
+  if (!forceMusicState.active) saveMusicPrefs();
 }
 
 var _musicSkipGuard = 0;
 function musicSkipBroken() {
+  var pl = fullPlaylist();
   _musicSkipGuard++;
-  if (_musicSkipGuard >= BG_TRACKS.length) { _musicSkipGuard = 0; return; } // todas falharam, desiste
+  if (_musicSkipGuard >= pl.length) { _musicSkipGuard = 0; return; } // todas falharam, desiste
   musicLoadTrack(_musicIdx + 1, _musicPlaying);
 }
 
@@ -1422,11 +1565,13 @@ function musicPause() {
   if (music) music.pause();
   _musicPlaying = false;
   musicUpdatePlayBtn();
-  saveMusicPrefs();
+  if (!forceMusicState.active) saveMusicPrefs();
 }
 function musicToggle() { _musicPlaying ? musicPause() : musicPlay(); }
-function musicNext() { _musicSkipGuard = 0; musicLoadTrack(_musicIdx + 1, true); }
-function musicPrev() { _musicSkipGuard = 0; musicLoadTrack(_musicIdx - 1, true); }
+// Trocar de faixa manualmente fica bloqueado enquanto o Mestre estiver forcando
+// uma musica pra todo mundo (os botoes tambem ficam desabilitados na UI).
+function musicNext() { if (forceMusicState.active) return; _musicSkipGuard = 0; musicLoadTrack(_musicIdx + 1, true); }
+function musicPrev() { if (forceMusicState.active) return; _musicSkipGuard = 0; musicLoadTrack(_musicIdx - 1, true); }
 function musicSetVolume(v) {
   var music = document.getElementById('bg-music');
   if (music) music.volume = parseFloat(v);
@@ -3064,6 +3209,68 @@ function deleteLabCard(cardId) {
     updStats();
 }
 
+// ============== ADMIN: CONTROLE DE MUSICA [MESTRE] ==============
+function renderMusicAdminSection() {
+    var pl = fullPlaylist();
+    var h = '<div style="margin-bottom:25px;">' +
+        '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:12px;">&gt; CONTROLE DE MUSICA [MESTRE]</div>' +
+        '<div style="background:rgba(0,20,0,0.3); border:1px solid var(--bd); padding:18px;">' +
+        '<div style="color:var(--td); font-size:0.75em; margin-bottom:12px;">Sem uma faixa forcada, cada jogador escolhe a propria musica. Clique em "FORCAR" numa faixa pra travar essa musica em TODOS os terminais na hora; clique em "LIBERAR CONTROLE" pra devolver a escolha pra cada jogador.</div>';
+    if (forceMusicState.active) {
+        h += '<div style="border:1px solid var(--y); color:var(--y); padding:8px 12px; margin-bottom:12px; font-size:0.78em;">' +
+            '&#128274; Forcando agora: <strong>' + (forceMusicState.name || '?') + '</strong> para todos os jogadores.</div>' +
+            '<button class="btn btn-s" style="margin-bottom:14px;" onclick="adminReleaseMusic()">LIBERAR CONTROLE</button>';
+    }
+    h += '<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:0.82em;">';
+    for (var i = 0; i < pl.length; i++) {
+        var t = pl[i];
+        var isForced = forceMusicState.active && forceMusicState.id === t.id;
+        h += '<tr style="border-bottom:1px solid var(--bd);">' +
+            '<td style="padding:8px 4px; color:' + (isForced ? 'var(--y)' : 'var(--t)') + ';">' + t.name + (t.custom ? ' <span style="color:var(--td); font-size:0.85em;">(custom)</span>' : '') + '</td>' +
+            '<td style="padding:8px 4px; text-align:right; white-space:nowrap;">' +
+            '<button class="btn btn-s" onclick="adminForceTrack(\'' + t.id + '\', ' + JSON.stringify(t.name) + ')"' + (isForced ? ' disabled' : '') + '>' + (isForced ? 'FORCANDO' : 'FORCAR') + '</button>' +
+            (t.custom ? ' <button class="btn btn-s" style="border-color:var(--r); color:var(--r);" onclick="adminRemoveTrack(\'' + t.id + '\')">&times;</button>' : '') +
+            '</td></tr>';
+    }
+    h += '</table></div>';
+    h += '<div style="margin-top:16px; display:flex; gap:8px; flex-wrap:wrap;">' +
+        '<input type="text" id="newTrackName" placeholder="Nome da musica" style="flex:1; min-width:120px; background:rgba(0,20,0,0.4); border:1px solid var(--bd); color:var(--t); padding:8px;">' +
+        '<input type="text" id="newTrackUrl" placeholder="URL do arquivo de audio" style="flex:2; min-width:160px; background:rgba(0,20,0,0.4); border:1px solid var(--bd); color:var(--t); padding:8px;">' +
+        '<button class="btn btn-s" onclick="adminAddTrack()">+ ADICIONAR</button>' +
+        '</div>';
+    h += '</div></div>';
+    return h;
+}
+
+// ============== ADMIN: SOUNDPAD DE EFEITOS SONOROS [MESTRE] ==============
+function renderSoundpadAdminSection() {
+    var h = '<div style="margin-bottom:25px;">' +
+        '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:12px;">&gt; SOUNDPAD - EFEITOS SONOROS [MESTRE]</div>' +
+        '<div style="background:rgba(0,20,0,0.3); border:1px solid var(--bd); padding:18px;">' +
+        '<div style="color:var(--td); font-size:0.75em; margin-bottom:12px;">Toca um efeito sonoro na hora em TODOS os terminais conectados, sem mexer na musica de fundo de ninguem. Adicione ou remova sons livremente.</div>';
+    var keys = Object.keys(sfxLibrary);
+    if (!keys.length) {
+        h += '<div style="color:var(--td); font-size:0.8em; margin-bottom:12px;">Nenhum som adicionado ainda.</div>';
+    } else {
+        h += '<div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;">';
+        for (var i = 0; i < keys.length; i++) {
+            var k = keys[i], s = sfxLibrary[k];
+            h += '<div style="display:flex; align-items:center; gap:6px; border:1px solid var(--bd); padding:6px 8px;">' +
+                '<button class="btn btn-s" onclick="adminPlaySfx(\'' + k + '\')">&#9658; ' + s.name + '</button>' +
+                '<button class="btn btn-s" style="border-color:var(--r); color:var(--r);" onclick="adminRemoveSfx(\'' + k + '\')" title="Remover">&times;</button>' +
+                '</div>';
+        }
+        h += '</div>';
+    }
+    h += '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
+        '<input type="text" id="newSfxName" placeholder="Nome do som" style="flex:1; min-width:120px; background:rgba(0,20,0,0.4); border:1px solid var(--bd); color:var(--t); padding:8px;">' +
+        '<input type="text" id="newSfxUrl" placeholder="URL do arquivo de audio" style="flex:2; min-width:160px; background:rgba(0,20,0,0.4); border:1px solid var(--bd); color:var(--t); padding:8px;">' +
+        '<button class="btn btn-s" onclick="adminAddSfx()">+ ADICIONAR</button>' +
+        '</div>';
+    h += '</div></div>';
+    return h;
+}
+
 // ============== ADMIN ==============
 function renderAdmin(c) {
     if (lvl < 4) {
@@ -3127,6 +3334,8 @@ function renderAdmin(c) {
             '<div style="color:var(--td); font-size:0.75em; margin-bottom:12px;">Dispara um efeito visual na tela de TODOS os jogadores conectados, na hora.</div>' +
             '<button class="btn btn-s" style="border-color:var(--r); color:var(--r);" onclick="triggerGlitch()">&#9889; DISPARAR GLITCH</button>' +
             '</div></div>';
+        h += renderMusicAdminSection();
+        h += renderSoundpadAdminSection();
     }
     h += '<div style="margin-bottom:25px;">' +
         '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:12px;">&gt; GERENCIAMENTO DE CARTAS DO LABORATORIO [ADMIN]</div>' +
@@ -4991,6 +5200,8 @@ function fpStartPlayerSync() {
   worldSyncStart();
   glitchSyncStart();
   mapSharedSyncStart();
+  musicForceSyncStart();
+  sfxLibSyncStart();
 }
 
 // ============== MAPA/PLANTAS COMPARTILHADOS (editados so pelo Mestre) ==============
