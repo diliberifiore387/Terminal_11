@@ -660,7 +660,6 @@ input[type="range"]::-moz-range-thumb {
 }
 
 
-.lab-tab.thaumiel-on { background:rgba(0,191,255,0.1); border-color:var(--b); color:var(--b); }
 
 
 /* ============ PERFIL DE PESQUISADOR D20 ============ */
@@ -2110,7 +2109,7 @@ function fmt(t) {
             .replace(/\n/g, '<br>');
 }
 
-function xmd() { document.getElementById('md').classList.remove('on'); }
+function xmd() { document.getElementById('md').classList.remove('on'); _fpFurnitureModalKey = null; }
 
 // ============== FORMULARIO SCP ==============
 function renderForm(c, ed) {
@@ -2224,7 +2223,6 @@ function renderLab(c) {
     // Abas
     h += '<div class="lab-tabs">' +
         '<button class="lab-tab' + (labTab==='scp' ? ' on' : '') + '" onclick="switchLabTab(\'scp\')">&gt; SCPs</button>' +
-        '<button class="lab-tab' + (labTab==='thaumiel' ? ' thaumiel-on' : '') + '" onclick="switchLabTab(\'thaumiel\')">&gt; THAUMIEL</button>' +
         '<button class="lab-tab' + (labTab==='item' ? ' on' : '') + '" onclick="switchLabTab(\'item\')">&gt; ITENS/RECURSOS</button>' +
         '<button class="lab-tab' + (labTab==='dclass' ? ' on' : '') + '" onclick="switchLabTab(\'dclass\')">&gt; CLASSE-D</button>' +
         '</div>';
@@ -2236,17 +2234,6 @@ function renderLab(c) {
             '<button class="lab-filter-btn" onclick="filterLabSCP(\'locked\',this)">BLOQUEADAS</button>' +
             '</div>';
         h += '<div class="lab-grid" id="labGrid">' + renderLabGrid(labCards) + '</div>';
-    } else if (labTab === 'thaumiel') {
-        h += '<div style="color:var(--b); font-size:0.8em; margin-bottom:18px; padding:12px; border:1px solid var(--b); background:rgba(0,191,255,0.05);">' +
-            '<strong style="color:var(--b);">&gt; SECAO THAUMIEL</strong><br>' +
-            'SCPs de classe Thaumiel sao utilizados pela Fundacao para conter ou combater outros SCPs. Acesso restrito a pessoal de Nivel 4+.' +
-            '</div>';
-        h += '<div class="lab-filters">' +
-            '<button class="lab-filter-btn active" onclick="filterLabThaumiel(\'all\',this)">TODOS</button>' +
-            '<button class="lab-filter-btn" onclick="filterLabThaumiel(\'db\',this)">NO BANCO DE DADOS</button>' +
-            '<button class="lab-filter-btn" onclick="filterLabThaumiel(\'lab\',this)">NO LABORATORIO</button>' +
-            '</div>';
-        h += '<div class="lab-grid" id="thaumielGrid">' + renderThaumielGrid() + '</div>';
     } else if (labTab === 'item') {
         h += '<div class="lab-filters">' +
             '<button class="lab-filter-btn active" onclick="filterLabItem(\'all\',this)">TODOS</button>' +
@@ -2270,104 +2257,6 @@ function renderLab(c) {
 function switchLabTab(tab) {
     labTab = tab;
     renderLab(document.getElementById('tcnt'));
-}
-
-function renderThaumielGrid() {
-    var thaumielDB = db.filter(function(x) { return x.cls === 'Thaumiel' && x.clr <= lvl; });
-    var thaumielLab = labCards.filter(function(c) { return c.cls === 'Thaumiel'; });
-
-    if (!thaumielDB.length && !thaumielLab.length) {
-        return '<div style="text-align:center; padding:50px; color:var(--td);">NENHUM SCP THAUMIEL ENCONTRADO</div>';
-    }
-
-    var h = '';
-
-    // Show DB Thaumiel SCPs
-    for (var i = 0; i < thaumielDB.length; i++) {
-        var scp = thaumielDB[i];
-        var hasLabCard = false;
-        var labCard = null;
-        for (var j = 0; j < thaumielLab.length; j++) {
-            if (thaumielLab[j].scpId === scp.id) { hasLabCard = true; labCard = thaumielLab[j]; break; }
-        }
-
-        h += '<div class="ctr-card" onclick="vItem(' + scp.id + ')" style="cursor:pointer;">';
-        h += '<div class="ctr-header">' +
-            '<div class="ctr-num">' + scp.num + '</div>' +
-            '<div class="ctr-title">' + scp.tit + '</div>' +
-            '<div class="ctr-class-badge" style="color:var(--b); border-color:var(--b);">Thaumiel</div>' +
-            '</div>';
-        h += '<div class="ctr-img-wrap">' +
-            '<div class="ctr-img-placeholder" style="color:var(--b);">&#9733;</div>' +
-            '<div class="ctr-img-overlay">CLIQUE PARA VER DOCUMENTO</div>' +
-            '</div>';
-        h += '<div style="padding:12px 14px;">' +
-            '<div style="color:var(--td); font-size:0.78em; line-height:1.5;">' + (scp.desc ? scp.desc.substring(0,100) + '...' : '') + '</div>' +
-            '<div style="margin-top:10px; padding:8px; background:rgba(0,191,255,0.05); border:1px solid rgba(0,191,255,0.2); border-radius:4px; text-align:center;">' +
-            '<span style="font-size:0.72em; color:var(--b); letter-spacing:2px;">' + (hasLabCard ? 'CARTA DE PESQUISA VINCULADA' : 'SEM CARTA DE PESQUISA') + '</span>' +
-            '</div></div>';
-        h += '<div class="ctr-footer">' +
-            '<span style="font-size:0.7em; color:var(--td); letter-spacing:1px;">THAUMIEL</span>' +
-            '<span class="ctr-lvl">NVL <span>' + scp.clr + '</span></span>' +
-            '</div>';
-        h += '</div>';
-    }
-
-    // Show Lab Thaumiel cards not in DB
-    for (var i = 0; i < thaumielLab.length; i++) {
-        var card = thaumielLab[i];
-        var inDB = false;
-        for (var j = 0; j < thaumielDB.length; j++) {
-            if (thaumielDB[j].id === card.scpId) { inDB = true; break; }
-        }
-        if (inDB) continue;
-
-        var isLocked = !card.unlocked || (card.clr > lvl && lvl < 4);
-        var lockClass = isLocked ? 'locked' : '';
-
-        h += '<div class="ctr-card ' + lockClass + '" onclick="' + (isLocked ? '' : 'viewLabCard(\'' + card.id + '\')') + '">';
-        h += '<div class="ctr-header">' +
-            '<div class="ctr-num">' + card.num + '</div>' +
-            '<div class="ctr-title">' + card.title + '</div>' +
-            '<div class="ctr-class-badge" style="color:var(--b); border-color:var(--b);">Thaumiel</div>' +
-            '</div>';
-        h += '<div class="ctr-img-wrap">' +
-            '<div class="ctr-img-placeholder" style="color:var(--b);">&#9733;</div>' +
-            (isLocked ? '' : '<div class="ctr-img-overlay">CLIQUE PARA EXAMINAR</div>') +
-            '</div>';
-        if (!isLocked) {
-            h += '<div class="ctr-stats">';
-            h += renderStatBar('Hostilidade', card.stats.hostil, 'stat-hostil');
-            h += renderStatBar('Inteligencia', card.stats.intel, 'stat-intel');
-            h += renderStatBar('Dificuldade de Contencao', card.stats.contencao, 'stat-contencao');
-            h += renderStatBar('Nivel de Conhecimento', card.stats.conhecimento, 'stat-conhecimento');
-            h += renderStatBar('Indice de Perigo', card.stats.perigo, 'stat-perigo');
-            h += '</div>';
-            h += '<div style="padding:10px 14px; border-top:1px solid var(--bd); text-align:center;">' +
-                '<span style="font-size:0.72em; color:var(--td); letter-spacing:2px;">STATUS: </span>' +
-                '<span style="font-size:0.72em; color:var(--g); letter-spacing:2px;">' + card.research.status.toUpperCase().replace(/_/g, ' ') + '</span>' +
-                '</div>';
-        } else {
-            h += '<div style="padding:20px; text-align:center; color:var(--td); font-size:0.8em;">' +
-                '<div style="font-size:2em; margin-bottom:8px;">&#128274;</div>' +
-                'BLOQUEADO<br>NVL ' + card.clr + ' REQUERIDO' +
-                '</div>';
-        }
-        h += '<div class="ctr-footer">' +
-            '<span style="font-size:0.7em; color:var(--td); letter-spacing:1px;">CARTA</span>' +
-            '<span class="ctr-lvl">NVL <span>' + card.clr + '</span></span>' +
-            '</div>';
-        h += '</div>';
-    }
-
-    return h;
-}
-
-function filterLabThaumiel(filter, btn) {
-    var btns = document.querySelectorAll('.lab-filter-btn');
-    for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
-    btn.classList.add('active');
-    document.getElementById('thaumielGrid').innerHTML = renderThaumielGrid();
 }
 
 // ============== LAB GRID SCP ==============
@@ -4468,6 +4357,40 @@ var _mapAdjCache = null;
 var _mapLayoutCache = null;
 var _mapTreeEdgeKeys = null; // ligacoes que formam a "arvore" principal do layout (ver mapComputeLayout)
 
+// ============== MODO DE EDICAO DE POSICOES (Nivel 6: arrastar areas livremente) ==============
+var _mapDragMode = false;  // quando true, todas as areas ficam visiveis e arrastaveis em vez de clicaveis
+var _mapOffX = 0, _mapOffY = 0;  // deslocamento usado no ultimo renderMap para converter pixel de tela <-> coordenada logica
+var _mapDragState = null;  // { id, nodeEl, labelEl, startX, startY, startLeft, startTop } durante um arrasto em andamento
+var MAP_GRID_SIZE = 20;   // tamanho (px) de cada quadricula fina do grid de mira, no modo de edicao
+var MAP_GRID_MAJOR = 100; // a cada quantos px uma linha do grid fica mais forte (referencia de distancia)
+
+// ============== ZOOM DO MAPA ==============
+// Nivel de zoom do mapa geral (1 = 100%, tamanho normal). Fica guardado no
+// localStorage (por aparelho) para sobreviver tanto aos "flashes" de redesenho
+// (ex.: mapRefreshLiveViews quando o Mestre edita algo e o dado chega pelo
+// Firebase) quanto a um F5 de verdade na pagina — o jogador nao perde o
+// enquadramento que escolheu.
+var MAP_ZOOM_MIN = 0.4, MAP_ZOOM_MAX = 1.5, MAP_ZOOM_STEP = 0.1;
+var _mapZoom = 1;
+(function() {
+  try {
+    var s = localStorage.getItem('scpMAPZOOM_v1');
+    if (s !== null) {
+      var n = parseFloat(s);
+      if (!isNaN(n)) _mapZoom = Math.max(MAP_ZOOM_MIN, Math.min(MAP_ZOOM_MAX, n));
+    }
+  } catch (e) {}
+})();
+function mapSaveZoom() { try { localStorage.setItem('scpMAPZOOM_v1', String(_mapZoom)); } catch (e) {} }
+// Arredonda pra multiplos de 5% pra nao acumular erro de ponto flutuante nos cliques repetidos.
+function mapSetZoom(z) {
+  z = Math.round(Math.max(MAP_ZOOM_MIN, Math.min(MAP_ZOOM_MAX, z)) * 20) / 20;
+  _mapZoom = z;
+  mapSaveZoom();
+  renderMap(document.getElementById('tcnt'));
+}
+function mapZoomBy(delta) { mapSetZoom(_mapZoom + delta); }
+
 // Retorna todas as salas: as fixas do codigo + as adicionadas pelo Administrador (Nivel 6+), guardadas no mapState.
 function mapAllRooms() {
   var custom = (mapState && mapState.customRooms) ? mapState.customRooms : [];
@@ -4492,7 +4415,7 @@ function mapIsExtraEdgeKey(key) {
 function cloneDefaultFloorplans() {
   try { return JSON.parse(JSON.stringify(DEFAULT_FLOORPLANS)); } catch (e) { return {}; }
 }
-function defaultMapState() { return { current: 'checkpoint-alfa', log: [], imgs: {}, floorplans: cloneDefaultFloorplans(), visited: { 'checkpoint-alfa': true }, customRooms: [], customLinks: [] }; }
+function defaultMapState() { return { current: 'checkpoint-alfa', log: [], imgs: {}, floorplans: cloneDefaultFloorplans(), visited: { 'checkpoint-alfa': true }, customRooms: [], customLinks: [], posOverrides: {} }; }
 
 // Data de "hoje" no formato AAAA-MM-DD.
 function todayStr() { return new Date().toISOString().slice(0, 10); }
@@ -4534,6 +4457,7 @@ function loadMapState() {
   if (!mapState.current) mapState.current = 'checkpoint-alfa';
   if (!mapState.customRooms) mapState.customRooms = [];
   if (!mapState.customLinks) mapState.customLinks = [];
+  if (!mapState.posOverrides) mapState.posOverrides = {};
   mapState.visited[mapState.current] = true;
 }
 
@@ -4729,6 +4653,17 @@ function mapComputeLayout() {
     coords[mr.id] = { x: Math.round(mx), y: Math.round(my) };
   }
 
+  // 8) Posicoes EXATAS (pixel a pixel) definidas pelo Administrador ao arrastar a
+  // area no modo de edicao (ver mapToggleDragMode / mapNodeDragEnd). Isto sobrescreve
+  // TUDO o que veio antes (automatico e manualPos por ancora) — e a unica camada com
+  // controle milimetrico real, guardada em mapState.posOverrides[roomId] = {x,y}.
+  var overrides = (mapState && mapState.posOverrides) ? mapState.posOverrides : {};
+  for (var oid in overrides) {
+    if (overrides[oid] && typeof overrides[oid].x === 'number' && typeof overrides[oid].y === 'number') {
+      coords[oid] = { x: overrides[oid].x, y: overrides[oid].y };
+    }
+  }
+
   _mapLayoutCache = coords;
   return coords;
 }
@@ -4812,9 +4747,15 @@ function renderMap(c) {
   var offX = halfX - cpCoord.x, offY = halfY - cpCoord.y;
   var totalW = halfX * 2;
   var totalH = halfY * 2;
+  _mapOffX = offX; _mapOffY = offY;
 
   var h = '<div style="max-width:1050px; margin:0 auto;">';
   h += '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:14px;">&gt; MAPA DO SITE-11 // NAVEGACAO POR PROXIMIDADE</div>';
+
+  if (_mapDragMode) {
+    h += '<div style="border:1px solid var(--p, #b967ff); padding:10px 14px; margin-bottom:14px; background:rgba(185,103,255,0.06); color:var(--p, #b967ff); font-size:0.75em; letter-spacing:1px;">' +
+      'MODO DE EDICAO DE POSICOES: arraste qualquer area para o lugar exato que quiser (todas ficam visiveis e todas as ligacoes aparecem). O movimento encaixa numa grade de ' + MAP_GRID_SIZE + 'px (linhas mais fortes a cada ' + MAP_GRID_MAJOR + 'px) para facilitar alinhar areas entre si. De dois cliques (ou toque duplo) numa area para devolve-la ao posicionamento automatico. As posicoes sao salvas em pixel exato e valem para todos os aparelhos.</div>';
+  }
 
   h += '<div style="border:1px solid var(--gd); padding:14px 18px; margin-bottom:18px; background:rgba(0,255,65,0.04); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">' +
     '<div><span style="color:var(--td); font-size:0.72em; letter-spacing:2px;">VOCE ESTA EM:</span> ' +
@@ -4829,12 +4770,29 @@ function renderMap(c) {
     (lvl >= 6 ? '<button class="btn btn-s" style="border-color:var(--p, #b967ff); color:var(--p, #b967ff);" onclick="mapOpenAddRoomForm()">+ ADICIONAR LOCALIZACAO</button>' : '') +
     (lvl >= 6 ? '<button class="btn btn-s" style="border-color:var(--p, #b967ff); color:var(--p, #b967ff);" onclick="mapOpenManageRoomsForm()">EDITAR/MOVER/APAGAR LOCALIZACOES</button>' : '') +
     (lvl >= 6 ? '<button class="btn btn-s" style="border-color:var(--p, #b967ff); color:var(--p, #b967ff);" onclick="mapOpenLinkManagerForm()">LIGAR/DESLIGAR AREAS</button>' : '') +
+    (lvl >= 6 ? '<button class="btn btn-s" style="border-color:var(--p, #b967ff); color:var(--p, #b967ff); ' + (_mapDragMode ? 'background:rgba(185,103,255,0.18);' : '') + '" onclick="mapToggleDragMode()">' + (_mapDragMode ? 'CONCLUIR EDICAO DE POSICOES' : 'MOVER AREAS (ARRASTAR)') + '</button>' : '') +
+    (lvl >= 6 && _mapDragMode ? '<button class="btn btn-s btn-r" onclick="mapResetAllPositions()">RESETAR TODAS AS POSICOES</button>' : '') +
     '</div></div>';
 
   h += '<div style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Areas ja exploradas ficam acesas no mapa. Areas conectadas ainda nao percorridas aparecem apenas como uma linha ate um marcador <span style="color:var(--y);">?</span> desconhecido — clique para caminhar ate la. Marcadores <span style="color:var(--r);">&#128274;</span> exigem nivel de acesso ou o PIN de qualificacao daquele nivel (Nivel 6 nao tem PIN — so o Mestre libera). Linhas <span style="color:var(--b);">azuis tracejadas</span> sao atalhos que podem passar perto de outras salas no caminho — elas NAO ligam a essas salas, so as duas pontas do tracejado se conectam.</div>';
 
+  h += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">' +
+    '<span style="color:var(--td); font-size:0.72em; letter-spacing:2px;">ZOOM:</span>' +
+    '<button class="btn btn-s" onclick="mapZoomBy(-' + MAP_ZOOM_STEP + ')" title="Diminuir zoom">&#8722;</button>' +
+    '<span style="color:var(--g); font-size:0.8em; min-width:44px; text-align:center;">' + Math.round(_mapZoom * 100) + '%</span>' +
+    '<button class="btn btn-s" onclick="mapZoomBy(' + MAP_ZOOM_STEP + ')" title="Aumentar zoom">&#43;</button>' +
+    (_mapZoom !== 1 ? '<button class="btn btn-s" onclick="mapSetZoom(1)">RESETAR</button>' : '') +
+    '</div>';
+
   h += '<div id="mapViewport" style="position:relative; width:100%; max-height:560px; overflow:auto; border:1px solid var(--bd); background:rgba(0,10,0,0.55);">';
-  h += '<div id="mapCanvas" style="position:relative; width:' + totalW + 'px; height:' + totalH + 'px; font-family:\'Courier New\', monospace;">';
+  var gridBg = _mapDragMode ?
+    'background-image:' +
+      'repeating-linear-gradient(0deg, rgba(185,103,255,0.28) 0px, rgba(185,103,255,0.28) 1px, transparent 1px, transparent ' + MAP_GRID_MAJOR + 'px),' +
+      'repeating-linear-gradient(90deg, rgba(185,103,255,0.28) 0px, rgba(185,103,255,0.28) 1px, transparent 1px, transparent ' + MAP_GRID_MAJOR + 'px),' +
+      'repeating-linear-gradient(0deg, rgba(185,103,255,0.1) 0px, rgba(185,103,255,0.1) 1px, transparent 1px, transparent ' + MAP_GRID_SIZE + 'px),' +
+      'repeating-linear-gradient(90deg, rgba(185,103,255,0.1) 0px, rgba(185,103,255,0.1) 1px, transparent 1px, transparent ' + MAP_GRID_SIZE + 'px);' :
+    '';
+  h += '<div id="mapCanvas" style="position:relative; width:' + totalW + 'px; height:' + totalH + 'px; font-family:\'Courier New\', monospace; zoom:' + _mapZoom + '; ' + gridBg + '">';
 
   var allLinks = mapAllLinks();
   var drawn = {};
@@ -4844,12 +4802,13 @@ function renderMap(c) {
     if (drawn[key]) continue;
     drawn[key] = true;
     var av = !!mapState.visited[a], bv = !!mapState.visited[b];
-    if (!av && !bv) continue; // corredor ainda desconhecido, nao e mostrado
+    if (!_mapDragMode && !av && !bv) continue; // corredor ainda desconhecido, nao e mostrado (exceto no modo de edicao)
     var ca = coords[a], cb = coords[b];
     if (!ca || !cb) continue;
     var x1 = ca.x + offX, y1 = ca.y + offY, x2 = cb.x + offX, y2 = cb.y + offY;
     var isExtra = mapIsExtraEdgeKey(key);
     var lineColor = isExtra ? ((av && bv) ? 'rgba(0,191,255,0.5)' : 'rgba(0,191,255,0.22)') : ((av && bv) ? 'rgba(0,255,65,0.22)' : 'rgba(0,255,65,0.09)');
+    if (_mapDragMode && !av && !bv) lineColor = 'rgba(185,103,255,0.35)';
     h += mapElbowHTML(x1, y1, x2, y2, lineColor, key, isExtra);
   }
 
@@ -4876,14 +4835,28 @@ function renderMap(c) {
     } else {
       label = ''; boxColor = 'transparent'; textColor = 'transparent';
     }
+    var showName = isVisited || isCur;
+    if (_mapDragMode) {
+      // No modo de edicao, TUDO fica visivel (mesmo areas nunca exploradas) para o
+      // Administrador poder organizar o mapa inteiro, e nada e' clicavel pra entrar —
+      // o clique/toque agora e' pra arrastar.
+      label = label || MAP_ICONS[r.cat] || '&#9679;';
+      boxColor = isCur ? 'var(--g)' : 'var(--p, #b967ff)';
+      textColor = isCur ? 'var(--g)' : 'var(--t)';
+      clickable = false;
+      showName = true;
+    }
     var title = (isVisited || isCur) ? escAttr(r.name) : (isAdj ? 'Area desconhecida — clique para explorar' : '');
-    h += '<div class="map-node" data-room="' + r.id + '" ' + (clickable ? 'onclick="mapTryEnter(\'' + r.id + '\')"' : '') + ' title="' + title + '" ' +
-      'style="position:absolute; left:' + (x - 22) + 'px; top:' + (y - 22) + 'px; width:44px; height:44px; display:flex; align-items:center; justify-content:center; border:1px solid ' + boxColor + '; border-radius:4px; background:rgba(0,20,0,0.6); cursor:' + (clickable ? 'pointer' : 'default') + '; font-size:1.1em; color:' + textColor + '; transition:all 0.3s; z-index:2;">' +
+    var dragAttrs = _mapDragMode ?
+      ' onmousedown="mapNodeDragStart(event,\'' + r.id + '\')" ontouchstart="mapNodeDragStart(event,\'' + r.id + '\')" ondblclick="mapResetNodePos(\'' + r.id + '\')" title="Arraste para mover. Duplo clique/toque para voltar ao automatico. (' + r.name + ')"' :
+      (clickable ? ' onclick="mapTryEnter(\'' + r.id + '\')" title="' + title + '"' : ' title="' + title + '"');
+    h += '<div class="map-node" data-room="' + r.id + '"' + dragAttrs +
+      ' style="position:absolute; left:' + (x - 22) + 'px; top:' + (y - 22) + 'px; width:44px; height:44px; display:flex; align-items:center; justify-content:center; border:1px solid ' + boxColor + '; border-radius:4px; background:rgba(0,20,0,0.6); cursor:' + (_mapDragMode ? 'grab' : (clickable ? 'pointer' : 'default')) + '; font-size:1.1em; color:' + textColor + '; transition:' + (_mapDragMode ? 'none' : 'all 0.3s') + '; z-index:2; touch-action:none;">' +
       label +
       (locked && isAdj && !isVisited ? '<span style="position:absolute; bottom:-14px; font-size:0.5em; color:var(--r); white-space:nowrap;">&#128274;NV' + r.lvl + '</span>' : '') +
       '</div>';
-    if (isVisited || isCur) {
-      h += '<div style="position:absolute; left:' + (x - 65) + 'px; top:' + (y + 26) + 'px; width:130px; text-align:center; font-size:0.6em; color:' + (isCur ? 'var(--g)' : 'var(--td)') + '; letter-spacing:0.5px; pointer-events:none; z-index:1;">' + r.name + '</div>';
+    if (showName) {
+      h += '<div class="map-label" data-room="' + r.id + '" style="position:absolute; left:' + (x - 65) + 'px; top:' + (y + 26) + 'px; width:130px; text-align:center; font-size:0.6em; color:' + (isCur ? 'var(--g)' : (_mapDragMode ? 'var(--p, #b967ff)' : 'var(--td)')) + '; letter-spacing:0.5px; pointer-events:none; z-index:1;">' + r.name + '</div>';
     }
   }
 
@@ -4918,11 +4891,124 @@ function renderMap(c) {
 function mapScrollToCurrent(curCoord, offX, offY) {
   var vp = document.getElementById('mapViewport');
   if (!vp || !curCoord) return;
-  var x = curCoord.x + offX, y = curCoord.y + offY;
+  // curCoord/offX/offY sao coordenadas "de dados" (independentes do zoom); o
+  // #mapCanvas e' quem aplica o zoom via CSS, entao pra saber a posicao real na
+  // tela (e no scroll) precisamos multiplicar pelo zoom atual.
+  var x = (curCoord.x + offX) * _mapZoom, y = (curCoord.y + offY) * _mapZoom;
   requestAnimationFrame(function() {
     vp.scrollLeft = Math.max(0, x - vp.clientWidth / 2);
     vp.scrollTop = Math.max(0, y - vp.clientHeight / 2);
   });
+}
+
+// Liga/desliga o modo de edicao de posicoes (arrastar areas livremente pelo mapa).
+function mapToggleDragMode() {
+  if (lvl < 6) { alert('ACESSO NEGADO: SOMENTE O ADMINISTRADOR (NIVEL 6) PODE MOVER AREAS.'); return; }
+  _mapDragMode = !_mapDragMode;
+  renderMap(document.getElementById('tcnt'));
+}
+
+// Inicio do arrasto: guarda a posicao de partida do node (e do rotulo, que anda junto)
+// em pixel de tela, para calcular o deslocamento durante o movimento.
+function mapNodeDragStart(e, id) {
+  if (!_mapDragMode || lvl < 6) return;
+  e.preventDefault();
+  var canvas = document.getElementById('mapCanvas');
+  if (!canvas) return;
+  var nodeEl = canvas.querySelector('.map-node[data-room="' + id + '"]');
+  var labelEl = canvas.querySelector('.map-label[data-room="' + id + '"]');
+  if (!nodeEl) return;
+  var pt = e.touches ? e.touches[0] : e;
+  _mapDragState = {
+    id: id, nodeEl: nodeEl, labelEl: labelEl,
+    startX: pt.clientX, startY: pt.clientY,
+    startLeft: parseFloat(nodeEl.style.left) || 0,
+    startTop: parseFloat(nodeEl.style.top) || 0
+  };
+  nodeEl.style.cursor = 'grabbing';
+  nodeEl.style.zIndex = '5';
+  document.addEventListener('mousemove', mapNodeDragMove);
+  document.addEventListener('mouseup', mapNodeDragEnd);
+  document.addEventListener('touchmove', mapNodeDragMove, { passive: false });
+  document.addEventListener('touchend', mapNodeDragEnd);
+}
+
+// Move o node (e o rotulo junto, mantendo a mesma distancia relativa) durante o arrasto.
+// So mexe no DOM diretamente (sem re-renderizar o mapa inteiro) para ficar fluido.
+function mapNodeDragMove(e) {
+  if (!_mapDragState) return;
+  e.preventDefault();
+  var pt = e.touches ? e.touches[0] : e;
+  // clientX/clientY vem em pixel real de tela; como o #mapCanvas pode estar
+  // com zoom aplicado, o deslocamento precisa ser convertido de volta pra
+  // coordenada "de dados" (sem zoom) dividindo pelo zoom atual, senao o node
+  // andaria mais rapido ou mais devagar que o dedo/mouse quando fora de 100%.
+  var dx = (pt.clientX - _mapDragState.startX) / _mapZoom;
+  var dy = (pt.clientY - _mapDragState.startY) / _mapZoom;
+  var newLeft = _mapDragState.startLeft + dx;
+  var newTop = _mapDragState.startTop + dy;
+  // Encaixa no grid (mira/pontaria): a posicao visual "salta" de quadricula em
+  // quadricula em vez de andar livre por pixel solto, facilitando alinhar varias
+  // areas na mesma linha/coluna ou guardar uma distancia exata entre elas.
+  newLeft = Math.round(newLeft / MAP_GRID_SIZE) * MAP_GRID_SIZE;
+  newTop = Math.round(newTop / MAP_GRID_SIZE) * MAP_GRID_SIZE;
+  _mapDragState.nodeEl.style.left = newLeft + 'px';
+  _mapDragState.nodeEl.style.top = newTop + 'px';
+  if (_mapDragState.labelEl) {
+    // O rotulo nasce em (x-65, y+26) enquanto o node nasce em (x-22, y-22): a diferenca
+    // fixa entre os dois e' (-43, +48) — aplica o mesmo deslocamento que o node recebeu.
+    _mapDragState.labelEl.style.left = (newLeft - 43) + 'px';
+    _mapDragState.labelEl.style.top = (newTop + 48) + 'px';
+  }
+}
+
+// Fim do arrasto: converte a posicao final em tela de volta para coordenada logica
+// (subtraindo o offset usado no ultimo render) e salva como posicao exata, sincronizada
+// para todos os aparelhos.
+function mapNodeDragEnd(e) {
+  if (!_mapDragState) return;
+  document.removeEventListener('mousemove', mapNodeDragMove);
+  document.removeEventListener('mouseup', mapNodeDragEnd);
+  document.removeEventListener('touchmove', mapNodeDragMove);
+  document.removeEventListener('touchend', mapNodeDragEnd);
+  var left = parseFloat(_mapDragState.nodeEl.style.left) || 0;
+  var top = parseFloat(_mapDragState.nodeEl.style.top) || 0;
+  var x = Math.round(left + 22 - _mapOffX);
+  var y = Math.round(top + 22 - _mapOffY);
+  var id = _mapDragState.id;
+  _mapDragState = null;
+  if (!mapState) loadMapState();
+  if (!mapState.posOverrides) mapState.posOverrides = {};
+  mapState.posOverrides[id] = { x: x, y: y };
+  saveMapState();
+  mapPushShared('posOverrides');
+  mapInvalidateCache();
+  renderMap(document.getElementById('tcnt'));
+}
+
+// Duplo clique/toque numa area (so' no modo de edicao): devolve essa area especifica
+// ao posicionamento automatico, apagando so' a posicao exata dela.
+function mapResetNodePos(id) {
+  if (!_mapDragMode || lvl < 6) return;
+  if (!mapState || !mapState.posOverrides || !mapState.posOverrides[id]) return;
+  delete mapState.posOverrides[id];
+  saveMapState();
+  mapPushShared('posOverrides');
+  mapInvalidateCache();
+  renderMap(document.getElementById('tcnt'));
+}
+
+// Apaga TODAS as posicoes exatas de uma vez, devolvendo o mapa inteiro ao calculo
+// automatico (ou aos manualPos por ancora, para as areas que tiverem um).
+function mapResetAllPositions() {
+  if (lvl < 6) { alert('ACESSO NEGADO.'); return; }
+  if (!mapState || !mapState.posOverrides || !Object.keys(mapState.posOverrides).length) { alert('NENHUMA POSICAO MANUAL FOI DEFINIDA AINDA.'); return; }
+  if (!confirm('RESETAR TODAS AS POSICOES ARRASTADAS MANUALMENTE? O mapa volta ao calculo automatico (ou as ancoras N/S/E/W definidas nas areas).')) return;
+  mapState.posOverrides = {};
+  saveMapState();
+  mapPushShared('posOverrides');
+  mapInvalidateCache();
+  renderMap(document.getElementById('tcnt'));
 }
 
 function mapTryEnter(id) {
@@ -5176,6 +5262,9 @@ var _fpViewFloor = 0;      // indice do andar sendo visualizado no modo leitura
 var _fpUnlockedCodes = {}; // portas com codigo ja destrancadas nesta sessao (nao persiste ao recarregar)
 var _fpNpcEdit = null;     // NPC em edicao dentro do formulario (rascunho)
 var _fpNpcImgData = null;  // imagem (base64) do NPC em edicao
+var _fpFurnitureItems = {}; // cache local dos itens deixados em mobilia com 'storage' (mesa/estante/armario), por chave roomId|floorIdx|c_r — vem do Firebase, qualquer jogador pode alterar
+var _fpFurnitureModalKey = null; // chave da mobilia cujo modal de interacao esta aberto (para atualizar ao vivo quando outro jogador mexe nela)
+var _fpFurnLeaveMode = 'labcard'; // aba selecionada no formulario de "deixar" da mobilia com storage: 'labcard' (carta do laboratorio), 'item' (catalogo de recursos) ou 'custom' (papel avulso)
 
 // ============== POSICAO DOS JOGADORES NO MAPA (sincronizada via Firebase) ==============
 // Cada jogador logado tem uma posicao (x,y) dentro do grid da planta da area em que
@@ -5202,6 +5291,41 @@ function fpStartPlayerSync() {
   mapSharedSyncStart();
   musicForceSyncStart();
   sfxLibSyncStart();
+  furnitureSyncStart();
+}
+
+// ============== ITENS DEIXADOS EM MOBILIA (mesa/estante/armario) ==============
+// Ao contrario da planta em si (so' o Mestre edita), os ITENS deixados em cima de
+// uma mesa/estante/armario sao uma acao de jogo de QUALQUER jogador — por isso
+// ficam num ramo proprio do Firebase ('world/furniture_items'), do mesmo jeito
+// que a posicao dos jogadores (fbPlayers), e nao dentro de mapState.floorplans.
+function fpFurnitureKey(roomId, floorIdx, c, r) { return roomId + '|' + floorIdx + '|' + c + '_' + r; }
+
+function furnitureSyncStart() {
+  if (typeof fbDB === 'undefined') return;
+  fbDB.ref('world/furniture_items').on('value', function(snap) {
+    _fpFurnitureItems = snap.val() || {};
+    if (_fpViewRoomId && !_fpEdit) fpUpdateFurnitureBadges();
+    if (_fpFurnitureModalKey) fpFurnitureRenderModal();
+  });
+}
+
+// Atualiza so' os indicadores de "tem item aqui" na planta aberta, sem
+// redesenhar a grade inteira (mesmo cuidado que fpUpdateTokensLayer toma).
+function fpUpdateFurnitureBadges() {
+  var plan = fpGetPlan(_fpViewRoomId);
+  if (!plan) return;
+  var floor = plan.floors[_fpViewFloor];
+  if (!floor) return;
+  for (var key in floor.cells) {
+    var cell = floor.cells[key];
+    if (!cell || cell.t !== 'm' || !fpFurnDef(cell.ft).storage) continue;
+    var el = document.getElementById('fpFurnBadge_' + key);
+    if (!el) continue;
+    var fkey = fpFurnitureKey(_fpViewRoomId, _fpViewFloor, key.split('_')[0], key.split('_')[1]);
+    var has = !!(_fpFurnitureItems[fkey] && _fpFurnitureItems[fkey].length);
+    el.style.display = has ? 'block' : 'none';
+  }
 }
 
 // ============== MAPA/PLANTAS COMPARTILHADOS (editados so pelo Mestre) ==============
@@ -5210,8 +5334,8 @@ function fpStartPlayerSync() {
 // como a base de SCPs/itens/Classe-D ja faz — sem precisar dar reload na pagina.
 // (mapState.current/visited/log ficam DE FORA de proposito: cada jogador tem sua
 // propria posicao no mapa geral, essa parte continua so local por aparelho.)
-var MAP_SHARED_FIELDS = ['floorplans', 'imgs', 'customRooms', 'customLinks'];
-var _mapSharedFirstCallback = { floorplans: true, imgs: true, customRooms: true, customLinks: true };
+var MAP_SHARED_FIELDS = ['floorplans', 'imgs', 'customRooms', 'customLinks', 'posOverrides'];
+var _mapSharedFirstCallback = { floorplans: true, imgs: true, customRooms: true, customLinks: true, posOverrides: true };
 
 // Chamado depois de qualquer edicao do Mestre num desses campos (alem de
 // saveMapState(), que so grava local).
@@ -5364,8 +5488,11 @@ function fpRenderPlayerTokens(roomId, floorIdx) {
     var label = ((p.nm || k) + '').charAt(0).toUpperCase();
     var tokHex = fpPaletteHex(p.color || (isMe ? 'y' : 'b'));
     var ring = isMe ? '0 0 0 2px var(--y), 0 0 4px rgba(0,0,0,0.8)' : '0 0 4px rgba(0,0,0,0.8)';
-    h += '<div title="' + (p.nm || k) + '" style="position:absolute; left:' + (p.x * FP_CELL) + 'px; top:' + (p.y * FP_CELL) + 'px; width:' + FP_CELL + 'px; height:' + FP_CELL + 'px; display:flex; align-items:center; justify-content:center; transition:left 0.15s linear, top 0.15s linear;">' +
-      '<div style="width:16px; height:16px; border-radius:50%; background:' + tokHex + '; border:2px solid #000; box-shadow:' + ring + '; font-size:0.6em; display:flex; align-items:center; justify-content:center; font-weight:bold; color:#000;">' + label + '</div></div>';
+    var sitting = !!p.sit;
+    var tokSize = sitting ? 12 : 16;
+    var sitLab = sitting ? (p.sit === 'bed' ? ' (deitado)' : ' (sentado)') : '';
+    h += '<div title="' + (p.nm || k) + sitLab + '" style="position:absolute; left:' + (p.x * FP_CELL) + 'px; top:' + (p.y * FP_CELL) + 'px; width:' + FP_CELL + 'px; height:' + FP_CELL + 'px; display:flex; align-items:center; justify-content:center; transition:left 0.15s linear, top 0.15s linear;">' +
+      '<div style="width:' + tokSize + 'px; height:' + tokSize + 'px; border-radius:50%; background:' + tokHex + '; border:2px solid #000; box-shadow:' + ring + '; font-size:0.6em; display:flex; align-items:center; justify-content:center; font-weight:bold; color:#000; opacity:' + (sitting ? '0.85' : '1') + ';">' + label + '</div></div>';
   }
   h += '</div>';
   return h;
@@ -5417,7 +5544,15 @@ function fpPlayerMove(dx, dy) {
   if (nx < 0 || ny < 0 || nx >= floor.cols || ny >= floor.rows) return;
   var key = nx + '_' + ny;
   var cell = floor.cells[key];
-  if (cell && (cell.t === 'w' || cell.t === 'q' || cell.t === 'f')) return; // parede ou quadrado de cenario bloqueia
+  if (cell && (cell.t === 'w' || cell.t === 'q' || cell.t === 'f' || (cell.t === 'm' && fpFurnDef(cell.ft).blocks))) return; // parede, quadrado de cenario ou mobilia solida bloqueia
+
+  // Cadeira/sofa/cama nao bloqueiam: o jogador "entra" nelas e fica sentado/deitado
+  // ate' o proximo passo (que sai da celula e desfaz o estado sozinho).
+  var sitFt = null, sitDir = null;
+  if (cell && cell.t === 'm') {
+    var fDefMv = fpFurnDef(cell.ft);
+    if (fDefMv.sit) { sitFt = cell.ft; sitDir = cell.dir; }
+  }
 
   if (cell && cell.t === 'd') {
     var locked = fpIsDoorLocked(_fpViewRoomId, _fpViewFloor, key, cell);
@@ -5438,7 +5573,7 @@ function fpPlayerMove(dx, dy) {
     }
   }
 
-  var data = { roomId: _fpViewRoomId, floorIdx: _fpViewFloor, x: nx, y: ny, nm: (user && user.nm) || userKey };
+  var data = { roomId: _fpViewRoomId, floorIdx: _fpViewFloor, x: nx, y: ny, nm: (user && user.nm) || userKey, sit: sitFt, sitDir: sitDir };
   if (me && me.color) data.color = me.color;
   fbPlayers[userKey] = data; // atualizacao otimista local — o listener do Firebase confirma/propaga
   if (typeof fbDB !== 'undefined') fbDB.ref('players/' + userKey).set(data);
@@ -5454,7 +5589,7 @@ function fpPlayerMove(dx, dy) {
       var dnx = dsp ? dsp.x : Math.min(nx, destFloor.cols - 1);
       var dny = dsp ? dsp.y : Math.min(ny, destFloor.rows - 1);
       _fpViewFloor = target;
-      data = { roomId: _fpViewRoomId, floorIdx: target, x: dnx, y: dny, nm: (user && user.nm) || userKey };
+      data = { roomId: _fpViewRoomId, floorIdx: target, x: dnx, y: dny, nm: (user && user.nm) || userKey, sit: null, sitDir: null };
       if (me && me.color) data.color = me.color;
       fbPlayers[userKey] = data;
       if (typeof fbDB !== 'undefined') fbDB.ref('players/' + userKey).set(data);
@@ -5585,6 +5720,79 @@ function fpSquareBlockStyle(shape, dir) {
   if (dir === 's') return 'left:0; top:50%; width:100%; height:50%;';
   if (dir === 'w') return 'left:0; top:0; width:50%; height:100%;';
   return 'left:50%; top:0; width:50%; height:100%;'; // 'e'
+}
+
+// ============== MOBILIA (top-view vetorial, sem emojis) ==============
+// Celula tipo 'm' (mobilia): objetos de cenario com identidade propria (cadeira,
+// sofa, cama, mesa, estante, armario, vaso, luminaria, tapete), desenhados como
+// icone vetorial (SVG) no mesmo estilo de "planta baixa" usado pelas paredes —
+// nunca em emoji. 'blocks' define se bloqueia passagem; 'sit' marca mobilia em
+// que o jogador pode entrar (senta/deita) em vez de ser barrado; 'storage' marca
+// mobilia com inventario proprio (deixar/pegar itens), sincronizado por Firebase
+// em 'world/furniture_items' — independente da propria planta, para qualquer
+// jogador poder usar sem precisar ser o Mestre.
+var FP_FURNITURE_TYPES = [
+  { id: 'chair',   lab: 'Cadeira',    blocks: false, sit: true,  dir: true  },
+  { id: 'sofa',    lab: 'Sofá',       blocks: false, sit: true,  dir: true  },
+  { id: 'bed',     lab: 'Cama',       blocks: false, sit: true,  dir: true  },
+  { id: 'table',   lab: 'Mesa',       blocks: true,  storage: true, dir: false },
+  { id: 'shelf',   lab: 'Estante',    blocks: true,  storage: true, dir: true  },
+  { id: 'cabinet', lab: 'Armário',    blocks: true,  storage: true, dir: true  },
+  { id: 'plant',   lab: 'Vaso',       blocks: true,  dir: false },
+  { id: 'lamp',    lab: 'Luminária',  blocks: true,  dir: false },
+  { id: 'rug',     lab: 'Tapete',     blocks: false, decorative: true, dir: false, colorable: true }
+];
+function fpFurnDef(id) { for (var i = 0; i < FP_FURNITURE_TYPES.length; i++) if (FP_FURNITURE_TYPES[i].id === id) return FP_FURNITURE_TYPES[i]; return FP_FURNITURE_TYPES[0]; }
+
+// Desenha o icone vetorial da mobilia, sempre na orientacao base ("virado para
+// cima") e depois rotacionado via transform conforme 'dir' — assim so' precisa
+// existir UM desenho por tipo, igual as demais formas geometricas da planta.
+function fpFurnitureSVG(ft, dir, color, s) {
+  var def = fpFurnDef(ft);
+  var A = 'var(--y)', cx = s / 2, cy = s / 2, inner = '';
+  if (ft === 'chair') {
+    inner = '<rect x="' + (cx - 6) + '" y="' + (cy - 5) + '" width="12" height="10" fill="none" stroke="' + A + '" stroke-width="1.4"></rect>' +
+            '<rect x="' + (cx - 7) + '" y="2" width="14" height="3" fill="' + A + '"></rect>';
+  } else if (ft === 'sofa') {
+    inner = '<rect x="' + (cx - 9) + '" y="' + (cy - 5.5) + '" width="18" height="11" fill="none" stroke="' + A + '" stroke-width="1.4"></rect>' +
+            '<rect x="' + (cx - 9) + '" y="2" width="18" height="3" fill="' + A + '"></rect>' +
+            '<line x1="' + cx + '" y1="' + (cy - 5.5) + '" x2="' + cx + '" y2="' + (cy + 5.5) + '" stroke="' + A + '" stroke-width="1"></line>';
+  } else if (ft === 'bed') {
+    inner = '<rect x="' + (cx - 9) + '" y="' + (cy - 9) + '" width="18" height="18" fill="none" stroke="' + A + '" stroke-width="1.4"></rect>' +
+            '<rect x="' + (cx - 6) + '" y="' + (cy - 8) + '" width="12" height="5" fill="' + A + '" opacity="0.55"></rect>' +
+            '<line x1="' + (cx - 9) + '" y1="' + (cy + 2) + '" x2="' + (cx + 9) + '" y2="' + (cy + 2) + '" stroke="' + A + '" stroke-width="1"></line>';
+  } else if (ft === 'table') {
+    inner = '<rect x="' + (cx - 8) + '" y="' + (cy - 8) + '" width="16" height="16" fill="none" stroke="' + A + '" stroke-width="1.4"></rect>' +
+            '<line x1="' + (cx - 8) + '" y1="' + (cy - 8) + '" x2="' + (cx + 8) + '" y2="' + (cy + 8) + '" stroke="' + A + '" stroke-width="0.8" opacity="0.5"></line>' +
+            '<line x1="' + (cx + 8) + '" y1="' + (cy - 8) + '" x2="' + (cx - 8) + '" y2="' + (cy + 8) + '" stroke="' + A + '" stroke-width="0.8" opacity="0.5"></line>';
+  } else if (ft === 'shelf') {
+    inner = '<rect x="' + (cx - 9) + '" y="' + (cy - 9) + '" width="18" height="18" fill="none" stroke="' + A + '" stroke-width="1.4"></rect>' +
+            '<line x1="' + (cx - 9) + '" y1="' + (cy - 3) + '" x2="' + (cx + 9) + '" y2="' + (cy - 3) + '" stroke="' + A + '" stroke-width="1"></line>' +
+            '<line x1="' + (cx - 9) + '" y1="' + (cy + 3) + '" x2="' + (cx + 9) + '" y2="' + (cy + 3) + '" stroke="' + A + '" stroke-width="1"></line>';
+  } else if (ft === 'cabinet') {
+    inner = '<rect x="' + (cx - 9) + '" y="' + (cy - 9) + '" width="18" height="18" fill="none" stroke="' + A + '" stroke-width="1.4"></rect>' +
+            '<line x1="' + cx + '" y1="' + (cy - 9) + '" x2="' + cx + '" y2="' + (cy + 9) + '" stroke="' + A + '" stroke-width="1"></line>' +
+            '<circle cx="' + (cx - 3) + '" cy="' + cy + '" r="1" fill="' + A + '"></circle>' +
+            '<circle cx="' + (cx + 3) + '" cy="' + cy + '" r="1" fill="' + A + '"></circle>';
+  } else if (ft === 'plant') {
+    inner = '<circle cx="' + cx + '" cy="' + cy + '" r="8" fill="none" stroke="var(--gd)" stroke-width="1.2"></circle>' +
+            '<circle cx="' + cx + '" cy="' + cy + '" r="4" fill="var(--g)" opacity="0.5"></circle>';
+    var angs = [0, 45, 90, 135, 180, 225, 270, 315];
+    for (var ai = 0; ai < angs.length; ai++) {
+      var rad = angs[ai] * Math.PI / 180;
+      var x1 = cx + 8 * Math.cos(rad), y1 = cy + 8 * Math.sin(rad), x2 = cx + 11 * Math.cos(rad), y2 = cy + 11 * Math.sin(rad);
+      inner += '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" stroke="var(--g)" stroke-width="1"></line>';
+    }
+  } else if (ft === 'lamp') {
+    inner = '<circle cx="' + cx + '" cy="' + cy + '" r="9" fill="none" stroke="' + A + '" stroke-width="1" stroke-dasharray="2,2" opacity="0.6"></circle>' +
+            '<circle cx="' + cx + '" cy="' + cy + '" r="4" fill="' + A + '"></circle>';
+  } else if (ft === 'rug') {
+    var rc = fpPaletteHex(color || 'r');
+    inner = '<rect x="2" y="2" width="' + (s - 4) + '" height="' + (s - 4) + '" fill="' + rc + '" opacity="0.22"></rect>' +
+            '<rect x="5" y="5" width="' + (s - 10) + '" height="' + (s - 10) + '" fill="none" stroke="' + rc + '" stroke-width="1" opacity="0.55"></rect>';
+  }
+  var deg = { n: 0, e: 90, s: 180, w: 270 }[dir] || 0;
+  return '<svg width="' + s + '" height="' + s + '" style="position:absolute; left:0; top:0; pointer-events:none;"><g style="transform:rotate(' + deg + 'deg); transform-origin:' + cx + 'px ' + cy + 'px;">' + inner + '</g></svg>';
 }
 
 // Planta antiga (formato achatado, sem andares) e' migrada automaticamente para
@@ -5763,6 +5971,14 @@ function fpRenderGrid(roomId, floorIdx, floor, editable) {
       } else if (cell && cell.t === 'f') {
         // Cenario antigo (mobilia em emoji, formato descontinuado) — mantido so' para nao quebrar plantas ja salvas.
         inner += '<div style="position:absolute; left:0; top:0; width:100%; height:100%; background:rgba(140,95,45,0.5); pointer-events:none;"></div>';
+      } else if (cell && cell.t === 'm') {
+        inner += fpFurnitureSVG(cell.ft, cell.dir, cell.color, FP_CELL);
+        var fDefG = fpFurnDef(cell.ft);
+        if (fDefG.storage) {
+          var fItemsG = _fpFurnitureItems[fpFurnitureKey(roomId, floorIdx, c, r)];
+          var fHasG = !!(fItemsG && fItemsG.length);
+          inner += '<div id="fpFurnBadge_' + key + '" style="position:absolute; right:1px; top:1px; width:6px; height:6px; border-radius:50%; background:var(--y); box-shadow:0 0 4px var(--y); display:' + (fHasG ? 'block' : 'none') + '; pointer-events:none;"></div>';
+        }
       }
       if (npc) {
         inner += '<div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:14px; height:14px; border-radius:50%; background:' + fpColorHex(npc.color) + '; border:1px solid #000; font-size:0.6em; display:flex; align-items:center; justify-content:center; color:#000; font-weight:bold; pointer-events:none;">' + (npc.name ? npc.name.charAt(0).toUpperCase() : '?') + '</div>';
@@ -5772,6 +5988,7 @@ function fpRenderGrid(roomId, floorIdx, floor, editable) {
       }
       if (editable) onclick = ' onclick="fpCellClick(' + c + ',' + r + ')"';
       else if (npc) onclick = ' onclick="fpNpcInfo(' + c + ',' + r + ')"';
+      else if (cell && cell.t === 'm') { onclick = ' onclick="fpFurnitureInteract(' + c + ',' + r + ')"'; cursor = 'pointer'; }
       h += '<div' + onclick + ' style="position:absolute; left:' + (c * FP_CELL) + 'px; top:' + (r * FP_CELL) + 'px; width:' + FP_CELL + 'px; height:' + FP_CELL + 'px; box-sizing:border-box; border:1px solid ' + (isSpawn ? 'var(--g)' : 'rgba(255,255,255,0.06)') + '; cursor:' + cursor + ';">' + inner + '</div>';
     }
   }
@@ -5823,6 +6040,7 @@ function fpRenderView() {
     h += fpRenderPlayerTokens(roomId, _fpViewFloor);
     h += '</div></div>';
     h += '<div style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Linha solida = parede &nbsp;&nbsp; linha tracejada + &#128682;/&#128274; = porta (ande ate ela para destrancar/atravessar) &nbsp;&nbsp; &#9650;/&#9660; = escada para o andar de cima/baixo (ande ate ela para subir/descer) &nbsp;&nbsp; <span style="color:var(--b);">&#9654;</span> seta azul = passagem para OUTRA AREA (ande ate ela para ver a revelacao e atravessar) &nbsp;&nbsp; bloco colorido = quadrado/objeto de cenario (bloqueia a passagem) &nbsp;&nbsp; ponto colorido = NPC (clique para ver ficha) &nbsp;&nbsp; borda verde + &#9873; = ponto de entrada &nbsp;&nbsp; circulo colorido = jogador, cada um com a cor que escolheu &nbsp; (<span style="color:var(--y);">contorno amarelo</span> = voce)</div>';
+    h += '<div style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Mobília <span style="color:var(--y);">âmbar</span>: cadeira/sofá/cama nao bloqueiam — ande ate elas para sentar/deitar (o token fica menor sobre o desenho). Mesa/estante/armário bloqueiam e podem ser clicadas para deixar ou pegar itens (um pontinho amarelo no canto avisa que ha algo la). Vaso/luminária so decoram e bloqueiam; tapete e so decorativo e nao bloqueia.</div>';
     if (userKey) {
       fpEnsureMyPosition(roomId, _fpViewFloor, curFloor);
       var myColor = (fbPlayers[userKey] && fbPlayers[userKey].color) || 'y';
@@ -5906,6 +6124,227 @@ function fpNpcInfo(c, r) {
   document.getElementById('md').classList.add('on');
 }
 
+// ============== MOBILIA: DESCRICAO IMERSIVA + INVENTARIO (mesa/estante/armario) ==============
+// Ao clicar em QUALQUER mobilia na tela de visualizacao (nao no editor), abre um
+// dialogo com a descricao imersiva escrita pelo Mestre (se houver). Se a peca for
+// do tipo com armazenamento (mesa/estante/armario), o mesmo dialogo tambem mostra
+// o inventario: qualquer jogador pode deixar ali um item REAL, vindo diretamente
+// do laboratorio — uma CARTA DE PESQUISA (SCP/Thaumiel, como se fosse o papel
+// fisico daquele SCP em cima da mesa, examinavel sem precisar abrir o banco de
+// dados completo), um ITEM do catalogo de recursos/equipamento, ou um DOSSIE de
+// um sujeito Classe-D — ou, se preferir, um papel avulso digitado na hora (nome +
+// descricao). Sincronizado por Firebase em tempo real, entao um jogador ve na
+// hora o que outro deixou/pegou.
+function fpFurnitureInteract(c, r) {
+  var plan = fpGetPlan(_fpViewRoomId);
+  if (!plan) return;
+  var floor = plan.floors[_fpViewFloor];
+  var cell = floor.cells[c + '_' + r];
+  if (!cell || cell.t !== 'm') return;
+  // Mesa/estante/armario (mobilia com armazenamento) so' abrem o dialogo se o
+  // jogador estiver perto o bastante pra mexer nelas — clicar numa de longe nao
+  // mostra tela nenhuma (nao ha nada util pra fazer/ver dali). Mobilia decorativa
+  // (cadeira/vaso/luminaria/etc.) continua abrindo normalmente de qualquer distancia,
+  // ja que e' so descricao, sem pegar/deixar item.
+  if (fpFurnDef(cell.ft).storage && !fpNearFurniture(_fpViewRoomId, _fpViewFloor, c, r)) return;
+  _fpFurnitureModalKey = fpFurnitureKey(_fpViewRoomId, _fpViewFloor, c, r);
+  _fpFurnLeaveMode = 'labcard';
+  fpFurnitureRenderModal();
+}
+
+function fpFurnEsc(s) { return (s + '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+// Niveis 1 a 5 so podem PEGAR/DEIXAR itens em mobilia com armazenamento (mesa/
+// estante/armario) se o proprio token estiver tocando a peca ou a no maximo 1
+// bloco de distancia dela — inclui diagonais, igual a vizinhanca de uma mina no
+// campo minado (a "bomba" aqui seria o papel a ser apanhado). O Mestre (Nivel 6)
+// nao tem essa restricao e pode mexer em qualquer mobilia do mapa a distancia.
+function fpNearFurniture(roomId, floorIdx, c, r) {
+  if (lvl >= 6) return true;
+  var me = fbPlayers && userKey && fbPlayers[userKey];
+  if (!me || me.roomId !== roomId || me.floorIdx !== floorIdx) return false;
+  return Math.abs(me.x - c) <= 1 && Math.abs(me.y - r) <= 1;
+}
+
+// Cartas de laboratorio (SCP/Thaumiel) que este jogador pode colocar numa mesa —
+// mesma regra de acesso usada na aba LABORATORIO: Nivel 1+ ve tudo, os demais so'
+// veem cartas ja desbloqueadas dentro do seu nivel de acesso.
+function fpLabCardAccessible(card) { if (lvl >= 1) return true; return card.unlocked && card.clr <= lvl; }
+function fpFindLabCard(id) { for (var i = 0; i < labCards.length; i++) if (labCards[i].id === id) return labCards[i]; return null; }
+function fpFindCatalogItem(id) { for (var i = 0; i < items.length; i++) if (items[i].id === id) return items[i]; return null; }
+function fpFindDClass(id) { for (var i = 0; i < dclass.length; i++) if (dclass[i].id === id) return dclass[i]; return null; }
+
+function fpFurnitureRenderModal() {
+  if (!_fpFurnitureModalKey) return;
+  var parts = _fpFurnitureModalKey.split('|');
+  var roomId = parts[0], floorIdx = parseInt(parts[1], 10), cr = parts[2].split('_'), c = parseInt(cr[0], 10), r = parseInt(cr[1], 10);
+  var plan = fpGetPlan(roomId);
+  var cell = plan && plan.floors[floorIdx] && plan.floors[floorIdx].cells[c + '_' + r];
+  var def = cell ? fpFurnDef(cell.ft) : fpFurnDef('table');
+  var canTouch = fpNearFurniture(roomId, floorIdx, c, r);
+  var h = '<div class="dv"><div class="dh"><h1>' + def.lab + '</h1></div>';
+  h += '<div class="ds"><p>' + (cell && cell.desc ? fpFurnEsc(cell.desc) : '<span style="color:var(--td);">Sem descricao.</span>') + '</p></div>';
+  if (def.storage) {
+    if (!canTouch) {
+      h += '<div style="color:var(--y); font-size:0.78em; border:1px solid var(--y); padding:8px 10px; margin-bottom:12px;">VOCE ESTA LONGE DEMAIS PARA MEXER AQUI — aproxime-se ate no maximo 1 bloco de distancia para pegar ou deixar algo.</div>';
+    }
+    var stored = _fpFurnitureItems[_fpFurnitureModalKey] || [];
+    h += '<div style="margin:16px 0;">';
+    if (!stored.length) {
+      h += '<div style="text-align:center; padding:20px; color:var(--td); border:1px dashed var(--bd);">Nada por aqui.</div>';
+    } else {
+      for (var i = 0; i < stored.length; i++) {
+        var it = stored[i], rowInner;
+        if (it.kind === 'labcard') {
+          var card = fpFindLabCard(it.refId);
+          rowInner = card ?
+            '<span style="cursor:pointer;" onclick="viewLabCard(\'' + card.id + '\')"><b>' + fpFurnEsc(card.num) + '</b> — ' + fpFurnEsc(card.title) +
+            '<br><span style="color:var(--y); font-size:0.75em;">CARTA DE PESQUISA — clique para examinar</span></span>' :
+            '<span style="color:var(--td);">(carta removida do laboratorio)</span>';
+        } else if (it.kind === 'item') {
+          var itemRef = fpFindCatalogItem(it.refId);
+          rowInner = itemRef ?
+            '<span style="cursor:pointer;" onclick="viewItem(\'' + itemRef.id + '\')"><b>' + fpFurnEsc(itemRef.name) + '</b>' +
+            '<br><span style="color:var(--y); font-size:0.75em;">' + fpFurnEsc(itemRef.type) + ' — clique para examinar</span></span>' :
+            '<span style="color:var(--td);">(item removido do catalogo)</span>';
+        } else if (it.kind === 'dclass') {
+          var dRef = fpFindDClass(it.refId);
+          rowInner = dRef ?
+            '<span style="cursor:pointer;" onclick="viewDClass(\'' + dRef.id + '\')"><b>' + fpFurnEsc(dRef.code) + '</b> — ' + fpFurnEsc(dRef.name) +
+            '<br><span style="color:var(--y); font-size:0.75em;">DOSSIE CLASSE-D — clique para examinar</span></span>' :
+            '<span style="color:var(--td);">(dossie removido do laboratorio)</span>';
+        } else {
+          rowInner = '<span><b>' + fpFurnEsc(it.name || it.txt || '') + '</b>' +
+            (it.desc ? '<br><span style="color:var(--td); font-size:0.85em;">' + fpFurnEsc(it.desc) + '</span>' : '') + '</span>';
+        }
+        h += '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; padding:8px 10px; border:1px solid var(--bd); margin-bottom:6px;">' +
+          '<span style="color:var(--t); font-size:0.9em;">' + rowInner + '</span>' +
+          (canTouch ? '<button class="btn btn-s" onclick="fpFurnitureTake(' + i + ')">PEGAR</button>' : '<button class="btn btn-s" disabled style="opacity:0.4; cursor:not-allowed;" title="Aproxime-se para pegar">PEGAR</button>') + '</div>';
+      }
+    }
+    h += '</div>';
+
+    if (!canTouch) {
+      h += '<div style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Aproxime-se da mobilia para poder deixar algo aqui.</div>';
+    } else {
+
+    var mode = _fpFurnLeaveMode || 'labcard';
+    function modeBtn(m, lab) {
+      var on = mode === m;
+      return '<button class="btn btn-s" style="' + (on ? 'border-color:var(--y); color:var(--y);' : '') + '" onclick="fpSetFurnLeaveMode(\'' + m + '\')">' + lab + '</button>';
+    }
+    h += '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">' +
+      modeBtn('labcard', 'CARTA DO LABORATORIO') + modeBtn('item', 'ITEM DO CATALOGO') + modeBtn('dclass', 'DOSSIE CLASSE-D') + modeBtn('custom', 'PAPEL AVULSO') + '</div>';
+
+    if (mode === 'labcard') {
+      var accessible = labCards.filter(fpLabCardAccessible);
+      if (!accessible.length) {
+        h += '<div style="color:var(--td); font-size:0.8em; margin-bottom:14px;">Nenhuma carta de laboratorio acessivel ao seu nivel no momento.</div>';
+      } else {
+        var opts1 = '';
+        for (var li = 0; li < accessible.length; li++) opts1 += '<option value="' + accessible[li].id + '">' + accessible[li].num + ' — ' + accessible[li].title + '</option>';
+        h += '<div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;">' +
+          '<select id="fpFurnLabCardSelect" style="flex:1; min-width:180px; background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:10px; font-family:inherit;">' + opts1 + '</select>' +
+          '<button class="btn" onclick="fpFurnitureLeave()">DEIXAR CARTA</button></div>';
+      }
+    } else if (mode === 'item') {
+      if (!items.length) {
+        h += '<div style="color:var(--td); font-size:0.8em; margin-bottom:14px;">Nenhum item no catalogo de recursos.</div>';
+      } else {
+        var opts2 = '';
+        for (var ii = 0; ii < items.length; ii++) opts2 += '<option value="' + items[ii].id + '">' + items[ii].name + ' (' + items[ii].type + ')</option>';
+        h += '<div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;">' +
+          '<select id="fpFurnItemSelect" style="flex:1; min-width:180px; background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:10px; font-family:inherit;">' + opts2 + '</select>' +
+          '<button class="btn" onclick="fpFurnitureLeave()">DEIXAR ITEM</button></div>';
+      }
+    } else if (mode === 'dclass') {
+      if (!dclass.length) {
+        h += '<div style="color:var(--td); font-size:0.8em; margin-bottom:14px;">Nenhum sujeito Classe-D cadastrado.</div>';
+      } else {
+        var opts3 = '';
+        for (var di = 0; di < dclass.length; di++) opts3 += '<option value="' + dclass[di].id + '">' + dclass[di].code + ' — ' + dclass[di].name + '</option>';
+        h += '<div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;">' +
+          '<select id="fpFurnDClassSelect" style="flex:1; min-width:180px; background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:10px; font-family:inherit;">' + opts3 + '</select>' +
+          '<button class="btn" onclick="fpFurnitureLeave()">DEIXAR DOSSIE</button></div>';
+      }
+    } else {
+      h += '<div style="display:flex; flex-direction:column; gap:8px; margin-bottom:14px;">' +
+        '<input id="fpFurnItemName" placeholder="Nome do item a deixar..." style="background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:10px; font-family:inherit;">' +
+        '<input id="fpFurnItemDesc" placeholder="Descricao do item (opcional)..." style="background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:10px; font-family:inherit;">' +
+        '<button class="btn" onclick="fpFurnitureLeave()">DEIXAR PAPEL</button></div>';
+    }
+    } // fim do "if (canTouch)" do formulario de deixar
+  }
+  h += '<div style="display:flex; gap:10px;"><button class="btn" onclick="fpFurnitureModalClose()">FECHAR</button></div></div>';
+  document.getElementById('mt').textContent = def.lab.toUpperCase();
+  document.getElementById('mb').innerHTML = h;
+  document.getElementById('md').classList.add('on');
+}
+
+// Fecha o dialogo da mobilia voltando para a PLANTA (fpRenderView), nao para
+// xmd() puro — a planta em si tambem e' desenhada dentro do mesmo modal #md/#mb,
+// entao usar xmd() aqui fechava a planta inteira junto e revelava o mapa geral
+// por baixo. NPC e Passagem ja seguiam esse mesmo padrao (botao "VOLTAR A PLANTA"/
+// "FICAR AQUI" chamando fpRenderView()); a mobilia so' estava com o botao errado.
+function fpFurnitureModalClose() { _fpFurnitureModalKey = null; fpRenderView(); }
+
+function fpSetFurnLeaveMode(m) { _fpFurnLeaveMode = m; fpFurnitureRenderModal(); }
+
+function fpFurnitureLeave() {
+  if (!_fpFurnitureModalKey) return;
+  var kp = _fpFurnitureModalKey.split('|'), kcr = kp[2].split('_');
+  if (!fpNearFurniture(kp[0], parseInt(kp[1], 10), parseInt(kcr[0], 10), parseInt(kcr[1], 10))) { alert('VOCE ESTA LONGE DEMAIS PARA MEXER AQUI. Aproxime-se ate no maximo 1 bloco de distancia.'); return; }
+  var mode = _fpFurnLeaveMode || 'labcard';
+  var entry = null;
+  if (mode === 'labcard') {
+    var sel1 = document.getElementById('fpFurnLabCardSelect');
+    if (!sel1 || !sel1.value) return;
+    var card = fpFindLabCard(sel1.value);
+    if (!card) return;
+    entry = { kind: 'labcard', refId: card.id };
+  } else if (mode === 'item') {
+    var sel2 = document.getElementById('fpFurnItemSelect');
+    if (!sel2 || !sel2.value) return;
+    var itemRef = fpFindCatalogItem(sel2.value);
+    if (!itemRef) return;
+    entry = { kind: 'item', refId: itemRef.id };
+  } else if (mode === 'dclass') {
+    var sel3 = document.getElementById('fpFurnDClassSelect');
+    if (!sel3 || !sel3.value) return;
+    var dRef = fpFindDClass(sel3.value);
+    if (!dRef) return;
+    entry = { kind: 'dclass', refId: dRef.id };
+  } else {
+    var nameInput = document.getElementById('fpFurnItemName');
+    var descInput = document.getElementById('fpFurnItemDesc');
+    if (!nameInput || !nameInput.value.trim()) return;
+    entry = { kind: 'custom', name: nameInput.value.trim(), desc: descInput ? descInput.value.trim() : '' };
+  }
+  entry.by = (user && user.nm) || userKey;
+  entry.ts = Date.now();
+  var stored = (_fpFurnitureItems[_fpFurnitureModalKey] || []).slice();
+  stored.push(entry);
+  _fpFurnitureItems[_fpFurnitureModalKey] = stored;
+  if (typeof fbDB !== 'undefined') fbDB.ref('world/furniture_items/' + _fpFurnitureModalKey).set(stored);
+  fpFurnitureRenderModal();
+  fpUpdateFurnitureBadges();
+}
+
+function fpFurnitureTake(idx) {
+  if (!_fpFurnitureModalKey) return;
+  var kp2 = _fpFurnitureModalKey.split('|'), kcr2 = kp2[2].split('_');
+  if (!fpNearFurniture(kp2[0], parseInt(kp2[1], 10), parseInt(kcr2[0], 10), parseInt(kcr2[1], 10))) { alert('VOCE ESTA LONGE DEMAIS PARA MEXER AQUI. Aproxime-se ate no maximo 1 bloco de distancia.'); return; }
+  var stored = (_fpFurnitureItems[_fpFurnitureModalKey] || []).slice();
+  stored.splice(idx, 1);
+  _fpFurnitureItems[_fpFurnitureModalKey] = stored;
+  if (typeof fbDB !== 'undefined') {
+    if (stored.length) fbDB.ref('world/furniture_items/' + _fpFurnitureModalKey).set(stored);
+    else fbDB.ref('world/furniture_items/' + _fpFurnitureModalKey).remove();
+  }
+  fpFurnitureRenderModal();
+  fpUpdateFurnitureBadges();
+}
+
 // ============== SETA DE SAIDA (PORTAL PARA OUTRA AREA) ==============
 // Ao ANDAR ate uma celula tipo 'x', o jogador ve uma pequena revelacao/
 // pressentimento do que vem a seguir (a descricao escrita pelo Mestre) — sem o
@@ -5947,8 +6386,8 @@ function mapEditFloorplan(roomId) {
   if (lvl < 6) { alert('APENAS O MESTRE (NIVEL 6) PODE EDITAR PLANTAS.'); return; }
   var existing = fpGetPlan(roomId);
   _fpEdit = existing
-    ? { roomId: roomId, floors: JSON.parse(JSON.stringify(existing.floors)), floorIdx: 0, tool: 'w', wallShape: 'auto', sqShape: 'full', sqDir: 'n', sqColor: 'g' }
-    : { roomId: roomId, floors: [{ name: 'Piso 0', cols: 14, rows: 9, cells: {}, npcs: {} }], floorIdx: 0, tool: 'w', wallShape: 'auto', sqShape: 'full', sqDir: 'n', sqColor: 'g' };
+    ? { roomId: roomId, floors: JSON.parse(JSON.stringify(existing.floors)), floorIdx: 0, tool: 'w', wallShape: 'auto', sqShape: 'full', sqDir: 'n', sqColor: 'g', furnType: 'chair', furnDir: 'n', furnColor: 'r', furnDesc: '' }
+    : { roomId: roomId, floors: [{ name: 'Piso 0', cols: 14, rows: 9, cells: {}, npcs: {} }], floorIdx: 0, tool: 'w', wallShape: 'auto', sqShape: 'full', sqDir: 'n', sqColor: 'g', furnType: 'chair', furnDir: 'n', furnColor: 'r', furnDesc: '' };
   fpRenderEditor();
 }
 
@@ -5971,7 +6410,7 @@ function fpRenderEditor() {
     '<button class="btn btn-s" onclick="fpRenameFloor()">RENOMEAR ANDAR</button></div>';
 
   h += '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">' +
-    toolBtn('w', 'PAREDE') + toolBtn('d', 'PORTA') + toolBtn('s', 'ESCADA') + toolBtn('x', 'SETA (SAIR P/ AREA)') + toolBtn('q', 'QUADRADO') + toolBtn('n', 'NPC') + toolBtn('p', 'ENTRADA') + toolBtn('e', 'APAGAR (CHAO)') + '</div>';
+    toolBtn('w', 'PAREDE') + toolBtn('d', 'PORTA') + toolBtn('s', 'ESCADA') + toolBtn('x', 'SETA (SAIR P/ AREA)') + toolBtn('q', 'QUADRADO') + toolBtn('m', 'MOBÍLIA') + toolBtn('n', 'NPC') + toolBtn('p', 'ENTRADA') + toolBtn('e', 'APAGAR (CHAO)') + '</div>';
 
   if (_fpEdit.tool === 'w') {
     h += '<div style="color:var(--gd); font-size:0.72em; margin-bottom:4px;">FORMATO DA PAREDE:</div>';
@@ -6017,6 +6456,38 @@ function fpRenderEditor() {
     h += '<div style="color:var(--gd); font-size:0.72em; margin-bottom:4px;">COR:</div>';
     h += fpRenderPaletteSwatches(_fpEdit.sqColor || 'g', 'fpSetSquareColor', false);
     h += '<div style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Bloco de cenario minimalista: preenche a celula (inteiro ou so\' metade, virado para o lado escolhido) e BLOQUEIA a passagem, como uma parede pequena. Clique numa celula para colocar o quadrado com a forma/direcao/cor selecionadas.</div>';
+  } else if (_fpEdit.tool === 'm') {
+    var curFurn = _fpEdit.furnType || 'chair';
+    var curFDef = fpFurnDef(curFurn);
+    h += '<div style="color:var(--gd); font-size:0.72em; margin-bottom:4px;">TIPO DE MOBÍLIA:</div>';
+    h += '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">';
+    for (var fi = 0; fi < FP_FURNITURE_TYPES.length; fi++) {
+      var fdef = FP_FURNITURE_TYPES[fi];
+      var onF = curFurn === fdef.id;
+      h += '<button class="btn btn-s" style="display:inline-flex; align-items:center; gap:5px; ' + (onF ? 'border-color:var(--y); color:var(--y);' : '') + '" onclick="fpSetFurnType(\'' + fdef.id + '\')">' +
+        '<span style="position:relative; display:inline-block; width:20px; height:20px;">' + fpFurnitureSVG(fdef.id, 'n', _fpEdit.furnColor || 'r', 20) + '</span><span>' + fdef.lab + '</span></button>';
+    }
+    h += '</div>';
+    if (curFDef.dir) {
+      h += '<div style="color:var(--gd); font-size:0.72em; margin-bottom:4px;">VIRADO PARA:</div>';
+      h += '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">';
+      for (var fdi = 0; fdi < FP_SQUARE_DIRS.length; fdi++) {
+        var fsd = FP_SQUARE_DIRS[fdi];
+        var onFD = (_fpEdit.furnDir || 'n') === fsd.id;
+        h += '<button class="btn btn-s" style="' + (onFD ? 'border-color:var(--y); color:var(--y);' : '') + '" onclick="fpSetFurnDir(\'' + fsd.id + '\')">' + fsd.lab + '</button>';
+      }
+      h += '</div>';
+    }
+    if (curFDef.colorable) {
+      h += '<div style="color:var(--gd); font-size:0.72em; margin-bottom:4px;">COR:</div>';
+      h += fpRenderPaletteSwatches(_fpEdit.furnColor || 'r', 'fpSetFurnColor', false);
+    }
+    h += '<div style="color:var(--gd); font-size:0.72em; margin-bottom:4px;">DESCRICAO (opcional, imersao — visivel a qualquer jogador que examinar esta peca):</div>';
+    h += '<textarea id="fpFurnDescInput" oninput="_fpEdit.furnDesc = this.value" placeholder="Ex: Uma poltrona surrada, com marcas de queimadura de cigarro no braco direito..." style="width:100%; min-height:52px; margin-bottom:8px; background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:8px; font-family:inherit; box-sizing:border-box;">' + fpFurnEsc(_fpEdit.furnDesc || '') + '</textarea>';
+    var curFHelp = curFDef.sit ? 'O jogador ANDA ate\' aqui para sentar/deitar — nao bloqueia a passagem.' :
+      curFDef.storage ? 'Bloqueia a passagem. Qualquer jogador pode clicar nela na planta (fora do editor) para ler a descricao e deixar/pegar cartas de laboratorio (SCP/Thaumiel), itens do catalogo de recursos, dossies de Classe-D ou papeis avulsos.' :
+      curFDef.decorative ? 'Puramente decorativo — nao bloqueia a passagem.' : 'Bloqueia a passagem, como um objeto solido.';
+    h += '<div style="color:var(--td); font-size:0.72em; margin-bottom:10px;">' + curFHelp + ' Qualquer jogador pode clicar na peca colocada para ler a descricao. Clique numa celula para colocar a mobilia selecionada (com a descricao acima).</div>';
   }
 
   h += '<div style="margin:10px 0; overflow:auto; max-width:100%;">' + fpRenderGrid(_fpEdit.roomId, _fpEdit.floorIdx, floor, true) + '</div>';
@@ -6038,6 +6509,9 @@ function fpSetWallShape(s) { if (!_fpEdit) return; _fpEdit.wallShape = s; fpRend
 function fpSetSquareShape(s) { if (!_fpEdit) return; _fpEdit.sqShape = s; fpRenderEditor(); }
 function fpSetSquareDir(d) { if (!_fpEdit) return; _fpEdit.sqDir = d; fpRenderEditor(); }
 function fpSetSquareColor(c) { if (!_fpEdit) return; _fpEdit.sqColor = c; fpRenderEditor(); }
+function fpSetFurnType(t) { if (!_fpEdit) return; _fpEdit.furnType = t; fpRenderEditor(); }
+function fpSetFurnDir(d) { if (!_fpEdit) return; _fpEdit.furnDir = d; fpRenderEditor(); }
+function fpSetFurnColor(c) { if (!_fpEdit) return; _fpEdit.furnColor = c; fpRenderEditor(); }
 
 function fpEditSwitchFloor(idx) { if (!_fpEdit) return; _fpEdit.floorIdx = idx; fpRenderEditor(); }
 
@@ -6105,6 +6579,8 @@ function fpCellClick(c, r) {
     return;
   } else if (_fpEdit.tool === 'q') {
     floor.cells[key] = { t: 'q', shape: _fpEdit.sqShape || 'full', dir: _fpEdit.sqDir || 'n', color: _fpEdit.sqColor || 'g' };
+  } else if (_fpEdit.tool === 'm') {
+    floor.cells[key] = { t: 'm', ft: _fpEdit.furnType || 'chair', dir: _fpEdit.furnDir || 'n', color: _fpEdit.furnColor || 'r', desc: (_fpEdit.furnDesc || '').trim() };
   } else if (_fpEdit.tool === 'n') {
     fpOpenNpcForm(c, r);
     return;
@@ -6555,11 +7031,11 @@ function mapOpenLinkManagerForm() {
   var h = '<div style="max-width:650px;">' +
     '<div style="color:#b967ff; font-size:0.75em; letter-spacing:3px; margin-bottom:6px;">&gt; ACESSO DE ADMINISTRADOR (NIVEL 6)</div>' +
     '<div style="color:var(--gd); font-size:0.9em; letter-spacing:2px; margin-bottom:18px;">LIGAR / DESLIGAR AREAS</div>' +
-    '<div style="color:var(--td); font-size:0.72em; margin-bottom:16px;">Use isto quando duas areas aparecerem lado a lado no mapa mas nao for possivel andar direto de uma pra outra — cria uma ligacao real entre elas (aparece como atalho tracejado azul).</div>' +
+    '<div style="color:var(--td); font-size:0.72em; margin-bottom:16px;">Use isto quando areas aparecerem lado a lado no mapa mas nao for possivel andar direto de uma pra outra — cria ligacoes reais entre elas (aparecem como atalho tracejado azul). Escolha uma area de origem e uma ou mais areas de destino (Ctrl/Cmd+clique, ou toque e segure no celular, para marcar varias) para criar um ramo com 3+ conexoes de uma vez.</div>' +
     '<form onsubmit="mapAddLink(event)">' +
-    '<div class="fr"><div class="fg"><label>Area A</label><select id="mlinkA">' + roomOpts + '</select></div>' +
-    '<div class="fg"><label>Area B</label><select id="mlinkB">' + roomOpts + '</select></div></div>' +
-    '<button type="submit" class="btn">CRIAR LIGACAO</button>' +
+    '<div class="fg"><label>Area de origem (o ramo)</label><select id="mlinkA">' + roomOpts + '</select></div>' +
+    '<div class="fg"><label>Ligar a (uma ou mais areas)</label><select id="mlinkB" multiple size="7">' + roomOpts + '</select></div>' +
+    '<button type="submit" class="btn">CRIAR LIGACAO(OES)</button>' +
     '</form>';
 
   h += '<div style="margin-top:22px; border-top:1px solid var(--bd); padding-top:14px;">' +
@@ -6587,16 +7063,26 @@ function mapAddLink(e) {
   e.preventDefault();
   if (lvl < 6) { alert('ACESSO NEGADO.'); return; }
   var a = document.getElementById('mlinkA').value;
-  var b = document.getElementById('mlinkB').value;
-  if (!a || !b || a === b) { alert('ESCOLHA DUAS AREAS DIFERENTES.'); return; }
-  var adj = mapAdj();
-  if (adj[a] && adj[a].indexOf(b) !== -1) { alert('ESSAS DUAS AREAS JA ESTAO LIGADAS.'); return; }
+  var bSel = document.getElementById('mlinkB');
+  var targets = [];
+  for (var i = 0; i < bSel.options.length; i++) if (bSel.options[i].selected) targets.push(bSel.options[i].value);
+  if (!a || !targets.length) { alert('ESCOLHA A AREA DE ORIGEM E AO MENOS UMA AREA DE DESTINO.'); return; }
   if (!mapState.customLinks) mapState.customLinks = [];
-  mapState.customLinks.push([a, b]);
+  var adj = mapAdj();
+  var created = 0, skipped = 0;
+  for (var i = 0; i < targets.length; i++) {
+    var b = targets[i];
+    if (b === a) { skipped++; continue; }
+    if (adj[a] && adj[a].indexOf(b) !== -1) { skipped++; continue; }
+    mapState.customLinks.push([a, b]);
+    if (adj[a]) adj[a].push(b);
+    if (adj[b]) adj[b].push(a);
+    created++;
+  }
   saveMapState();
   mapPushShared('customLinks');
   mapInvalidateCache();
-  alert('LIGACAO CRIADA COM SUCESSO.');
+  alert(created + ' LIGACAO(OES) CRIADA(S) COM SUCESSO.' + (skipped ? ' (' + skipped + ' ignorada(s): mesma area ou ja ligadas.)' : ''));
   mapOpenLinkManagerForm();
 }
 
