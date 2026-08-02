@@ -1940,11 +1940,33 @@ function go(page) {
 }
 
 // ============== NOTAS ==============
+// A pagina de Notas agora tem 3 abas: ANOTACOES (texto livre, como sempre foi),
+// DESENHO (uma tela em branco pra rabiscar a mao livre) e PAPEIS (os itens que
+// o jogador PEGOU de mesas/estantes/armarios nas plantas — ver fpFurnitureTake).
+// Tudo aqui e' pessoal/local (localStorage), igual o bloco de notas ja era.
+var _notesTab = 'text'; // 'text' | 'draw' | 'papers'
+
 function renderNotes(c) {
-    var saved = localStorage.getItem('scpNOTES_v1') || '';
     var h = '<div style="max-width:750px;">' +
-        '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:18px;">&gt; BLOCO DE NOTAS // ACESSO LIVRE</div>' +
-        '<div style="color:var(--td); font-size:0.8em; margin-bottom:18px;">Espaco aberto para anotacoes livres. As notas sao salvas automaticamente no navegador.</div>' +
+        '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:18px;">&gt; BLOCO DE NOTAS // ACESSO LIVRE</div>';
+    h += '<div class="lab-tabs">' +
+        '<button class="lab-tab' + (_notesTab === 'text' ? ' on' : '') + '" onclick="notesSwitchTab(\'text\')">&gt; ANOTACOES</button>' +
+        '<button class="lab-tab' + (_notesTab === 'draw' ? ' on' : '') + '" onclick="notesSwitchTab(\'draw\')">&gt; DESENHO</button>' +
+        '<button class="lab-tab' + (_notesTab === 'papers' ? ' on' : '') + '" onclick="notesSwitchTab(\'papers\')">&gt; PAPEIS (' + notesLoadPapers().length + ')</button>' +
+        '</div>';
+    if (_notesTab === 'draw') h += notesRenderDrawTab();
+    else if (_notesTab === 'papers') h += notesRenderPapersTab();
+    else h += notesRenderTextTab();
+    h += '</div>';
+    c.innerHTML = h;
+    if (_notesTab === 'draw') notesInitCanvas();
+}
+
+function notesSwitchTab(id) { _notesTab = id; renderNotes(document.getElementById('tcnt')); }
+
+function notesRenderTextTab() {
+    var saved = localStorage.getItem('scpNOTES_v1') || '';
+    return '<div style="color:var(--td); font-size:0.8em; margin:14px 0 18px;">Espaco aberto para anotacoes livres. As notas sao salvas automaticamente no navegador.</div>' +
         '<div class="fg" style="margin-bottom:12px;">' +
         '<label style="color:var(--gd);">&gt; ANOTACOES</label>' +
         '<textarea id="notesArea" style="min-height:400px; font-size:0.9em; line-height:1.6;" placeholder="Digite suas anotacoes aqui...">' + saved.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</textarea>' +
@@ -1954,28 +1976,29 @@ function renderNotes(c) {
         '<button class="btn btn-r" onclick="clearNotes()">LIMPAR</button>' +
         '<button class="btn" onclick="exportNotes()">EXPORTAR TXT</button>' +
         '</div>' +
-        '<div id="notesStatus" style="color:var(--g); font-size:0.8em; min-height:18px;"></div>' +
-        '</div>';
-    c.innerHTML = h;
+        '<div id="notesStatus" style="color:var(--g); font-size:0.8em; min-height:18px;"></div>';
 }
 
 function saveNotes() {
-    var text = document.getElementById('notesArea').value;
-    localStorage.setItem('scpNOTES_v1', text);
+    var el = document.getElementById('notesArea');
+    if (!el) return;
+    localStorage.setItem('scpNOTES_v1', el.value);
     var st = document.getElementById('notesStatus');
     if (st) { st.textContent = 'NOTAS SALVAS // ' + new Date().toLocaleTimeString('pt-BR'); }
 }
 
 function clearNotes() {
     if (!confirm('CONFIRMA LIMPEZA DE TODAS AS NOTAS?')) return;
-    document.getElementById('notesArea').value = '';
+    var el = document.getElementById('notesArea');
+    if (el) el.value = '';
     localStorage.removeItem('scpNOTES_v1');
     var st = document.getElementById('notesStatus');
     if (st) { st.textContent = 'NOTAS LIMPAS'; }
 }
 
 function exportNotes() {
-    var text = document.getElementById('notesArea').value;
+    var el = document.getElementById('notesArea');
+    var text = el ? el.value : '';
     if (!text.trim()) { alert('NENHUMA NOTA PARA EXPORTAR'); return; }
     var b = new Blob([text], {type: 'text/plain'});
     var u = URL.createObjectURL(b);
@@ -1986,6 +2009,253 @@ function exportNotes() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(u);
+}
+
+// ---- DESENHO: tela em branco pra rabiscar a mao livre (mouse ou dedo) ----
+var _drawCtx = null, _drawing = false, _drawColor = '#00ff41', _drawSize = 3, _lastDX = 0, _lastDY = 0;
+var NOTES_DRAW_COLORS = ['#00ff41', '#ffffff', '#ff3b3b', '#ffd23b', '#3ba0ff'];
+
+function notesRenderDrawTab() {
+    var h = '<div style="color:var(--td); font-size:0.8em; margin:14px 0 12px;">Rabisque a vontade — o desenho fica salvo automaticamente no navegador.</div>';
+    h += '<div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">';
+    h += '<span style="color:var(--gd); font-size:0.75em; letter-spacing:1px;">COR:</span>';
+    for (var i = 0; i < NOTES_DRAW_COLORS.length; i++) {
+        var cl = NOTES_DRAW_COLORS[i];
+        h += '<span onclick="notesSetDrawColor(\'' + cl + '\')" style="width:20px; height:20px; border-radius:50%; background:' + cl + '; display:inline-block; cursor:pointer; border:2px solid ' + (cl === _drawColor ? 'var(--y)' : 'transparent') + ';"></span>';
+    }
+    h += '<span style="color:var(--gd); font-size:0.75em; letter-spacing:1px; margin-left:14px;">ESPESSURA:</span>';
+    [2, 4, 8].forEach(function(sz) {
+        h += '<button class="btn btn-s" style="' + (sz === _drawSize ? 'border-color:var(--y); color:var(--y);' : '') + '" onclick="notesSetDrawSize(' + sz + ')">' + sz + '</button>';
+    });
+    h += '</div>';
+    h += '<canvas id="notesCanvas" width="700" height="420" style="width:100%; max-width:700px; height:420px; background:rgba(0,10,0,0.55); border:1px solid var(--bd); touch-action:none; cursor:crosshair;"></canvas>';
+    h += '<div style="display:flex; gap:10px; margin:14px 0 18px;">' +
+        '<button class="btn btn-r" onclick="notesClearDrawing()">LIMPAR DESENHO</button>' +
+        '<button class="btn" onclick="notesExportDrawing()">EXPORTAR PNG</button>' +
+        '</div>';
+    return h;
+}
+
+function notesInitCanvas() {
+    var cv = document.getElementById('notesCanvas');
+    if (!cv) return;
+    _drawCtx = cv.getContext('2d');
+    _drawCtx.lineCap = 'round';
+    _drawCtx.lineJoin = 'round';
+    var saved = null;
+    try { saved = localStorage.getItem('scpDRAWING_v1'); } catch (e) {}
+    if (saved) {
+        var img = new Image();
+        img.onload = function() { _drawCtx.drawImage(img, 0, 0); };
+        img.src = saved;
+    }
+    cv.onmousedown = notesDrawStart;
+    cv.onmousemove = notesDrawMove;
+    window.onmouseup = notesDrawEnd;
+    cv.ontouchstart = notesDrawStart;
+    cv.ontouchmove = notesDrawMove;
+    cv.ontouchend = notesDrawEnd;
+}
+function notesDrawPos(e, cv) {
+    var rect = cv.getBoundingClientRect();
+    var pt = e.touches && e.touches.length ? e.touches[0] : e;
+    return { x: (pt.clientX - rect.left) * (cv.width / rect.width), y: (pt.clientY - rect.top) * (cv.height / rect.height) };
+}
+function notesDrawStart(e) {
+    var cv = document.getElementById('notesCanvas');
+    if (!cv || !_drawCtx) return;
+    e.preventDefault();
+    _drawing = true;
+    var p = notesDrawPos(e, cv);
+    _lastDX = p.x; _lastDY = p.y;
+    // um toque sem arrastar ainda deixa um pontinho
+    _drawCtx.fillStyle = _drawColor;
+    _drawCtx.beginPath();
+    _drawCtx.arc(p.x, p.y, _drawSize / 2, 0, Math.PI * 2);
+    _drawCtx.fill();
+}
+function notesDrawMove(e) {
+    if (!_drawing) return;
+    var cv = document.getElementById('notesCanvas');
+    if (!cv || !_drawCtx) return;
+    e.preventDefault();
+    var p = notesDrawPos(e, cv);
+    _drawCtx.strokeStyle = _drawColor;
+    _drawCtx.lineWidth = _drawSize;
+    _drawCtx.beginPath();
+    _drawCtx.moveTo(_lastDX, _lastDY);
+    _drawCtx.lineTo(p.x, p.y);
+    _drawCtx.stroke();
+    _lastDX = p.x; _lastDY = p.y;
+}
+function notesDrawEnd() {
+    if (!_drawing) return;
+    _drawing = false;
+    notesSaveDrawing();
+}
+function notesSaveDrawing() {
+    var cv = document.getElementById('notesCanvas');
+    if (!cv) return;
+    try { localStorage.setItem('scpDRAWING_v1', cv.toDataURL('image/png')); } catch (e) {}
+}
+function notesClearDrawing() {
+    if (!confirm('CONFIRMA LIMPEZA DO DESENHO?')) return;
+    var cv = document.getElementById('notesCanvas');
+    if (!cv || !_drawCtx) return;
+    _drawCtx.clearRect(0, 0, cv.width, cv.height);
+    try { localStorage.removeItem('scpDRAWING_v1'); } catch (e) {}
+}
+function notesExportDrawing() {
+    var cv = document.getElementById('notesCanvas');
+    if (!cv) return;
+    var a = document.createElement('a');
+    a.href = cv.toDataURL('image/png');
+    a.download = 'desenho-scp-' + new Date().toISOString().split('T')[0] + '.png';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
+function notesSetDrawColor(cl) { _drawColor = cl; notesRedrawDrawControls(); }
+function notesSetDrawSize(sz) { _drawSize = sz; notesRedrawDrawControls(); }
+function notesRedrawDrawControls() {
+    // Reconstroi so' a barra de cor/espessura (sem tocar no canvas, pra nao perder o desenho em andamento)
+    if (_notesTab !== 'draw') return;
+    var cv = document.getElementById('notesCanvas');
+    var savedImg = cv ? cv.toDataURL('image/png') : null;
+    renderNotes(document.getElementById('tcnt'));
+    if (savedImg && _drawCtx) {
+        var img = new Image();
+        img.onload = function() { _drawCtx.drawImage(img, 0, 0); };
+        img.src = savedImg;
+    }
+}
+
+// ---- PAPEIS: itens de verdade que o jogador PEGOU de mesas/estantes/armarios ----
+// nas plantas (ver fpFurnitureTake). Ficam soltos num quadro que da' pra arrastar
+// com o mouse/dedo, igual um papel de verdade largado em cima de uma mesa.
+function notesLoadPapers() {
+    try { return JSON.parse(localStorage.getItem('scpPAPERS_v1') || '[]'); } catch (e) { return []; }
+}
+function notesSavePapers(papers) {
+    try { localStorage.setItem('scpPAPERS_v1', JSON.stringify(papers)); } catch (e) {}
+}
+// Chamada por fpFurnitureTake quando o jogador pega algo de uma mobilia — guarda
+// uma copia do item no "bolso" local do jogador, espalhado no quadro de papeis.
+function notesAddPaper(entry) {
+    var papers = notesLoadPapers();
+    var n = papers.length;
+    papers.push({
+        id: 'p_' + Date.now() + '_' + Math.floor(Math.random() * 10000),
+        kind: entry.kind, refId: entry.refId, name: entry.name, desc: entry.desc,
+        by: entry.by, ts: entry.ts, takenAt: Date.now(),
+        x: 16 + (n * 47) % 420, y: 16 + (n * 71) % 260
+    });
+    notesSavePapers(papers);
+}
+
+function notesRenderPapersTab() {
+    var papers = notesLoadPapers();
+    var h = '<div style="color:var(--td); font-size:0.8em; margin:14px 0 12px;">Papeis que voce pegou de mesas, estantes e armarios pelas plantas. Arraste pra reorganizar; clique (sem arrastar) pra examinar.</div>';
+    if (!papers.length) {
+        h += '<div style="text-align:center; padding:30px 20px; color:var(--td); border:1px dashed var(--bd); margin-bottom:18px;">Voce nao pegou nenhum papel ainda.</div>';
+        return h;
+    }
+    var boardH = 16;
+    for (var i = 0; i < papers.length; i++) boardH = Math.max(boardH, papers[i].y + 130);
+    h += '<div id="papersBoard" style="position:relative; width:100%; min-height:' + boardH + 'px; border:1px solid var(--bd); background:repeating-linear-gradient(45deg, rgba(0,255,65,0.02) 0px, rgba(0,255,65,0.02) 2px, transparent 2px, transparent 14px); margin-bottom:18px; overflow:hidden;">';
+    for (var j = 0; j < papers.length; j++) {
+        var p = papers[j], label, sub;
+        if (p.kind === 'labcard') {
+            var card = fpFindLabCard(p.refId);
+            label = card ? card.title : '(carta removida)'; sub = card ? card.num : 'CARTA DE PESQUISA';
+        } else if (p.kind === 'item') {
+            var itemRef = fpFindCatalogItem(p.refId);
+            label = itemRef ? itemRef.name : '(item removido)'; sub = itemRef ? itemRef.type : 'ITEM';
+        } else if (p.kind === 'dclass') {
+            var dRef = fpFindDClass(p.refId);
+            label = dRef ? dRef.name : '(dossie removido)'; sub = dRef ? dRef.code : 'DOSSIE CLASSE-D';
+        } else {
+            label = p.name || 'PAPEL AVULSO'; sub = 'ANOTACAO';
+        }
+        h += '<div id="paper_' + p.id + '" onmousedown="notesPaperDragStart(event,\'' + p.id + '\')" ontouchstart="notesPaperDragStart(event,\'' + p.id + '\')" ' +
+            'style="position:absolute; left:' + p.x + 'px; top:' + p.y + 'px; width:150px; min-height:100px; background:#e8e2c9; color:#1a1a12; padding:10px; box-shadow:2px 3px 8px rgba(0,0,0,0.5); transform:rotate(' + (((j * 37) % 7) - 3) + 'deg); cursor:grab; font-family:\'Courier New\', monospace; user-select:none;">' +
+            '<div style="font-size:0.62em; letter-spacing:1px; color:#6b5c2f; margin-bottom:4px;">' + fpFurnEsc(sub) + '</div>' +
+            '<div style="font-size:0.8em; font-weight:bold; line-height:1.3;">' + fpFurnEsc(label) + '</div>' +
+            '<button onclick="event.stopPropagation(); notesDiscardPaper(\'' + p.id + '\')" title="Descartar" style="position:absolute; top:2px; right:4px; background:none; border:none; color:#7a2f2f; font-size:0.9em; cursor:pointer; padding:2px;">&times;</button>' +
+            '</div>';
+    }
+    h += '</div>';
+    return h;
+}
+
+var _notesPaperDrag = null;
+function notesPaperDragStart(e, id) {
+    e.preventDefault();
+    var el = document.getElementById('paper_' + id);
+    if (!el) return;
+    var pt = e.touches ? e.touches[0] : e;
+    _notesPaperDrag = {
+        id: id, el: el, moved: false,
+        startX: pt.clientX, startY: pt.clientY,
+        startLeft: parseFloat(el.style.left) || 0, startTop: parseFloat(el.style.top) || 0
+    };
+    el.style.cursor = 'grabbing';
+    el.style.zIndex = 100;
+    document.addEventListener('mousemove', notesPaperDragMove);
+    document.addEventListener('mouseup', notesPaperDragEnd);
+    document.addEventListener('touchmove', notesPaperDragMove, { passive: false });
+    document.addEventListener('touchend', notesPaperDragEnd);
+}
+function notesPaperDragMove(e) {
+    if (!_notesPaperDrag) return;
+    e.preventDefault();
+    var pt = e.touches ? e.touches[0] : e;
+    var dx = pt.clientX - _notesPaperDrag.startX;
+    var dy = pt.clientY - _notesPaperDrag.startY;
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) _notesPaperDrag.moved = true;
+    var nl = Math.max(0, _notesPaperDrag.startLeft + dx);
+    var nt = Math.max(0, _notesPaperDrag.startTop + dy);
+    _notesPaperDrag.el.style.left = nl + 'px';
+    _notesPaperDrag.el.style.top = nt + 'px';
+}
+function notesPaperDragEnd() {
+    document.removeEventListener('mousemove', notesPaperDragMove);
+    document.removeEventListener('mouseup', notesPaperDragEnd);
+    document.removeEventListener('touchmove', notesPaperDragMove);
+    document.removeEventListener('touchend', notesPaperDragEnd);
+    if (!_notesPaperDrag) return;
+    var st = _notesPaperDrag;
+    _notesPaperDrag = null;
+    st.el.style.cursor = 'grab';
+    if (st.moved) {
+        var papers = notesLoadPapers();
+        for (var i = 0; i < papers.length; i++) {
+            if (papers[i].id === st.id) {
+                papers[i].x = parseFloat(st.el.style.left) || 0;
+                papers[i].y = parseFloat(st.el.style.top) || 0;
+                break;
+            }
+        }
+        notesSavePapers(papers);
+    } else {
+        notesPaperOpen(st.id);
+    }
+}
+function notesPaperOpen(id) {
+    var papers = notesLoadPapers();
+    var p = null;
+    for (var i = 0; i < papers.length; i++) if (papers[i].id === id) { p = papers[i]; break; }
+    if (!p) return;
+    if (p.kind === 'labcard' && fpFindLabCard(p.refId)) viewLabCard(p.refId);
+    else if (p.kind === 'item' && fpFindCatalogItem(p.refId)) viewItem(p.refId);
+    else if (p.kind === 'dclass' && fpFindDClass(p.refId)) viewDClass(p.refId);
+    else alert((p.name || 'PAPEL AVULSO') + (p.desc ? '\n\n' + p.desc : '\n\n(sem descricao)'));
+}
+function notesDiscardPaper(id) {
+    if (!confirm('DESCARTAR ESTE PAPEL?')) return;
+    var papers = notesLoadPapers().filter(function(p) { return p.id !== id; });
+    notesSavePapers(papers);
+    renderNotes(document.getElementById('tcnt'));
 }
 
 // ============== BANCO DE DADOS SCP ==============
@@ -6335,12 +6605,16 @@ function fpFurnitureTake(idx) {
   var kp2 = _fpFurnitureModalKey.split('|'), kcr2 = kp2[2].split('_');
   if (!fpNearFurniture(kp2[0], parseInt(kp2[1], 10), parseInt(kcr2[0], 10), parseInt(kcr2[1], 10))) { alert('VOCE ESTA LONGE DEMAIS PARA MEXER AQUI. Aproxime-se ate no maximo 1 bloco de distancia.'); return; }
   var stored = (_fpFurnitureItems[_fpFurnitureModalKey] || []).slice();
+  var taken = stored[idx];
   stored.splice(idx, 1);
   _fpFurnitureItems[_fpFurnitureModalKey] = stored;
   if (typeof fbDB !== 'undefined') {
     if (stored.length) fbDB.ref('world/furniture_items/' + _fpFurnitureModalKey).set(stored);
     else fbDB.ref('world/furniture_items/' + _fpFurnitureModalKey).remove();
   }
+  // O item pego passa a existir pro jogador: fica guardado localmente e aparece
+  // como um papel de verdade na aba PAPEIS do Bloco de Notas (arrastavel).
+  if (taken) notesAddPaper(taken);
   fpFurnitureRenderModal();
   fpUpdateFurnitureBadges();
 }
