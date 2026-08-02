@@ -3264,6 +3264,20 @@ function openCardEditor(cardId) {
         '<div class="fr"><div class="fg"><label><input type="checkbox" id="lcunl"' + ((isEdit && card.unlocked) || !isEdit ? ' checked' : '') + '> Desbloqueada para jogadores</label></div>' +
         '<div class="fg"><label>Desbloqueada por</label><input type="text" id="lcby" value="' + (isEdit ? card.unlockedBy : 'o5') + '"></div></div>';
 
+    if (lvl >= 6) {
+        h += '<div style="color:var(--r); font-size:0.8em; letter-spacing:2px; margin:18px 0 12px; border-bottom:1px solid var(--r); padding-bottom:8px;">&gt; EFEITOS DE ITEM [SOMENTE MESTRE]</div>';
+        if (!isEdit) {
+            h += '<div style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Salve a carta primeiro — depois, edite-a de novo pra poder definir o que cada item faz nesse SCP.</div>';
+        } else {
+            _lcItemEffectsDraft = [];
+            var ieMap = card.itemEffects || {};
+            for (var ieId in ieMap) _lcItemEffectsDraft.push({ itemId: ieId, efeito: ieMap[ieId].efeito || '', dt: ieMap[ieId].dt || 15 });
+            h += '<div style="color:var(--td); font-size:0.78em; margin-bottom:10px;">So' + ' voce ve isso. Quando um pesquisador colocar um desses itens na bandeja do objeto SCP, o efeito e a DT aparecem aqui do lado, so\' pra voce.</div>';
+            h += '<div id="lcEffectsRows">' + lcRenderEffectsRows() + '</div>';
+            h += '<button type="button" class="btn btn-s" onclick="lcAddEffectRow()">+ ADICIONAR ITEM</button>';
+        }
+    }
+
     h += '<div style="display:flex; gap:10px; margin-top:18px;">' +
         '<button type="submit" class="btn">' + (isEdit ? 'ATUALIZAR CARTA' : 'CRIAR CARTA') + '</button>' +
         '<button type="button" class="btn btn-r" onclick="go(\'lab\')">CANCELAR</button></div></form></div>';
@@ -3273,6 +3287,40 @@ function openCardEditor(cardId) {
 
     var navs = document.querySelectorAll('.tsi[data-nav]');
     for (var i = 0; i < navs.length; i++) navs[i].classList.remove('on');
+}
+
+// Rascunho em edicao dos "efeitos de item" [Mestre] da carta aberta em
+// openCardEditor — array de {itemId, efeito, dt}, convertido de/para o mapa
+// card.itemEffects na hora de abrir/salvar o formulario.
+var _lcItemEffectsDraft = [];
+function lcRenderEffectsRows() {
+    if (!_lcItemEffectsDraft.length) return '<div style="color:var(--td); font-size:0.78em; margin-bottom:10px;">Nenhum item com efeito definido ainda.</div>';
+    var rh = '';
+    for (var i = 0; i < _lcItemEffectsDraft.length; i++) {
+        var row = _lcItemEffectsDraft[i];
+        rh += '<div style="border:1px solid var(--bd); padding:10px; margin-bottom:8px;">' +
+            '<div class="fr"><div class="fg"><label>Item</label><select onchange="_lcItemEffectsDraft[' + i + '].itemId=this.value">';
+        for (var j = 0; j < items.length; j++) {
+            rh += '<option value="' + items[j].id + '"' + (row.itemId === items[j].id ? ' selected' : '') + '>' + items[j].name + '</option>';
+        }
+        rh += '</select></div>' +
+            '<div class="fg"><label>DT</label><input type="number" value="' + row.dt + '" oninput="_lcItemEffectsDraft[' + i + '].dt=parseInt(this.value)||0" style="width:100%;"></div></div>' +
+            '<div class="fg"><label>Efeito (so' + ' voce ve)</label><textarea oninput="_lcItemEffectsDraft[' + i + '].efeito=this.value" style="min-height:50px;">' + row.efeito.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</textarea></div>' +
+            '<button type="button" class="btn btn-s" style="border-color:var(--r); color:var(--r);" onclick="lcRemoveEffectRow(' + i + ')">REMOVER</button>' +
+            '</div>';
+    }
+    return rh;
+}
+function lcAddEffectRow() {
+    if (!items.length) { alert('NENHUM ITEM CADASTRADO NO CATALOGO AINDA.'); return; }
+    _lcItemEffectsDraft.push({ itemId: items[0].id, efeito: '', dt: 15 });
+    var el = document.getElementById('lcEffectsRows');
+    if (el) el.innerHTML = lcRenderEffectsRows();
+}
+function lcRemoveEffectRow(idx) {
+    _lcItemEffectsDraft.splice(idx, 1);
+    var el = document.getElementById('lcEffectsRows');
+    if (el) el.innerHTML = lcRenderEffectsRows();
 }
 
 function autoFillSCPNum() {
@@ -3325,6 +3373,17 @@ function saveLabCard(e) {
         if (labCards[i].id === id) { existing = i; break; }
     }
 
+    // Efeitos de item [Mestre]: so' quem tem Nivel 6 ve/edita essa secao no
+    // formulario — pra qualquer outro nivel, preserva o que ja estava salvo.
+    var itemEffects = existing >= 0 ? (labCards[existing].itemEffects || {}) : {};
+    if (lvl >= 6 && existing >= 0) {
+        itemEffects = {};
+        for (var ei = 0; ei < _lcItemEffectsDraft.length; ei++) {
+            var row = _lcItemEffectsDraft[ei];
+            if (row.itemId) itemEffects[row.itemId] = { efeito: row.efeito, dt: row.dt };
+        }
+    }
+
     var cardData = {
         id: id,
         scpId: scpId,
@@ -3337,6 +3396,7 @@ function saveLabCard(e) {
         research: research,
         unlocked: unlocked,
         unlockedBy: unlockedBy,
+        itemEffects: itemEffects,
         dt: existing >= 0 ? labCards[existing].dt : new Date().toISOString()
     };
 
@@ -5562,6 +5622,7 @@ function fpStartPlayerSync() {
   musicForceSyncStart();
   sfxLibSyncStart();
   furnitureSyncStart();
+  scpBrokenSyncStart();
 }
 
 // ============== ITENS DEIXADOS EM MOBILIA (mesa/estante/armario) ==============
@@ -5576,6 +5637,20 @@ function furnitureSyncStart() {
   fbDB.ref('world/furniture_items').on('value', function(snap) {
     _fpFurnitureItems = snap.val() || {};
     if (_fpViewRoomId && !_fpEdit) fpUpdateFurnitureBadges();
+    if (_fpFurnitureModalKey) fpFurnitureRenderModal();
+  });
+}
+
+// ============== ESTADO "ALTERADO/QUEBRADO" DE OBJETOS SCP ==============
+// Igual aos itens deixados em mobilia: e' uma acao de jogo em tempo real (o
+// Mestre marca durante a sessao), entao fica no proprio ramo do Firebase
+// ('world/scp_broken_state'), na mesma chave roomId|floorIdx|c_r, e nao dentro
+// de mapState.floorplans (que so' o editor de plantas grava).
+var _fpScpBrokenState = {}; // { chave: { broken:bool, label:string, img:base64|null, sfx:string|null } }
+function scpBrokenSyncStart() {
+  if (typeof fbDB === 'undefined') return;
+  fbDB.ref('world/scp_broken_state').on('value', function(snap) {
+    _fpScpBrokenState = snap.val() || {};
     if (_fpFurnitureModalKey) fpFurnitureRenderModal();
   });
 }
@@ -6010,7 +6085,8 @@ var FP_FURNITURE_TYPES = [
   { id: 'cabinet', lab: 'Armário',    blocks: true,  storage: true, dir: true  },
   { id: 'plant',   lab: 'Vaso',       blocks: true,  dir: false },
   { id: 'lamp',    lab: 'Luminária',  blocks: true,  dir: false },
-  { id: 'rug',     lab: 'Tapete',     blocks: false, decorative: true, dir: false, colorable: true }
+  { id: 'rug',     lab: 'Tapete',     blocks: false, decorative: true, dir: false, colorable: true },
+  { id: 'scpobj',  lab: 'Objeto SCP', blocks: true,  scpObj: true, dir: false }
 ];
 function fpFurnDef(id) { for (var i = 0; i < FP_FURNITURE_TYPES.length; i++) if (FP_FURNITURE_TYPES[i].id === id) return FP_FURNITURE_TYPES[i]; return FP_FURNITURE_TYPES[0]; }
 
@@ -6060,6 +6136,10 @@ function fpFurnitureSVG(ft, dir, color, s) {
     var rc = fpPaletteHex(color || 'r');
     inner = '<rect x="2" y="2" width="' + (s - 4) + '" height="' + (s - 4) + '" fill="' + rc + '" opacity="0.22"></rect>' +
             '<rect x="5" y="5" width="' + (s - 10) + '" height="' + (s - 10) + '" fill="none" stroke="' + rc + '" stroke-width="1" opacity="0.55"></rect>';
+  } else if (ft === 'scpobj') {
+    inner = '<polygon points="' + cx + ',' + (cy - 9) + ' ' + (cx + 9) + ',' + (cy + 7) + ' ' + (cx - 9) + ',' + (cy + 7) + '" fill="rgba(255,60,60,0.12)" stroke="var(--r)" stroke-width="1.4"></polygon>' +
+            '<line x1="' + cx + '" y1="' + (cy - 3) + '" x2="' + cx + '" y2="' + (cy + 1.5) + '" stroke="var(--r)" stroke-width="1.6"></line>' +
+            '<circle cx="' + cx + '" cy="' + (cy + 4) + '" r="0.9" fill="var(--r)"></circle>';
   }
   var deg = { n: 0, e: 90, s: 180, w: 270 }[dir] || 0;
   return '<svg width="' + s + '" height="' + s + '" style="position:absolute; left:0; top:0; pointer-events:none;"><g style="transform:rotate(' + deg + 'deg); transform-origin:' + cx + 'px ' + cy + 'px;">' + inner + '</g></svg>';
@@ -6242,8 +6322,20 @@ function fpRenderGrid(roomId, floorIdx, floor, editable) {
         // Cenario antigo (mobilia em emoji, formato descontinuado) — mantido so' para nao quebrar plantas ja salvas.
         inner += '<div style="position:absolute; left:0; top:0; width:100%; height:100%; background:rgba(140,95,45,0.5); pointer-events:none;"></div>';
       } else if (cell && cell.t === 'm') {
-        inner += fpFurnitureSVG(cell.ft, cell.dir, cell.color, FP_CELL);
         var fDefG = fpFurnDef(cell.ft);
+        if (fDefG.scpObj) {
+          var scpStateG = _fpScpBrokenState[fpFurnitureKey(roomId, floorIdx, c, r)];
+          if (scpStateG && scpStateG.broken && scpStateG.img) {
+            inner += '<img src="' + scpStateG.img + '" style="position:absolute; left:1px; top:1px; width:' + (FP_CELL - 2) + 'px; height:' + (FP_CELL - 2) + 'px; object-fit:cover; pointer-events:none;">';
+          } else {
+            inner += fpFurnitureSVG(cell.ft, cell.dir, cell.color, FP_CELL);
+          }
+          if (scpStateG && scpStateG.broken) {
+            inner += '<div style="position:absolute; right:1px; top:1px; width:6px; height:6px; border-radius:50%; background:var(--r); box-shadow:0 0 4px var(--r); pointer-events:none;"></div>';
+          }
+        } else {
+          inner += fpFurnitureSVG(cell.ft, cell.dir, cell.color, FP_CELL);
+        }
         if (fDefG.storage) {
           var fItemsG = _fpFurnitureItems[fpFurnitureKey(roomId, floorIdx, c, r)];
           var fHasG = !!(fItemsG && fItemsG.length);
@@ -6411,12 +6503,13 @@ function fpFurnitureInteract(c, r) {
   var floor = plan.floors[_fpViewFloor];
   var cell = floor.cells[c + '_' + r];
   if (!cell || cell.t !== 'm') return;
-  // Mesa/estante/armario (mobilia com armazenamento) so' abrem o dialogo se o
-  // jogador estiver perto o bastante pra mexer nelas — clicar numa de longe nao
-  // mostra tela nenhuma (nao ha nada util pra fazer/ver dali). Mobilia decorativa
-  // (cadeira/vaso/luminaria/etc.) continua abrindo normalmente de qualquer distancia,
-  // ja que e' so descricao, sem pegar/deixar item.
-  if (fpFurnDef(cell.ft).storage && !fpNearFurniture(_fpViewRoomId, _fpViewFloor, c, r)) return;
+  // Mesa/estante/armario (mobilia com armazenamento) e o Objeto SCP so' abrem o
+  // dialogo se o jogador estiver perto o bastante pra mexer neles — clicar de
+  // longe nao mostra tela nenhuma (nao ha nada util pra fazer/ver dali). Mobilia
+  // decorativa (cadeira/vaso/luminaria/etc.) continua abrindo normalmente de
+  // qualquer distancia, ja que e' so descricao, sem pegar/deixar item.
+  var interactDef = fpFurnDef(cell.ft);
+  if ((interactDef.storage || interactDef.scpObj) && !fpNearFurniture(_fpViewRoomId, _fpViewFloor, c, r)) return;
   _fpFurnitureModalKey = fpFurnitureKey(_fpViewRoomId, _fpViewFloor, c, r);
   _fpFurnLeaveMode = 'labcard';
   fpFurnitureRenderModal();
@@ -6444,6 +6537,154 @@ function fpFindLabCard(id) { for (var i = 0; i < labCards.length; i++) if (labCa
 function fpFindCatalogItem(id) { for (var i = 0; i < items.length; i++) if (items[i].id === id) return items[i]; return null; }
 function fpFindDClass(id) { for (var i = 0; i < dclass.length; i++) if (dclass[i].id === id) return dclass[i]; return null; }
 
+// ============== OBJETO SCP NA PLANTA (Classe Safe, por enquanto) ==============
+// Peca especial de mobilia que representa fisicamente um SCP (Classe Safe) numa
+// sala (ex.: Camara de Testes, Ala de Contencao Safe). Pesquisadores (Nivel 1+)
+// colocam itens do catalogo na "bandeja de teste" em frente ao objeto. So' o
+// Mestre (Nivel 6) ve o que cada item faria naquele SCP e a DT — o resto (rolar
+// de verdade, narrar o resultado) e' RPG, fora do Terminal. O Mestre tambem pode
+// marcar o objeto como alterado/quebrado (troca a imagem exibida e toca um som
+// do Soundpad pra todo mundo), e restaurar depois.
+function fpScpObjRenderModal(cell, canTouch) {
+  var card = null;
+  if (cell && cell.scpRef) { for (var i = 0; i < labCards.length; i++) if (labCards[i].id === cell.scpRef) { card = labCards[i]; break; } }
+  var state = _fpScpBrokenState[_fpFurnitureModalKey] || {};
+  var h = '<div class="dv"><div class="dh"><h1>Objeto SCP</h1></div>';
+  if (!card) {
+    h += '<div class="ds"><p style="color:var(--td);">(SCP vinculado nao encontrado — pode ter sido removido do Laboratorio)</p></div>';
+  } else {
+    var clsColor = card.cls === 'Euclid' ? 'var(--y)' : (card.cls === 'Keter' || card.cls === 'Apollyon') ? 'var(--r)' : card.cls === 'Thaumiel' ? 'var(--b)' : 'var(--g)';
+    h += '<div class="ds"><p><span style="color:var(--g); cursor:pointer;" onclick="viewLabCard(\'' + card.id + '\')"><b>' + fpFurnEsc(card.num) + '</b> — ' + fpFurnEsc(card.title) + '</span> ' +
+      '<span class="dc" style="color:' + clsColor + '; border-color:' + clsColor + '; font-size:0.65em;">' + card.cls + '</span></p></div>';
+  }
+  h += '<div class="ds"><p>' + (cell && cell.desc ? fpFurnEsc(cell.desc) : '<span style="color:var(--td);">Sem descricao.</span>') + '</p></div>';
+  if (state.broken) {
+    h += '<div style="color:var(--r); font-size:0.78em; border:1px solid var(--r); padding:8px 10px; margin-bottom:12px;">OBJETO ALTERADO/DANIFICADO' + (state.label ? ': ' + fpFurnEsc(state.label) : '') + '</div>';
+    if (state.img) h += '<img src="' + state.img + '" style="max-width:100%; border:1px solid var(--bd); margin-bottom:12px;">';
+  }
+  if (!canTouch) {
+    h += '<div style="color:var(--y); font-size:0.78em; border:1px solid var(--y); padding:8px 10px; margin-bottom:12px;">VOCE ESTA LONGE DEMAIS PARA MEXER AQUI — aproxime-se ate no maximo 1 bloco de distancia para colocar/retirar itens de teste.</div>';
+  }
+
+  h += '<div style="color:var(--gd); font-size:0.75em; letter-spacing:2px; margin:16px 0 8px;">&gt; BANDEJA DE TESTE</div>';
+  var stored = _fpFurnitureItems[_fpFurnitureModalKey] || [];
+  if (!stored.length) {
+    h += '<div style="text-align:center; padding:16px; color:var(--td); border:1px dashed var(--bd); margin-bottom:12px;">Nenhum item colocado.</div>';
+  } else {
+    for (var si = 0; si < stored.length; si++) {
+      var it = stored[si];
+      var itemRef = it.kind === 'item' ? fpFindCatalogItem(it.refId) : null;
+      var itLabel = itemRef ? itemRef.name : '(item removido do catalogo)';
+      h += '<div style="border:1px solid var(--bd); padding:8px 10px; margin-bottom:6px;">' +
+        '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">' +
+        '<span style="color:var(--t); font-size:0.88em;' + (itemRef ? ' cursor:pointer;' : '') + '"' + (itemRef ? ' onclick="viewItem(\'' + itemRef.id + '\')"' : '') + '><b>' + fpFurnEsc(itLabel) + '</b></span>' +
+        (canTouch ? '<button class="btn btn-s" onclick="fpFurnitureTake(' + si + ')">RETIRAR</button>' : '<button class="btn btn-s" disabled style="opacity:0.4; cursor:not-allowed;">RETIRAR</button>') +
+        '</div>';
+      if (lvl >= 6 && card && itemRef) {
+        var eff = card.itemEffects && card.itemEffects[itemRef.id];
+        h += '<div style="margin-top:6px; padding:6px 8px; background:rgba(255,60,60,0.07); border-left:2px solid var(--r); font-size:0.78em;">' +
+          '<span style="color:var(--r); letter-spacing:1px;">[MESTRE]</span> ' +
+          (eff ? '<span style="color:var(--t);">' + fpFurnEsc(eff.efeito || '(sem descricao)') + '</span> <span style="color:var(--y);">— DT ' + eff.dt + '</span>' : '<span style="color:var(--td);">sem efeito definido pra este item</span>') +
+          ' <button class="btn btn-s" style="margin-left:6px; padding:2px 6px;" onclick="fpScpDefineEffect(\'' + card.id + '\', \'' + itemRef.id + '\')">' + (eff ? 'EDITAR' : 'DEFINIR') + '</button>' +
+          '</div>';
+      }
+      h += '</div>';
+    }
+  }
+  if (canTouch) {
+    h += '<div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px;">' +
+      '<select id="fpScpItemSelect" style="flex:1; min-width:160px; background:rgba(0,20,0,0.4); border:1px solid var(--bd); color:var(--t); padding:8px;">';
+    for (var ii = 0; ii < items.length; ii++) h += '<option value="' + items[ii].id + '">' + fpFurnEsc(items[ii].name) + '</option>';
+    h += '</select><button class="btn btn-s" onclick="fpScpPlaceItem()">COLOCAR NA BANDEJA</button></div>';
+  } else {
+    h += '<div style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Aproxime-se pra colocar um item na bandeja.</div>';
+  }
+
+  if (lvl >= 6 && card) {
+    h += '<div style="color:var(--gd); font-size:0.75em; letter-spacing:2px; margin:16px 0 8px; border-top:1px solid var(--bd); padding-top:12px;">&gt; CONTROLES [MESTRE]</div>';
+    h += '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
+      (!state.broken ?
+        '<button class="btn btn-s" style="border-color:var(--r); color:var(--r);" onclick="fpScpMarkAltered()">MARCAR ALTERADO</button>' :
+        '<button class="btn btn-s" onclick="fpScpRestore()">RESTAURAR OBJETO</button>') +
+      '</div>';
+  }
+
+  h += '<div style="display:flex; gap:10px; margin-top:16px;"><button class="btn" onclick="fpFurnitureModalClose()">FECHAR</button></div></div>';
+  document.getElementById('mt').textContent = card ? card.num : 'OBJETO SCP';
+  document.getElementById('mb').innerHTML = h;
+  document.getElementById('md').classList.add('on');
+}
+
+// Coloca um item do catalogo na bandeja de teste em frente ao objeto SCP —
+// mesma "gaveta" de armazenamento das mesas/armarios (_fpFurnitureItems), so'
+// que aqui so' faz sentido colocar ITENS (nao cartas/dossies/papeis avulsos).
+function fpScpPlaceItem() {
+  if (!_fpFurnitureModalKey) return;
+  var kp = _fpFurnitureModalKey.split('|'), kcr = kp[2].split('_');
+  if (!fpNearFurniture(kp[0], parseInt(kp[1], 10), parseInt(kcr[0], 10), parseInt(kcr[1], 10))) { alert('VOCE ESTA LONGE DEMAIS PARA MEXER AQUI. Aproxime-se ate no maximo 1 bloco de distancia.'); return; }
+  var sel = document.getElementById('fpScpItemSelect');
+  if (!sel || !sel.value) return;
+  var itemRef = fpFindCatalogItem(sel.value);
+  if (!itemRef) return;
+  var entry = { kind: 'item', refId: itemRef.id, by: (user && user.nm) || userKey, ts: Date.now() };
+  var stored = (_fpFurnitureItems[_fpFurnitureModalKey] || []).slice();
+  stored.push(entry);
+  _fpFurnitureItems[_fpFurnitureModalKey] = stored;
+  if (typeof fbDB !== 'undefined') fbDB.ref('world/furniture_items/' + _fpFurnitureModalKey).set(stored);
+  fpFurnitureRenderModal();
+}
+
+// Define (so' Mestre) o que um item faz nesse SCP especificamente, e a DT a
+// observar — fica guardado na propria carta de pesquisa (card.itemEffects),
+// sincronizado como o resto do Laboratorio.
+function fpScpDefineEffect(cardId, itemId) {
+  if (lvl < 6) return;
+  var card = null;
+  for (var i = 0; i < labCards.length; i++) if (labCards[i].id === cardId) { card = labCards[i]; break; }
+  if (!card) return;
+  var existing = (card.itemEffects && card.itemEffects[itemId]) || { efeito: '', dt: 15 };
+  var efeito = prompt('O QUE ESTE ITEM FAZ NESTE SCP (so' + ' voce, Mestre, ve isso):', existing.efeito);
+  if (efeito === null) return;
+  var dtStr = prompt('DT (dificuldade) a ser usada/observada:', existing.dt);
+  if (dtStr === null) return;
+  var dt = parseInt(dtStr, 10);
+  if (isNaN(dt)) dt = existing.dt;
+  if (!card.itemEffects) card.itemEffects = {};
+  card.itemEffects[itemId] = { efeito: efeito.trim(), dt: dt };
+  saveLabCards();
+  fpFurnitureRenderModal();
+}
+
+// Marca/restaura o objeto como alterado (troca visual + toca um som do Soundpad
+// pra todo mundo conectado). Fica no mesmo ramo sincronizado do Firebase que os
+// itens da bandeja, entao aparece na hora pra qualquer jogador olhando a planta.
+function fpScpMarkAltered() {
+  if (lvl < 6 || !_fpFurnitureModalKey) return;
+  var existing = _fpScpBrokenState[_fpFurnitureModalKey] || {};
+  var label = prompt('O QUE ACONTECEU COM O OBJETO (aviso curto, opcional):', existing.label || 'Quebrado');
+  if (label === null) return;
+  var newState = { broken: true, label: label.trim(), img: existing.img || null, sfx: existing.sfx || null };
+  _fpScpBrokenState[_fpFurnitureModalKey] = newState;
+  if (typeof fbDB !== 'undefined') fbDB.ref('world/scp_broken_state/' + _fpFurnitureModalKey).set(newState);
+  var keys = Object.keys(sfxLibrary);
+  if (keys.length) {
+    var list = keys.map(function(k, idx) { return (idx + 1) + ' = ' + sfxLibrary[k].name; }).join('\n');
+    var pick = prompt('TOCAR QUAL SOM (do Soundpad) pra todo mundo agora?\n' + list + '\n(deixe vazio pra nao tocar nenhum)', '');
+    if (pick && pick.trim()) {
+      var idx2 = parseInt(pick.trim(), 10) - 1;
+      if (idx2 >= 0 && idx2 < keys.length) adminPlaySfx(keys[idx2]);
+    }
+  }
+  fpFurnitureRenderModal();
+}
+function fpScpRestore() {
+  if (lvl < 6 || !_fpFurnitureModalKey) return;
+  var newState = { broken: false };
+  _fpScpBrokenState[_fpFurnitureModalKey] = newState;
+  if (typeof fbDB !== 'undefined') fbDB.ref('world/scp_broken_state/' + _fpFurnitureModalKey).set(newState);
+  fpFurnitureRenderModal();
+}
+
 function fpFurnitureRenderModal() {
   if (!_fpFurnitureModalKey) return;
   var parts = _fpFurnitureModalKey.split('|');
@@ -6452,6 +6693,7 @@ function fpFurnitureRenderModal() {
   var cell = plan && plan.floors[floorIdx] && plan.floors[floorIdx].cells[c + '_' + r];
   var def = cell ? fpFurnDef(cell.ft) : fpFurnDef('table');
   var canTouch = fpNearFurniture(roomId, floorIdx, c, r);
+  if (def.scpObj) { fpScpObjRenderModal(cell, canTouch); return; }
   var h = '<div class="dv"><div class="dh"><h1>' + def.lab + '</h1></div>';
   h += '<div class="ds"><p>' + (cell && cell.desc ? fpFurnEsc(cell.desc) : '<span style="color:var(--td);">Sem descricao.</span>') + '</p></div>';
   if (def.storage) {
@@ -6756,9 +6998,25 @@ function fpRenderEditor() {
       h += '<div style="color:var(--gd); font-size:0.72em; margin-bottom:4px;">COR:</div>';
       h += fpRenderPaletteSwatches(_fpEdit.furnColor || 'r', 'fpSetFurnColor', false);
     }
+    if (curFDef.scpObj) {
+      var safeCards = labCards.filter(function(cc) { return cc.cls === 'Safe'; });
+      h += '<div style="color:var(--gd); font-size:0.72em; margin-bottom:4px;">SCP VINCULADO (somente Classe Safe por enquanto):</div>';
+      if (!safeCards.length) {
+        h += '<div style="color:var(--r); font-size:0.75em; margin-bottom:10px;">Nenhuma carta Classe Safe cadastrada no Laboratorio ainda — crie uma antes de colocar um objeto SCP na planta.</div>';
+      } else {
+        h += '<select id="fpScpRefSelect" onchange="fpSetScpRef(this.value)" style="width:100%; margin-bottom:10px; background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:8px;">' +
+          '<option value="">-- SELECIONE O SCP --</option>';
+        for (var sci = 0; sci < safeCards.length; sci++) {
+          var scc = safeCards[sci];
+          h += '<option value="' + scc.id + '"' + (_fpEdit.scpRef === scc.id ? ' selected' : '') + '>' + fpFurnEsc(scc.num) + ' — ' + fpFurnEsc(scc.title) + '</option>';
+        }
+        h += '</select>';
+      }
+    }
     h += '<div style="color:var(--gd); font-size:0.72em; margin-bottom:4px;">DESCRICAO (opcional, imersao — visivel a qualquer jogador que examinar esta peca):</div>';
     h += '<textarea id="fpFurnDescInput" oninput="_fpEdit.furnDesc = this.value" placeholder="Ex: Uma poltrona surrada, com marcas de queimadura de cigarro no braco direito..." style="width:100%; min-height:52px; margin-bottom:8px; background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:8px; font-family:inherit; box-sizing:border-box;">' + fpFurnEsc(_fpEdit.furnDesc || '') + '</textarea>';
     var curFHelp = curFDef.sit ? 'O jogador ANDA ate\' aqui para sentar/deitar — nao bloqueia a passagem.' :
+      curFDef.scpObj ? 'Bloqueia a passagem. Qualquer jogador perto pode examinar o objeto e colocar itens de teste na bandeja. So' + ' o Mestre ve os efeitos de cada item e pode marcar o objeto como alterado.' :
       curFDef.storage ? 'Bloqueia a passagem. Qualquer jogador pode clicar nela na planta (fora do editor) para ler a descricao e deixar/pegar cartas de laboratorio (SCP/Thaumiel), itens do catalogo de recursos, dossies de Classe-D ou papeis avulsos.' :
       curFDef.decorative ? 'Puramente decorativo — nao bloqueia a passagem.' : 'Bloqueia a passagem, como um objeto solido.';
     h += '<div style="color:var(--td); font-size:0.72em; margin-bottom:10px;">' + curFHelp + ' Qualquer jogador pode clicar na peca colocada para ler a descricao. Clique numa celula para colocar a mobilia selecionada (com a descricao acima).</div>';
@@ -6786,6 +7044,7 @@ function fpSetSquareColor(c) { if (!_fpEdit) return; _fpEdit.sqColor = c; fpRend
 function fpSetFurnType(t) { if (!_fpEdit) return; _fpEdit.furnType = t; fpRenderEditor(); }
 function fpSetFurnDir(d) { if (!_fpEdit) return; _fpEdit.furnDir = d; fpRenderEditor(); }
 function fpSetFurnColor(c) { if (!_fpEdit) return; _fpEdit.furnColor = c; fpRenderEditor(); }
+function fpSetScpRef(id) { if (!_fpEdit) return; _fpEdit.scpRef = id; }
 
 function fpEditSwitchFloor(idx) { if (!_fpEdit) return; _fpEdit.floorIdx = idx; fpRenderEditor(); }
 
@@ -6854,7 +7113,13 @@ function fpCellClick(c, r) {
   } else if (_fpEdit.tool === 'q') {
     floor.cells[key] = { t: 'q', shape: _fpEdit.sqShape || 'full', dir: _fpEdit.sqDir || 'n', color: _fpEdit.sqColor || 'g' };
   } else if (_fpEdit.tool === 'm') {
-    floor.cells[key] = { t: 'm', ft: _fpEdit.furnType || 'chair', dir: _fpEdit.furnDir || 'n', color: _fpEdit.furnColor || 'r', desc: (_fpEdit.furnDesc || '').trim() };
+    var placeFurnType = _fpEdit.furnType || 'chair';
+    if (placeFurnType === 'scpobj') {
+      if (!_fpEdit.scpRef) { alert('Escolha um SCP (Classe Safe) vinculado antes de colocar o objeto.'); return; }
+      floor.cells[key] = { t: 'm', ft: 'scpobj', scpRef: _fpEdit.scpRef, desc: (_fpEdit.furnDesc || '').trim() };
+    } else {
+      floor.cells[key] = { t: 'm', ft: placeFurnType, dir: _fpEdit.furnDir || 'n', color: _fpEdit.furnColor || 'r', desc: (_fpEdit.furnDesc || '').trim() };
+    }
   } else if (_fpEdit.tool === 'n') {
     fpOpenNpcForm(c, r);
     return;
