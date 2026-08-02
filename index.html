@@ -3013,13 +3013,70 @@ function renderItemForm(c, itemId) {
         '<div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:10px;" id="fiim">' +
         '<div style="height:110px; background:rgba(0,10,0,0.5); border:1px dashed var(--bd); display:flex; align-items:center; justify-content:center; color:var(--td); cursor:pointer; font-size:0.85em;" onclick="document.getElementById(\'fiii\').click()">+ ADICIONAR</div></div>' +
         '<input type="file" id="fiii" accept="image/*" multiple style="display:none" onchange="hItemImg(event)">' +
-        '</div>' +
+        '</div>';
+
+    if (lvl >= 6) {
+        h += '<div style="color:var(--r); font-size:0.8em; letter-spacing:2px; margin:18px 0 12px; border-bottom:1px solid var(--r); padding-bottom:8px;">&gt; EFEITOS POR SCP [SOMENTE MESTRE]</div>';
+        if (!isE) {
+            h += '<div style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Salve o item primeiro — depois, edite-o de novo pra poder definir o que ele faz em cada SCP.</div>';
+        } else {
+            _ifScpEffectsDraft = [];
+            for (var lci = 0; lci < labCards.length; lci++) {
+                var lcCard = labCards[lci];
+                if (lcCard.itemEffects && lcCard.itemEffects[it.id]) {
+                    _ifScpEffectsDraft.push({ cardId: lcCard.id, efeito: lcCard.itemEffects[it.id].efeito || '', dt: lcCard.itemEffects[it.id].dt || 15 });
+                }
+            }
+            h += '<div style="color:var(--td); font-size:0.78em; margin-bottom:10px;">So' + ' voce ve isso. Um mesmo item pode fazer coisas diferentes em SCPs diferentes — adicione uma linha por SCP em que esse item faz algo especifico.</div>';
+            h += '<div id="ifScpEffectsRows">' + ifRenderScpEffectRows() + '</div>';
+            h += '<button type="button" class="btn btn-s" onclick="ifAddScpEffectRow()">+ ADICIONAR SCP</button>';
+        }
+    }
+
+    h +=
         '<div style="display:flex; gap:10px; margin-top:18px;">' +
         '<button type="submit" class="btn">' + (isE ? 'ATUALIZAR' : 'SALVAR') + '</button>' +
         '<button type="button" class="btn btn-r" onclick="go(\'lab\')">CANCELAR</button></div></form></div>';
     c.innerHTML = h;
     if (isE) { imgs = it.imgs || []; editId = it.id; rItemImgs(); }
     else { imgs = []; editId = null; }
+}
+
+// Rascunho em edicao dos "efeitos por SCP" [Mestre] do item aberto em
+// renderItemForm — array de {cardId, efeito, dt}, espelhando (do lado do item)
+// o mesmo card.itemEffects[itemId] que a tela da carta SCP tambem le/escreve.
+var _ifScpEffectsDraft = [];
+function ifRenderScpEffectRows() {
+    var safeCards = labCards.filter(function(cc) { return cc.cls === 'Safe'; });
+    if (!safeCards.length) return '<div style="color:var(--td); font-size:0.78em; margin-bottom:10px;">Nenhuma carta Classe Safe cadastrada ainda.</div>';
+    if (!_ifScpEffectsDraft.length) return '<div style="color:var(--td); font-size:0.78em; margin-bottom:10px;">Nenhum efeito definido pra este item ainda.</div>';
+    var rh = '';
+    for (var i = 0; i < _ifScpEffectsDraft.length; i++) {
+        var row = _ifScpEffectsDraft[i];
+        rh += '<div style="border:1px solid var(--bd); padding:10px; margin-bottom:8px;">' +
+            '<div class="fr"><div class="fg"><label>SCP</label><select onchange="_ifScpEffectsDraft[' + i + '].cardId=this.value">';
+        for (var j = 0; j < safeCards.length; j++) {
+            rh += '<option value="' + safeCards[j].id + '"' + (row.cardId === safeCards[j].id ? ' selected' : '') + '>' + safeCards[j].num + ' — ' + safeCards[j].title + '</option>';
+        }
+        rh += '</select></div>' +
+            '<div class="fg"><label>DT</label><input type="number" value="' + row.dt + '" oninput="_ifScpEffectsDraft[' + i + '].dt=parseInt(this.value)||0" style="width:100%;"></div></div>' +
+            '<div class="fg"><label>Efeito (so' + ' voce ve)</label><textarea oninput="_ifScpEffectsDraft[' + i + '].efeito=this.value" style="min-height:50px;">' + row.efeito.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</textarea></div>' +
+            '<button type="button" class="btn btn-s" style="border-color:var(--r); color:var(--r);" onclick="ifRemoveScpEffectRow(' + i + ')">REMOVER</button>' +
+            '</div>';
+    }
+    return rh;
+}
+function ifAddScpEffectRow() {
+    var safeCards = labCards.filter(function(cc) { return cc.cls === 'Safe'; });
+    if (!safeCards.length) { alert('NENHUMA CARTA CLASSE SAFE CADASTRADA AINDA.'); return; }
+    _ifScpEffectsDraft.push({ cardId: safeCards[0].id, efeito: '', dt: 15 });
+    var el = document.getElementById('ifScpEffectsRows');
+    if (el) el.innerHTML = ifRenderScpEffectRows();
+}
+function ifRemoveScpEffectRow(idx) {
+    _ifScpEffectsDraft.splice(idx, 1);
+    var el = document.getElementById('ifScpEffectsRows');
+    if (el) el.innerHTML = ifRenderScpEffectRows();
 }
 
 var itemImgs = [];
@@ -3078,6 +3135,30 @@ function sItemForm(e) {
     }
     else items.push(x);
     saveItems();
+
+    // Efeitos por SCP [Mestre]: grava o rascunho de volta em cada carta
+    // referenciada (card.itemEffects[itemId]) e limpa esse item de qualquer
+    // carta que tinha um efeito antes mas foi removida do formulario agora.
+    if (lvl >= 6 && existing >= 0) {
+        var draftCardIds = {};
+        for (var di = 0; di < _ifScpEffectsDraft.length; di++) draftCardIds[_ifScpEffectsDraft[di].cardId] = _ifScpEffectsDraft[di];
+        var labCardsChanged = false;
+        for (var lci2 = 0; lci2 < labCards.length; lci2++) {
+            var lcc = labCards[lci2];
+            var hadEntry = !!(lcc.itemEffects && lcc.itemEffects[x.id]);
+            var draftRow = draftCardIds[lcc.id];
+            if (draftRow) {
+                if (!lcc.itemEffects) lcc.itemEffects = {};
+                lcc.itemEffects[x.id] = { efeito: draftRow.efeito, dt: draftRow.dt };
+                labCardsChanged = true;
+            } else if (hadEntry) {
+                delete lcc.itemEffects[x.id];
+                labCardsChanged = true;
+            }
+        }
+        if (labCardsChanged) saveLabCards();
+    }
+
     itemImgs = []; editId = null;
     alert('ITEM ' + x.name + ' ' + (existing >= 0 ? 'ATUALIZADO' : 'SALVO'));
     go('lab');
