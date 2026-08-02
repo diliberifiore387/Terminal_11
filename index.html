@@ -3188,7 +3188,7 @@ function renderItemForm(c, itemId) {
     if (lvl >= 6) {
         h += '<div style="color:var(--r); font-size:0.8em; letter-spacing:2px; margin:18px 0 12px; border-bottom:1px solid var(--r); padding-bottom:8px;">&gt; EFEITOS POR SCP [SOMENTE MESTRE]</div>';
         if (!isE) {
-            h += '<div style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Salve o item primeiro — depois, edite-o de novo pra poder definir o que ele faz em cada SCP.</div>';
+            h += '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Salve o item primeiro — depois, edite-o de novo pra poder definir o que ele faz em cada SCP.</div>';
         } else {
             _ifScpEffectsDraft = [];
             for (var lci = 0; lci < labCards.length; lci++) {
@@ -3197,7 +3197,7 @@ function renderItemForm(c, itemId) {
                     _ifScpEffectsDraft.push({ cardId: lcCard.id, efeito: lcCard.itemEffects[it.id].efeito || '', dt: lcCard.itemEffects[it.id].dt || 15 });
                 }
             }
-            h += '<div style="color:var(--td); font-size:0.78em; margin-bottom:10px;">So' + ' voce ve isso. Um mesmo item pode fazer coisas diferentes em SCPs diferentes — adicione uma linha por SCP em que esse item faz algo especifico.</div>';
+            h += '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:10px;">So' + ' voce ve isso. Um mesmo item pode fazer coisas diferentes em SCPs diferentes — adicione uma linha por SCP em que esse item faz algo especifico.</div>';
             h += '<div id="ifScpEffectsRows">' + ifRenderScpEffectRows() + '</div>';
             h += '<button type="button" class="btn btn-s" onclick="ifAddScpEffectRow()">+ ADICIONAR SCP</button>';
         }
@@ -3518,12 +3518,12 @@ function openCardEditor(cardId) {
     if (lvl >= 6) {
         h += '<div style="color:var(--r); font-size:0.8em; letter-spacing:2px; margin:18px 0 12px; border-bottom:1px solid var(--r); padding-bottom:8px;">&gt; EFEITOS DE ITEM [SOMENTE MESTRE]</div>';
         if (!isEdit) {
-            h += '<div style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Salve a carta primeiro — depois, edite-a de novo pra poder definir o que cada item faz nesse SCP.</div>';
+            h += '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Salve a carta primeiro — depois, edite-a de novo pra poder definir o que cada item faz nesse SCP.</div>';
         } else {
             _lcItemEffectsDraft = [];
             var ieMap = card.itemEffects || {};
             for (var ieId in ieMap) _lcItemEffectsDraft.push({ itemId: ieId, efeito: ieMap[ieId].efeito || '', dt: ieMap[ieId].dt || 15 });
-            h += '<div style="color:var(--td); font-size:0.78em; margin-bottom:10px;">So' + ' voce ve isso. Quando um pesquisador colocar um desses itens na bandeja do objeto SCP, o efeito e a DT aparecem aqui do lado, so\' pra voce.</div>';
+            h += '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:10px;">So' + ' voce ve isso. Quando um pesquisador colocar um desses itens na bandeja do objeto SCP, o efeito e a DT aparecem aqui do lado, so\' pra voce.</div>';
             h += '<div id="lcEffectsRows">' + lcRenderEffectsRows() + '</div>';
             h += '<button type="button" class="btn btn-s" onclick="lcAddEffectRow()">+ ADICIONAR ITEM</button>';
         }
@@ -3685,7 +3685,7 @@ function renderMusicAdminSection() {
     var h = '<div style="margin-bottom:25px;">' +
         '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:12px;">&gt; CONTROLE DE MUSICA [MESTRE]</div>' +
         '<div style="background:rgba(0,20,0,0.3); border:1px solid var(--bd); padding:18px;">' +
-        '<div style="color:var(--td); font-size:0.75em; margin-bottom:12px;">Sem uma faixa forcada, cada jogador escolhe a propria musica. Clique em "FORCAR" numa faixa pra travar essa musica em TODOS os terminais na hora; clique em "LIBERAR CONTROLE" pra devolver a escolha pra cada jogador.</div>';
+        '<div class="help-text" style="color:var(--td); font-size:0.75em; margin-bottom:12px;">Sem uma faixa forcada, cada jogador escolhe a propria musica. Clique em "FORCAR" numa faixa pra travar essa musica em TODOS os terminais na hora; clique em "LIBERAR CONTROLE" pra devolver a escolha pra cada jogador.</div>';
     if (forceMusicState.active) {
         h += '<div style="border:1px solid var(--y); color:var(--y); padding:8px 12px; margin-bottom:12px; font-size:0.78em;">' +
             '&#128274; Forcando agora: <strong>' + (forceMusicState.name || '?') + '</strong> para todos os jogadores.</div>' +
@@ -3717,7 +3717,7 @@ function renderSoundpadAdminSection() {
     var h = '<div style="margin-bottom:25px;">' +
         '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:12px;">&gt; SOUNDPAD - EFEITOS SONOROS [MESTRE]</div>' +
         '<div style="background:rgba(0,20,0,0.3); border:1px solid var(--bd); padding:18px;">' +
-        '<div style="color:var(--td); font-size:0.75em; margin-bottom:12px;">Toca um efeito sonoro na hora em TODOS os terminais conectados, sem mexer na musica de fundo de ninguem. Adicione ou remova sons livremente.</div>';
+        '<div class="help-text" style="color:var(--td); font-size:0.75em; margin-bottom:12px;">Toca um efeito sonoro na hora em TODOS os terminais conectados, sem mexer na musica de fundo de ninguem. Adicione ou remova sons livremente.</div>';
     var keys = Object.keys(sfxLibrary);
     if (!keys.length) {
         h += '<div style="color:var(--td); font-size:0.8em; margin-bottom:12px;">Nenhum som adicionado ainda.</div>';
@@ -3801,7 +3801,7 @@ function renderAdmin(c) {
         h += '<div style="margin-bottom:25px;">' +
             '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:12px;">&gt; EFEITOS DE MESA [MESTRE]</div>' +
             '<div style="background:rgba(0,20,0,0.3); border:1px solid var(--bd); padding:18px;">' +
-            '<div style="color:var(--td); font-size:0.75em; margin-bottom:12px;">Dispara um efeito visual na tela de TODOS os jogadores conectados, na hora.</div>' +
+            '<div class="help-text" style="color:var(--td); font-size:0.75em; margin-bottom:12px;">Dispara um efeito visual na tela de TODOS os jogadores conectados, na hora.</div>' +
             '<button class="btn btn-s" style="border-color:var(--r); color:var(--r);" onclick="triggerGlitch()">&#9889; DISPARAR GLITCH</button>' +
             '</div></div>';
         h += renderMusicAdminSection();
@@ -5370,7 +5370,7 @@ function renderMap(c) {
     (lvl >= 6 && _mapDragMode ? '<button class="btn btn-s btn-r" onclick="mapResetAllPositions()">RESETAR TODAS AS POSICOES</button>' : '') +
     '</div></div>';
 
-  h += '<div style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Areas ja exploradas ficam acesas no mapa. Areas conectadas ainda nao percorridas aparecem apenas como uma linha ate um marcador <span style="color:var(--y);">?</span> desconhecido — clique para caminhar ate la. Marcadores <span style="color:var(--r);">&#128274;</span> exigem nivel de acesso ou o PIN de qualificacao daquele nivel (Nivel 6 nao tem PIN — so o Mestre libera). Linhas <span style="color:var(--b);">azuis tracejadas</span> sao atalhos que podem passar perto de outras salas no caminho — elas NAO ligam a essas salas, so as duas pontas do tracejado se conectam.</div>';
+  h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Areas ja exploradas ficam acesas no mapa. Areas conectadas ainda nao percorridas aparecem apenas como uma linha ate um marcador <span style="color:var(--y);">?</span> desconhecido — clique para caminhar ate la. Marcadores <span style="color:var(--r);">&#128274;</span> exigem nivel de acesso ou o PIN de qualificacao daquele nivel (Nivel 6 nao tem PIN — so o Mestre libera). Linhas <span style="color:var(--b);">azuis tracejadas</span> sao atalhos que podem passar perto de outras salas no caminho — elas NAO ligam a essas salas, so as duas pontas do tracejado se conectam.</div>';
 
   h += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">' +
     '<span style="color:var(--td); font-size:0.72em; letter-spacing:2px;">ZOOM:</span>' +
@@ -6092,6 +6092,24 @@ function playGlitchEffect() {
   }, 1850);
 }
 
+// ============== VISIBILIDADE DO MESTRE NA PLANTA ==============
+// Por padrao, o token do Mestre (Nivel 6) NAO aparece pros jogadores quando ele
+// entra numa planta — so' fica visivel se ele mesmo ligar o botao. Preferencia
+// por aparelho (nao sincroniza entre jogadores), igual ao Modo Limpo.
+function loadMestreVisible() { try { return localStorage.getItem('scpMESTRE_VIS_v1') === '1'; } catch (e) { return false; } }
+var _fpMestreVisible = loadMestreVisible();
+function fpToggleMestreVisible() {
+  _fpMestreVisible = !_fpMestreVisible;
+  try { localStorage.setItem('scpMESTRE_VIS_v1', _fpMestreVisible ? '1' : '0'); } catch (e) {}
+  if (userKey && fbPlayers[userKey]) {
+    var me = fbPlayers[userKey];
+    me.hidden = !_fpMestreVisible;
+    fbPlayers[userKey] = me;
+    if (typeof fbDB !== 'undefined') fbDB.ref('players/' + userKey).set(me);
+  }
+  fpRenderView();
+}
+
 // Garante que, ao abrir uma planta, o jogador ja tenha uma posicao registrada nela
 // (comeca no ponto de entrada definido pelo Mestre na primeira vez que entra naquela
 // sala/andar — ou no centro do grid, se nenhum ponto de entrada foi definido ainda).
@@ -6101,6 +6119,7 @@ function fpEnsureMyPosition(roomId, floorIdx, floor) {
   var sp = floor.spawn;
   var data = { roomId: roomId, floorIdx: floorIdx, x: sp ? sp.x : Math.floor(floor.cols / 2), y: sp ? sp.y : Math.floor(floor.rows / 2), nm: (user && user.nm) || userKey };
   if (me && me.color) data.color = me.color;
+  if (lvl >= 6) data.hidden = !_fpMestreVisible;
   fbPlayers[userKey] = data;
   if (typeof fbDB !== 'undefined') fbDB.ref('players/' + userKey).set(data);
 }
@@ -6111,6 +6130,7 @@ function fpRenderPlayerTokens(roomId, floorIdx) {
     var p = fbPlayers[k];
     if (!p || p.roomId !== roomId || p.floorIdx !== floorIdx) continue;
     var isMe = (k === userKey);
+    if (p.hidden && !isMe) continue; // Mestre invisivel: so' ele mesmo ve o proprio token
     var label = ((p.nm || k) + '').charAt(0).toUpperCase();
     var tokHex = fpPaletteHex(p.color || (isMe ? 'y' : 'b'));
     var ring = isMe ? '0 0 0 2px var(--y), 0 0 4px rgba(0,0,0,0.8)' : '0 0 4px rgba(0,0,0,0.8)';
@@ -6229,6 +6249,7 @@ function fpPlayerMove(dx, dy) {
 
   var data = { roomId: _fpViewRoomId, floorIdx: _fpViewFloor, x: nx, y: ny, nm: (user && user.nm) || userKey, sit: sitFt, sitDir: sitDir };
   if (me && me.color) data.color = me.color;
+  if (lvl >= 6) data.hidden = !_fpMestreVisible;
   fbPlayers[userKey] = data; // atualizacao otimista local — o listener do Firebase confirma/propaga
   if (typeof fbDB !== 'undefined') fbDB.ref('players/' + userKey).set(data);
 
@@ -6245,6 +6266,7 @@ function fpPlayerMove(dx, dy) {
       _fpViewFloor = target;
       data = { roomId: _fpViewRoomId, floorIdx: target, x: dnx, y: dny, nm: (user && user.nm) || userKey, sit: null, sitDir: null };
       if (me && me.color) data.color = me.color;
+      if (lvl >= 6) data.hidden = !_fpMestreVisible;
       fbPlayers[userKey] = data;
       if (typeof fbDB !== 'undefined') fbDB.ref('players/' + userKey).set(data);
       floorChanged = true;
@@ -6779,14 +6801,19 @@ function fpRenderGrid(roomId, floorIdx, floor, editable) {
           inner += '<div id="fpFurnBadge_' + key + '" style="position:absolute; right:1px; top:1px; width:6px; height:6px; border-radius:50%; background:var(--y); box-shadow:0 0 4px var(--y); display:' + (fHasG ? 'block' : 'none') + '; pointer-events:none;"></div>';
         }
       }
-      if (npc) {
+      // So' desenha o pontinho estatico do NPC se ele ainda NAO tiver um token
+      // proprio ativo (fbNpcTokens) — assim que o Mestre assume o controle uma
+      // vez, o NPC passa a ser representado so' pelo losango (fpRenderNpcTokens),
+      // sem duplicar o desenho na mesma celula com formas diferentes.
+      var _npcHasToken = npc && !!fbNpcTokens[roomId + '|' + floorIdx + '|' + key];
+      if (npc && !_npcHasToken) {
         inner += '<div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:14px; height:14px; border-radius:50%; background:' + fpColorHex(npc.color) + '; border:1px solid #000; font-size:0.6em; display:flex; align-items:center; justify-content:center; color:#000; font-weight:bold; pointer-events:none;">' + (npc.name ? npc.name.charAt(0).toUpperCase() : '?') + '</div>';
       }
       if (isSpawn) {
         inner += '<div style="position:absolute; left:1px; top:1px; font-size:0.55em; color:var(--g); pointer-events:none;" title="Ponto de entrada">&#9873;</div>';
       }
       if (editable) onclick = ' onclick="fpCellClick(' + c + ',' + r + ')"';
-      else if (npc) onclick = ' onclick="fpNpcInfo(' + c + ',' + r + ')"';
+      else if (npc && !_npcHasToken) onclick = ' onclick="fpNpcInfo(' + c + ',' + r + ')"';
       else if (cell && cell.t === 'm') { onclick = ' onclick="fpFurnitureInteract(' + c + ',' + r + ')"'; cursor = 'pointer'; }
       h += '<div' + onclick + ' style="position:absolute; left:' + (c * FP_CELL) + 'px; top:' + (r * FP_CELL) + 'px; width:' + FP_CELL + 'px; height:' + FP_CELL + 'px; box-sizing:border-box; border:1px solid ' + (isSpawn ? 'var(--g)' : 'rgba(255,255,255,0.06)') + '; cursor:' + cursor + ';">' + inner + '</div>';
     }
@@ -6840,25 +6867,34 @@ function fpRenderView() {
     h += '</div></div>';
     h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Linha solida = parede &nbsp;&nbsp; linha tracejada + &#128682;/&#128274; = porta (ande ate ela para destrancar/atravessar) &nbsp;&nbsp; &#9650;/&#9660; = escada para o andar de cima/baixo (ande ate ela para subir/descer) &nbsp;&nbsp; <span style="color:var(--b);">&#9654;</span> seta azul = passagem para OUTRA AREA (ande ate ela para ver a revelacao e atravessar) &nbsp;&nbsp; bloco colorido = quadrado/objeto de cenario (bloqueia a passagem) &nbsp;&nbsp; ponto colorido = NPC (clique para ver ficha) &nbsp;&nbsp; losango colorido = NPC sob controle do Mestre &nbsp;&nbsp; borda verde + &#9873; = ponto de entrada &nbsp;&nbsp; circulo colorido = jogador, cada um com a cor que escolheu &nbsp; (<span style="color:var(--y);">contorno amarelo</span> = voce)</div>';
     h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Mobília <span style="color:var(--y);">âmbar</span>: cadeira/sofá/cama nao bloqueiam — ande ate elas para sentar/deitar (o token fica menor sobre o desenho). Mesa/estante/armário bloqueiam e podem ser clicadas para deixar ou pegar itens (um pontinho amarelo no canto avisa que ha algo la). Vaso/luminária so decoram e bloqueiam; tapete e so decorativo e nao bloqueia.</div>';
+    var _fpMoveBoxHtml = '', _fpNpcBoxHtml = '', _fpMyColor = 'y';
     if (userKey) {
       fpEnsureMyPosition(roomId, _fpViewFloor, curFloor);
-      var myColor = (fbPlayers[userKey] && fbPlayers[userKey].color) || 'y';
-      h += '<div style="margin:16px 0; padding:14px; border:1px solid var(--bd); text-align:center;">';
-      h += '<div style="color:var(--gd); font-size:0.72em; letter-spacing:1px; margin-bottom:10px;">MOVER-SE NESTA SALA</div>';
-      h += fpRenderArrowPanel();
-      h += '</div>';
-      h += '<div style="margin:16px 0; padding:14px; border:1px solid var(--bd);">';
-      h += '<div style="color:var(--gd); font-size:0.72em; letter-spacing:1px; margin-bottom:10px; text-align:center;">COR DO SEU PERSONAGEM NO MAPA</div>';
-      h += fpRenderPaletteSwatches(myColor, 'fpSetMyColor', true);
-      h += '</div>';
+      _fpMyColor = (fbPlayers[userKey] && fbPlayers[userKey].color) || 'y';
+      _fpMoveBoxHtml += '<div style="flex:1; min-width:220px; margin:16px 0; padding:14px; border:1px solid var(--bd); text-align:center;">';
+      _fpMoveBoxHtml += '<div style="color:var(--gd); font-size:0.72em; letter-spacing:1px; margin-bottom:10px;">MOVER-SE NESTA SALA</div>';
+      _fpMoveBoxHtml += fpRenderArrowPanel();
+      if (lvl >= 6) {
+        _fpMoveBoxHtml += '<div style="margin-top:10px;"><button class="btn btn-s" style="' + (_fpMestreVisible ? 'border-color:var(--y); color:var(--y);' : '') + '" onclick="fpToggleMestreVisible()">' + (_fpMestreVisible ? '&#128065; VISIVEL (ON)' : '&#128065; INVISIVEL — TORNAR-SE VISIVEL') + '</button></div>';
+      }
+      _fpMoveBoxHtml += '</div>';
     }
     if (lvl >= 6 && _npcControl && _npcControl.roomId === roomId && _npcControl.floorIdx === _fpViewFloor) {
-      h += '<div style="margin:16px 0; padding:14px; border:1px solid var(--y);">';
-      h += '<div style="color:var(--y); font-size:0.75em; letter-spacing:1px; margin-bottom:10px; text-align:center;">CONTROLANDO NPC: ' + fpFurnEsc(_npcControl.name) + '</div>';
-      h += '<div style="text-align:center;">' + fpRenderNpcArrowPanel() + '</div>';
-      h += '<div style="text-align:center; margin-top:10px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">' +
+      _fpNpcBoxHtml += '<div style="flex:1; min-width:220px; margin:16px 0; padding:14px; border:1px solid var(--y);">';
+      _fpNpcBoxHtml += '<div style="color:var(--y); font-size:0.75em; letter-spacing:1px; margin-bottom:10px; text-align:center;">CONTROLANDO NPC: ' + fpFurnEsc(_npcControl.name) + '</div>';
+      _fpNpcBoxHtml += '<div style="text-align:center;">' + fpRenderNpcArrowPanel() + '</div>';
+      _fpNpcBoxHtml += '<div style="text-align:center; margin-top:10px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">' +
         '<button class="btn btn-s" onclick="fpOpenGiveAsNpc()">DAR COMO ' + fpFurnEsc(_npcControl.name).toUpperCase() + '</button>' +
         '<button class="btn btn-s" onclick="fpNpcStopControl()">PARAR DE CONTROLAR</button></div>';
+      _fpNpcBoxHtml += '</div>';
+    }
+    if (_fpMoveBoxHtml || _fpNpcBoxHtml) {
+      h += '<div style="display:flex; gap:14px; flex-wrap:wrap; align-items:flex-start;">' + _fpMoveBoxHtml + _fpNpcBoxHtml + '</div>';
+    }
+    if (userKey) {
+      h += '<div style="margin:16px 0; padding:14px; border:1px solid var(--bd);">';
+      h += '<div style="color:var(--gd); font-size:0.72em; letter-spacing:1px; margin-bottom:10px; text-align:center;">COR DO SEU PERSONAGEM NO MAPA</div>';
+      h += fpRenderPaletteSwatches(_fpMyColor, 'fpSetMyColor', true);
       h += '</div>';
     }
   }
@@ -7045,7 +7081,7 @@ function fpScpObjRenderModal(cell, canTouch) {
     for (var ii = 0; ii < items.length; ii++) h += '<option value="' + items[ii].id + '">' + fpFurnEsc(items[ii].name) + '</option>';
     h += '</select><button class="btn btn-s" onclick="fpScpPlaceItem()">COLOCAR NA BANDEJA</button></div>';
   } else {
-    h += '<div style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Aproxime-se pra colocar um item na bandeja.</div>';
+    h += '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Aproxime-se pra colocar um item na bandeja.</div>';
   }
 
   if (lvl >= 6 && card) {
@@ -7185,7 +7221,7 @@ function fpFurnitureRenderModal() {
     h += '</div>';
 
     if (!canTouch) {
-      h += '<div style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Aproxime-se da mobilia para poder deixar algo aqui.</div>';
+      h += '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Aproxime-se da mobilia para poder deixar algo aqui.</div>';
     } else {
 
     var mode = _fpFurnLeaveMode || 'labcard';
@@ -7386,17 +7422,17 @@ function fpRenderEditor() {
       h += '<button class="btn btn-s" style="display:inline-flex; align-items:center; gap:5px; ' + (on ? 'border-color:var(--y); color:var(--y);' : '') + '" onclick="fpSetWallShape(\'' + sh.id + '\')">' + icon + '<span>' + sh.lab + '</span></button>';
     }
     h += '</div>';
-    h += '<div style="color:var(--td); font-size:0.72em; margin-bottom:10px;">AUTO liga a celula as vizinhas sozinha (reta/canto/cruzamento conforme o desenho). Os outros formatos fixam o desenho daquela celula, incluindo diagonais, ignorando os vizinhos.</div>';
+    h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">AUTO liga a celula as vizinhas sozinha (reta/canto/cruzamento conforme o desenho). Os outros formatos fixam o desenho daquela celula, incluindo diagonais, ignorando os vizinhos.</div>';
   } else if (_fpEdit.tool === 'd') {
-    h += '<div style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Ao clicar, escolha se a porta e\' trancada por NIVEL DE ACESSO ou por um CODIGO/SENHA que voce define. O jogador so' + ' resolve a tranca ao ANDAR ate' + ' a porta — nao da mais pra clicar nela na tela de visualizacao.</div>';
+    h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Ao clicar, escolha se a porta e\' trancada por NIVEL DE ACESSO ou por um CODIGO/SENHA que voce define. O jogador so' + ' resolve a tranca ao ANDAR ate' + ' a porta — nao da mais pra clicar nela na tela de visualizacao.</div>';
   } else if (_fpEdit.tool === 's') {
-    h += '<div style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Escada que sobe para o andar seguinte ou desce para o anterior. Precisa de pelo menos 2 andares para funcionar. O jogador troca de andar automaticamente ao ANDAR ate' + ' a escada — nao da mais pra clicar nela na tela de visualizacao.</div>';
+    h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Escada que sobe para o andar seguinte ou desce para o anterior. Precisa de pelo menos 2 andares para funcionar. O jogador troca de andar automaticamente ao ANDAR ate' + ' a escada — nao da mais pra clicar nela na tela de visualizacao.</div>';
   } else if (_fpEdit.tool === 'n') {
-    h += '<div style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Clique numa celula para colocar (ou editar) um NPC: cor, nome, seccao, descricao e imagem opcional.</div>';
+    h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Clique numa celula para colocar (ou editar) um NPC: cor, nome, seccao, descricao e imagem opcional.</div>';
   } else if (_fpEdit.tool === 'p') {
-    h += '<div style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Clique numa celula para definir onde os jogadores comecam quando entram nesta planta (marcado com &#9873; e borda verde). So' + ' existe UM ponto de entrada por andar — clicar em outra celula move o ponto. Se nenhum for definido, os jogadores comecam no centro do grid.</div>';
+    h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Clique numa celula para definir onde os jogadores comecam quando entram nesta planta (marcado com &#9873; e borda verde). So' + ' existe UM ponto de entrada por andar — clicar em outra celula move o ponto. Se nenhum for definido, os jogadores comecam no centro do grid.</div>';
   } else if (_fpEdit.tool === 'x') {
-    h += '<div style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Clique numa celula para criar uma SETA de saida: escolha a area de destino, uma direcao visual e uma breve descricao/pressentimento que sera revelado ao jogador antes de atravessar (sem entregar o nome da area de destino). O jogador so' + ' atravessa ao ANDAR ate' + ' a seta e confirmar — isso fecha esta planta, mostra o mapa geral, anima o caminho ate' + ' a area marcada e abre a planta de la automaticamente.</div>';
+    h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Clique numa celula para criar uma SETA de saida: escolha a area de destino, uma direcao visual e uma breve descricao/pressentimento que sera revelado ao jogador antes de atravessar (sem entregar o nome da area de destino). O jogador so' + ' atravessa ao ANDAR ate' + ' a seta e confirmar — isso fecha esta planta, mostra o mapa geral, anima o caminho ate' + ' a area marcada e abre a planta de la automaticamente.</div>';
   } else if (_fpEdit.tool === 'q') {
     var curShape = _fpEdit.sqShape || 'full';
     h += '<div style="color:var(--gd); font-size:0.72em; margin-bottom:4px;">FORMA DO QUADRADO:</div>';
@@ -7419,7 +7455,7 @@ function fpRenderEditor() {
     }
     h += '<div style="color:var(--gd); font-size:0.72em; margin-bottom:4px;">COR:</div>';
     h += fpRenderPaletteSwatches(_fpEdit.sqColor || 'g', 'fpSetSquareColor', false);
-    h += '<div style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Bloco de cenario minimalista: preenche a celula (inteiro ou so\' metade, virado para o lado escolhido) e BLOQUEIA a passagem, como uma parede pequena. Clique numa celula para colocar o quadrado com a forma/direcao/cor selecionadas.</div>';
+    h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Bloco de cenario minimalista: preenche a celula (inteiro ou so\' metade, virado para o lado escolhido) e BLOQUEIA a passagem, como uma parede pequena. Clique numa celula para colocar o quadrado com a forma/direcao/cor selecionadas.</div>';
   } else if (_fpEdit.tool === 'm') {
     var curFurn = _fpEdit.furnType || 'chair';
     var curFDef = fpFurnDef(curFurn);
@@ -7467,7 +7503,7 @@ function fpRenderEditor() {
       curFDef.scpObj ? 'Bloqueia a passagem. Qualquer jogador perto pode examinar o objeto e colocar itens de teste na bandeja. So' + ' o Mestre ve os efeitos de cada item e pode marcar o objeto como alterado.' :
       curFDef.storage ? 'Bloqueia a passagem. Qualquer jogador pode clicar nela na planta (fora do editor) para ler a descricao e deixar/pegar cartas de laboratorio (SCP/Thaumiel), itens do catalogo de recursos, dossies de Classe-D ou papeis avulsos.' :
       curFDef.decorative ? 'Puramente decorativo — nao bloqueia a passagem.' : 'Bloqueia a passagem, como um objeto solido.';
-    h += '<div style="color:var(--td); font-size:0.72em; margin-bottom:10px;">' + curFHelp + ' Qualquer jogador pode clicar na peca colocada para ler a descricao. Clique numa celula para colocar a mobilia selecionada (com a descricao acima).</div>';
+    h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">' + curFHelp + ' Qualquer jogador pode clicar na peca colocada para ler a descricao. Clique numa celula para colocar a mobilia selecionada (com a descricao acima).</div>';
   }
 
   h += '<div id="fpEditGridWrap" style="margin:10px 0; overflow:auto; max-width:100%;">' + fpRenderGrid(_fpEdit.roomId, _fpEdit.floorIdx, floor, true) + '</div>';
@@ -7613,7 +7649,7 @@ function fpOpenPortalForm(c, r) {
     dirOpts += '<option value="' + dirs[j][0] + '"' + selD + '>' + dirs[j][1] + '</option>';
   }
   var h = '<div class="dv"><div class="dh"><h1>' + (existing ? 'Editar Seta' : 'Nova Seta') + '</h1></div>' +
-    '<div style="color:var(--td); font-size:0.72em; margin-bottom:14px;">Uma seta manda o jogador para OUTRA area do mapa geral quando ele anda ate ela. A descricao e\' revelada como um pressentimento do que vem a seguir, sem entregar o nome da area de destino.</div>' +
+    '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:14px;">Uma seta manda o jogador para OUTRA area do mapa geral quando ele anda ate ela. A descricao e\' revelada como um pressentimento do que vem a seguir, sem entregar o nome da area de destino.</div>' +
     '<form onsubmit="fpSavePortal(event, ' + c + ', ' + r + ')">' +
     '<div class="fg"><label>Area de destino</label><select id="portalTarget" required>' + opts + '</select></div>' +
     '<div class="fg"><label>Direcao visual da seta</label><select id="portalDir">' + dirOpts + '</select></div>' +
@@ -7893,7 +7929,7 @@ function mapOpenManageRoomsForm() {
   var h = '<div style="max-width:650px;">' +
     '<div style="color:#b967ff; font-size:0.75em; letter-spacing:3px; margin-bottom:6px;">&gt; ACESSO DE ADMINISTRADOR (NIVEL 6)</div>' +
     '<div style="color:var(--gd); font-size:0.9em; letter-spacing:2px; margin-bottom:18px;">GERENCIAR LOCALIZACOES CRIADAS</div>' +
-    '<div style="color:var(--td); font-size:0.72em; margin-bottom:16px;">So localizacoes adicionadas por aqui (nao as areas originais do Site-11) podem ser editadas, movidas ou apagadas.</div>';
+    '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:16px;">So localizacoes adicionadas por aqui (nao as areas originais do Site-11) podem ser editadas, movidas ou apagadas.</div>';
   if (!custom.length) {
     h += '<div style="text-align:center; padding:30px 20px; color:var(--td); border:1px dashed var(--bd);">Nenhuma localizacao personalizada foi criada ainda.</div>';
   } else {
@@ -7945,7 +7981,7 @@ function mapOpenEditRoomForm(id) {
     '<div class="fg"><label>Nivel de Acesso Exigido</label><select id="melvl">' + lvlOpts + '</select></div></div>' +
     '<div class="fg"><label>Tamanho (uso visual)</label><select id="mesize">' + sizeOpts + '</select></div>' +
     '<div class="fg"><label>Descricao</label><textarea id="medesc" required>' + (rm.desc || '') + '</textarea></div>' +
-    '<div style="color:var(--td); font-size:0.72em; margin:10px 0;">Mover a localizacao no mapa: escolha uma area de ancora e uma direcao — a posicao dela no mapa geral e recalculada a partir dai. "Automatica" devolve o posicionamento ao calculo padrao do sistema.</div>' +
+    '<div class="help-text" style="color:var(--td); font-size:0.72em; margin:10px 0;">Mover a localizacao no mapa: escolha uma area de ancora e uma direcao — a posicao dela no mapa geral e recalculada a partir dai. "Automatica" devolve o posicionamento ao calculo padrao do sistema.</div>' +
     '<div class="fg"><label>Ancorar posicao a partir de</label><select id="meanchor">' + roomOpts + '</select></div>' +
     '<div class="fg"><label>Direcao a partir da ancora</label><select id="medir">' +
     '<option value="auto"' + (dirCur === 'auto' ? ' selected' : '') + '>Automatica (o sistema escolhe)</option>' +
@@ -8033,7 +8069,7 @@ function mapOpenLinkManagerForm() {
   var h = '<div style="max-width:650px;">' +
     '<div style="color:#b967ff; font-size:0.75em; letter-spacing:3px; margin-bottom:6px;">&gt; ACESSO DE ADMINISTRADOR (NIVEL 6)</div>' +
     '<div style="color:var(--gd); font-size:0.9em; letter-spacing:2px; margin-bottom:18px;">LIGAR / DESLIGAR AREAS</div>' +
-    '<div style="color:var(--td); font-size:0.72em; margin-bottom:16px;">Use isto quando areas aparecerem lado a lado no mapa mas nao for possivel andar direto de uma pra outra — cria ligacoes reais entre elas (aparecem como atalho tracejado azul). Escolha uma area de origem e uma ou mais areas de destino (Ctrl/Cmd+clique, ou toque e segure no celular, para marcar varias) para criar um ramo com 3+ conexoes de uma vez.</div>' +
+    '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:16px;">Use isto quando areas aparecerem lado a lado no mapa mas nao for possivel andar direto de uma pra outra — cria ligacoes reais entre elas (aparecem como atalho tracejado azul). Escolha uma area de origem e uma ou mais areas de destino (Ctrl/Cmd+clique, ou toque e segure no celular, para marcar varias) para criar um ramo com 3+ conexoes de uma vez.</div>' +
     '<form onsubmit="mapAddLink(event)">' +
     '<div class="fg"><label>Area de origem (o ramo)</label><select id="mlinkA">' + roomOpts + '</select></div>' +
     '<div class="fg"><label>Ligar a (uma ou mais areas)</label><select id="mlinkB" multiple size="7">' + roomOpts + '</select></div>' +
