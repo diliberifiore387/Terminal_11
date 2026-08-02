@@ -1167,6 +1167,7 @@ input[type="range"]::-moz-range-thumb {
 @media(max-width: 400px) {
   .rp-attr-grid { grid-template-columns: 1fr; }
 }
+body.simple-mode .help-text{display:none !important;}
 </style>
 </head>
 <body class="crt">
@@ -1228,6 +1229,7 @@ input[type="range"]::-moz-range-thumb {
                 <input type="range" id="musicVol" min="0" max="1" step="0.05" value="0.3" oninput="musicSetVolume(this.value)" title="Volume">
                 <button class="music-btn" id="sfxBtn" onclick="toggleSfx()" title="Efeitos sonoros">&#128266;</button>
             </div>
+            <button class="btn btn-s" id="simpleBtn" onclick="toggleSimpleMode()" title="Esconder textos de ajuda/instrucoes para deixar a tela mais limpa">&#128065; MODO LIMPO</button>
             <button class="btn btn-s" id="fsBtn" onclick="toggleFullscreen()" style="display:none;" title="Alternar tela cheia">&#x26F6; TELA CHEIA</button>
             <div class="th-cl" id="tcl">00:00:00</div>
         </div>
@@ -1315,6 +1317,24 @@ var PASS = {
     "fundador":   { pw: "scp-foundation-05",lv: 5, nm: "O5-1" },
     "administrador": { pw: "acima-de-tudo", lv: 6, nm: "O Administrador" }
 };
+
+// ============== MODO LIMPO (esconde textos de ajuda compridos) ==============
+// Preferencia por aparelho (nao sincroniza entre jogadores): cada um decide se
+// quer ver as instrucoes/explicacoes longas ou uma tela mais limpa so com as
+// opcoes. Os textos marcados com class="help-text" ficam com display:none via
+// CSS quando a classe 'simple-mode' esta no <body>.
+function loadSimpleMode() { try { return localStorage.getItem('scpSIMPLE_v1') === '1'; } catch (e) { return false; } }
+function applySimpleModeUI() {
+    var on = loadSimpleMode();
+    document.body.classList.toggle('simple-mode', on);
+    var btn = document.getElementById('simpleBtn');
+    if (btn) { btn.style.borderColor = on ? 'var(--y)' : ''; btn.style.color = on ? 'var(--y)' : ''; btn.innerHTML = on ? '&#128065; MODO LIMPO (ON)' : '&#128065; MODO LIMPO'; }
+}
+function toggleSimpleMode() {
+    var on = !loadSimpleMode();
+    try { localStorage.setItem('scpSIMPLE_v1', on ? '1' : '0'); } catch (e) {}
+    applySimpleModeUI();
+}
 
 // ============== ESTADO ==============
 var db = [], labCards = [], items = [], dclass = [];
@@ -1694,6 +1714,7 @@ function doLogin() {
     fpStartPlayerSync();
     chatStart();
     handStart();
+    applySimpleModeUI();
     document.getElementById('login').classList.remove('on');
     document.getElementById('term').classList.add('on');
     document.getElementById('tu').textContent = a.nm.toUpperCase();
@@ -2298,7 +2319,7 @@ function handResolveLabel(g) {
 
 function handShowToast(g) {
     var el = document.createElement('div');
-    el.textContent = '\u2709 VOCE RECEBEU ALGO DO MESTRE: ' + handResolveLabel(g) + ' — veja em NOTAS > PAPEIS';
+    el.textContent = '\u2709 VOCE RECEBEU DE ' + (g.by || 'ALGUEM') + ': ' + handResolveLabel(g) + ' — veja em NOTAS > PAPEIS';
     el.style.cssText = 'position:fixed; top:16px; right:16px; left:16px; max-width:320px; margin-left:auto; z-index:99999; background:rgba(0,20,0,0.96); border:1px solid var(--g); color:var(--g); padding:12px 16px; font-size:0.78em; line-height:1.4; box-shadow:0 0 14px rgba(0,255,65,0.35); font-family:inherit; cursor:pointer;';
     el.onclick = function() { go('notes'); notesSwitchTab('papers'); el.remove(); };
     document.body.appendChild(el);
@@ -2341,7 +2362,7 @@ function renderHandGiveSection() {
     var h = '<div style="margin-bottom:25px;">' +
         '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:12px;">&gt; DAR NA MAO [MESTRE]</div>' +
         '<div style="background:rgba(0,20,0,0.3); border:1px solid var(--bd); padding:18px;">' +
-        '<div style="color:var(--td); font-size:0.75em; margin-bottom:12px;">Entrega algo direto na mao de um jogador — cai na aba PAPEIS do bloco de notas dele na hora, sem precisar estar perto de nenhuma mobilia na planta. Funciona com cartas de laboratorio de qualquer classe (Safe, Euclid, Keter, Thaumiel, Apollyon), itens do catalogo, dossies de Classe-D ou um papel avulso escrito na hora.</div>';
+        '<div class="help-text" style="color:var(--td); font-size:0.75em; margin-bottom:12px;">Entrega algo direto na mao de um jogador — cai na aba PAPEIS do bloco de notas dele na hora, sem precisar estar perto de nenhuma mobilia na planta. Funciona com cartas de laboratorio de qualquer classe (Safe, Euclid, Keter, Thaumiel, Apollyon), itens do catalogo, dossies de Classe-D ou um papel avulso escrito na hora. Tambem da pra clicar direto no token de um jogador no mapa, ou entregar como um NPC que voce esteja controlando.</div>';
     h += '<div class="fg"><label>Jogador</label><select id="handTargetSelect" style="width:100%; background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:8px;">';
     for (var i = 0; i < keys.length; i++) {
         if (keys[i] === userKey) continue;
@@ -2360,27 +2381,51 @@ function renderHandGiveSection() {
     return h;
 }
 
-function handDeliver() {
-    if (lvl < 6) return;
-    var sel = document.getElementById('handTargetSelect');
-    if (!sel || !sel.value) { alert('ESCOLHA UM JOGADOR.'); return; }
-    var target = sel.value;
-    var entry = { kind: _handMode, by: (user && user.nm) || userKey, ts: Date.now() };
+// Nucleo da entrega: usado tanto pelo painel admin (select de jogador) quanto
+// pelo clique direto no token do jogador no mapa e pela entrega "como NPC".
+// byName, se passado, aparece pro jogador como quem entregou (nome do NPC em
+// vez do nome do Mestre) — assim da pra fingir que foi um personagem do jogo
+// que deu o item, nao o Mestre diretamente.
+function handDeliverCore(target, byName) {
+    if (lvl < 6) return false;
+    if (!target) { alert('ESCOLHA UM JOGADOR.'); return false; }
+    var entry = { kind: _handMode, by: byName || (user && user.nm) || userKey, ts: Date.now() };
     if (_handMode === 'custom') {
         var nmEl = document.getElementById('handCustomName');
         var dsEl = document.getElementById('handCustomDesc');
         var nm = nmEl ? nmEl.value.trim() : '';
-        if (!nm) { alert('DE UM TITULO PRO PAPEL.'); return; }
+        if (!nm) { alert('DE UM TITULO PRO PAPEL.'); return false; }
         entry.name = nm;
         entry.desc = dsEl ? dsEl.value.trim() : '';
     } else {
         var refEl = document.getElementById('handRefSelect');
-        if (!refEl || !refEl.value) { alert('ESCOLHA UM ITEM PARA ENTREGAR.'); return; }
+        if (!refEl || !refEl.value) { alert('ESCOLHA UM ITEM PARA ENTREGAR.'); return false; }
         entry.refId = refEl.value;
     }
-    if (typeof fbDB === 'undefined') { alert('SEM CONEXAO COM O BANCO DE DADOS.'); return; }
+    if (typeof fbDB === 'undefined') { alert('SEM CONEXAO COM O BANCO DE DADOS.'); return false; }
     fbDB.ref('hand/gifts/' + target).push(entry);
-    alert('ENTREGUE NA MAO DE ' + ((PASS[target] && PASS[target].nm) || target) + '.');
+    alert('ENTREGUE NA MAO DE ' + ((PASS[target] && PASS[target].nm) || target) + (byName ? (' (como ' + byName + ')') : '') + '.');
+    return true;
+}
+
+// Versao usada no painel admin (le o jogador do <select id="handTargetSelect">).
+function handDeliver() {
+    var sel = document.getElementById('handTargetSelect');
+    handDeliverCore(sel ? sel.value : '');
+}
+
+// Versao usada ao clicar direto no token do jogador no mapa — o alvo ja vem
+// pronto (nao precisa de select), so volta pra planta depois.
+function handDeliverTo(target) {
+    if (handDeliverCore(target)) fpRenderView();
+}
+
+// Versao usada quando o Mestre esta controlando um NPC e quer entregar algo
+// "como" aquele NPC — o jogador ve o nome do NPC como remetente.
+function handDeliverAsNpc() {
+    if (!_npcControl) return;
+    var sel = document.getElementById('handTargetSelect');
+    if (handDeliverCore(sel ? sel.value : '', _npcControl.name)) fpRenderView();
 }
 
 // ============== BANCO DE DADOS SCP ==============
@@ -3790,7 +3835,7 @@ function renderAdmin(c) {
             '<button class="btn btn-s" data-view-id="' + lc.id + '">VER</button></td></tr>';
     }
     h += '</tbody></table></div>' +
-        '<div style="margin-top:12px; color:var(--td); font-size:0.75em;">' +
+        '<div class="help-text" style="margin-top:12px; color:var(--td); font-size:0.75em;">' +
         'Cartas bloqueadas nao sao visiveis para usuarios comuns. Apenas admin pode gerenciar o status de desbloqueio.' +
         '</div></div></div>' +
         '<div style="margin-bottom:25px;">' +
@@ -3798,7 +3843,7 @@ function renderAdmin(c) {
         '<div style="display:flex; gap:10px; flex-wrap:wrap;">' +
         '<button class="btn" onclick="exportDB()">EXPORTAR JSON</button>' +
         '<button class="btn" onclick="importDB()">IMPORTAR JSON</button>' +
-        '<button class="btn btn-r" onclick="clearDB()">LIMPAR TUDO</button></div></div>' +
+        '<button class="btn btn-r" onclick="clearDB()">&#9888; APAGAR TUDO (TODOS OS JOGADORES)</button></div></div>' +
         '<div>' +
         '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:12px;">&gt; TODOS OS DOCUMENTOS SCP</div>' +
         '<div style="overflow-x:auto;">' +
@@ -3894,14 +3939,28 @@ function importDB() {
 }
 
 function clearDB() {
-    if (!confirm('AVISO: Apagara TODOS os dados (SCPs, Itens, Classe-D e Cartas). Continuar?')) return;
+    if (!confirm('AVISO: Apagara TODOS os dados (SCPs, Itens, Classe-D, Cartas do Laboratorio, itens deixados em mobilia e NPCs sob controle no mapa) PARA TODOS OS JOGADORES CONECTADOS, nao so' + " este aparelho. Continuar?")) return;
     if (!confirm('CONFIRMACAO FINAL: Nao pode ser desfeita. Exporte antes se necessario.')) return;
     db = []; labCards = []; items = []; dclass = [];
     localStorage.removeItem('scpDB_v2');
     localStorage.removeItem('scpLAB_v1');
     localStorage.removeItem('scpITEMS_v1');
     localStorage.removeItem('scpDCLASS_v1');
-    updStats(); alert('Banco de dados limpo.'); go('db');
+    // Antes isto so' limpava o aparelho do Mestre — o Firebase mantinha a copia
+    // "oficial" antiga e ela voltava (pros outros jogadores, e ate' pro proprio
+    // Mestre num reload). Agora zera tambem do lado do servidor, pra ficar
+    // limpo de verdade pra toda a mesa.
+    if (typeof fbDB !== 'undefined') {
+        fbDB.ref('world/db').set([]);
+        fbDB.ref('world/items').set([]);
+        fbDB.ref('world/dclass').set([]);
+        fbDB.ref('world/labCards').set([]);
+        fbDB.ref('world/furniture_items').remove();
+        fbDB.ref('npcTokens').remove();
+    }
+    fbNpcTokens = {};
+    _npcControl = null;
+    updStats(); alert('Banco de dados apagado para todos os jogadores.'); go('db');
 }
 
 // ============== AJUSTE DE USOS ==============
@@ -5803,6 +5862,17 @@ var _fpFurnitureItems = {}; // cache local dos itens deixados em mobilia com 'st
 var _fpFurnitureModalKey = null; // chave da mobilia cujo modal de interacao esta aberto (para atualizar ao vivo quando outro jogador mexe nela)
 var _fpFurnLeaveMode = 'labcard'; // aba selecionada no formulario de "deixar" da mobilia com storage: 'labcard' (carta do laboratorio), 'item' (catalogo de recursos) ou 'custom' (papel avulso)
 
+// ============== CONTROLE DE NPC PELO MESTRE ==============
+// Alem da ficha estatica do NPC (nome/desc/imagem, desenhada na planta pelo
+// editor), o Mestre (Nivel 6) pode "assumir o controle" de um NPC: ganha um
+// token proprio pra aquele NPC, que anda pela planta com as mesmas setas que
+// um jogador usa, sincronizado por Firebase pra todo mundo ver em tempo real
+// (igual fbPlayers, so' que num ramo separado — 'npcTokens'). Enquanto estiver
+// controlando, o Mestre tambem pode entregar itens/cartas na mao de um jogador
+// "como" aquele NPC (o jogador ve o nome do NPC como remetente, nao "Mestre").
+var fbNpcTokens = {}; // cache local: { chave: {roomId,floorIdx,x,y,name,color} }
+var _npcControl = null; // {key, roomId, floorIdx, name} do NPC sob controle agora, ou null
+
 // ============== POSICAO DOS JOGADORES NO MAPA (sincronizada via Firebase) ==============
 // Cada jogador logado tem uma posicao (x,y) dentro do grid da planta da area em que
 // esta. Isso e' guardado no Firebase Realtime Database (nao no localStorage), porque
@@ -5821,6 +5891,10 @@ function fpStartPlayerSync() {
     // Se a planta de uma area estiver aberta em modo leitura, atualiza so os
     // tokens (nao a planta inteira) — evita o flicker/reset de zoom a cada
     // movimento de QUALQUER jogador, nao so o proprio.
+    if (_fpViewRoomId && !_fpEdit) fpUpdateTokensLayer();
+  });
+  fbDB.ref('npcTokens').on('value', function(snap) {
+    fbNpcTokens = snap.val() || {};
     if (_fpViewRoomId && !_fpEdit) fpUpdateTokensLayer();
   });
   worldSyncStart();
@@ -6032,7 +6106,7 @@ function fpEnsureMyPosition(roomId, floorIdx, floor) {
 }
 
 function fpRenderPlayerTokens(roomId, floorIdx) {
-  var h = '<div id="fpTokensLayer" style="position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none;">';
+  var h = '';
   for (var k in fbPlayers) {
     var p = fbPlayers[k];
     if (!p || p.roomId !== roomId || p.floorIdx !== floorIdx) continue;
@@ -6043,21 +6117,49 @@ function fpRenderPlayerTokens(roomId, floorIdx) {
     var sitting = !!p.sit;
     var tokSize = sitting ? 12 : 16;
     var sitLab = sitting ? (p.sit === 'bed' ? ' (deitado)' : ' (sentado)') : '';
-    h += '<div title="' + (p.nm || k) + sitLab + '" style="position:absolute; left:' + (p.x * FP_CELL) + 'px; top:' + (p.y * FP_CELL) + 'px; width:' + FP_CELL + 'px; height:' + FP_CELL + 'px; display:flex; align-items:center; justify-content:center; transition:left 0.15s linear, top 0.15s linear;">' +
+    // O Mestre (Nivel 6) pode clicar no token de QUALQUER jogador pra entregar
+    // algo direto na mao dele ali mesmo, sem passar pelo painel admin.
+    var clickable = (lvl >= 6 && !isMe);
+    var evt = clickable ? (' onclick="fpOpenGiveForPlayer(\'' + k + '\')"') : '';
+    h += '<div title="' + (p.nm || k) + sitLab + (clickable ? ' — clique para DAR NA MAO' : '') + '"' + evt + ' style="position:absolute; left:' + (p.x * FP_CELL) + 'px; top:' + (p.y * FP_CELL) + 'px; width:' + FP_CELL + 'px; height:' + FP_CELL + 'px; display:flex; align-items:center; justify-content:center; transition:left 0.15s linear, top 0.15s linear; pointer-events:' + (clickable ? 'auto' : 'none') + '; cursor:' + (clickable ? 'pointer' : 'default') + ';">' +
       '<div style="width:' + tokSize + 'px; height:' + tokSize + 'px; border-radius:50%; background:' + tokHex + '; border:2px solid #000; box-shadow:' + ring + '; font-size:0.6em; display:flex; align-items:center; justify-content:center; font-weight:bold; color:#000; opacity:' + (sitting ? '0.85' : '1') + ';">' + label + '</div></div>';
   }
-  h += '</div>';
   return h;
 }
 
-// Atualiza SO a camada de tokens dos jogadores na planta atual, sem redesenhar a
-// grade inteira. Usado a cada passo (seta clicada ou posicao de outro jogador
-// chegando pelo Firebase) para nao causar o "flicker"/reset de zoom que uma
-// troca completa de innerHTML da planta inteira causava a cada movimento.
+// Tokens dos NPCs sob controle do Mestre (losango, pra diferenciar do circulo
+// dos jogadores). So' aparecem depois que o Mestre "assume o controle" de um
+// NPC pela primeira vez (fpNpcTakeControl) — ate' la', o NPC e' so' o
+// pontinho estatico desenhado na propria grade da planta.
+function fpRenderNpcTokens(roomId, floorIdx) {
+  var h = '';
+  for (var k in fbNpcTokens) {
+    var t = fbNpcTokens[k];
+    if (!t || t.roomId !== roomId || t.floorIdx !== floorIdx) continue;
+    var hex = fpColorHex(t.color || 'r');
+    var label = ((t.name || 'N') + '').charAt(0).toUpperCase();
+    var clickable = (lvl >= 6);
+    var evt = clickable ? (' onclick="fpNpcTokenMenu(\'' + k + '\')"') : '';
+    var mine = (_npcControl && _npcControl.key === k);
+    h += '<div title="' + fpFurnEsc(t.name || 'NPC') + ' [NPC]' + (clickable ? ' — clique para controlar/dar' : '') + '"' + evt + ' style="position:absolute; left:' + (t.x * FP_CELL) + 'px; top:' + (t.y * FP_CELL) + 'px; width:' + FP_CELL + 'px; height:' + FP_CELL + 'px; display:flex; align-items:center; justify-content:center; transition:left 0.15s linear, top 0.15s linear; pointer-events:' + (clickable ? 'auto' : 'none') + '; cursor:' + (clickable ? 'pointer' : 'default') + ';">' +
+      '<div style="width:15px; height:15px; background:' + hex + '; border:2px solid #000; ' + (mine ? 'box-shadow:0 0 0 2px var(--y);' : '') + ' transform:rotate(45deg); display:flex; align-items:center; justify-content:center;"><span style="transform:rotate(-45deg); font-size:0.65em; font-weight:bold; color:#000;">' + label + '</span></div></div>';
+  }
+  return h;
+}
+
+function fpRenderTokensLayer(roomId, floorIdx) {
+  return '<div id="fpTokensLayer" style="position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none;">' +
+    fpRenderPlayerTokens(roomId, floorIdx) + fpRenderNpcTokens(roomId, floorIdx) + '</div>';
+}
+
+// Atualiza SO a camada de tokens (jogadores + NPCs) na planta atual, sem
+// redesenhar a grade inteira. Usado a cada passo (seta clicada ou posicao de
+// outro jogador/NPC chegando pelo Firebase) para nao causar o "flicker"/reset
+// de zoom que uma troca completa de innerHTML da planta inteira causava.
 function fpUpdateTokensLayer() {
   var el = document.getElementById('fpTokensLayer');
   if (!el || !_fpViewRoomId) { fpRenderView(); return; }
-  el.outerHTML = fpRenderPlayerTokens(_fpViewRoomId, _fpViewFloor);
+  el.outerHTML = fpRenderTokensLayer(_fpViewRoomId, _fpViewFloor);
 }
 
 // Muda a cor do TOKEN do proprio jogador logado no mapa (visivel para todos).
@@ -6162,6 +6264,134 @@ function fpPlayerMove(dx, dy) {
   if (cell && cell.t === 'x') {
     fpPortalReveal(cell);
   }
+}
+
+// ============== MOVIMENTO / ENTREGA DO NPC CONTROLADO PELO MESTRE ==============
+function fpRenderNpcArrowPanel() {
+  return '<div style="display:inline-grid; grid-template-columns:44px 44px 44px; grid-template-rows:44px 44px 44px; gap:4px;">' +
+    '<div></div><button class="btn btn-s" onclick="fpNpcMove(0,-1)">&#9650;</button><div></div>' +
+    '<button class="btn btn-s" onclick="fpNpcMove(-1,0)">&#9664;</button><div></div><button class="btn btn-s" onclick="fpNpcMove(1,0)">&#9654;</button>' +
+    '<div></div><button class="btn btn-s" onclick="fpNpcMove(0,1)">&#9660;</button><div></div>' +
+    '</div>';
+}
+
+// Move o token do NPC sob controle (dx,dy = -1/0/1). Mesma logica basica de
+// bloqueio de parede/mobilia solida que fpPlayerMove usa — sem os gatilhos de
+// porta trancada/escada, ja que o Mestre nao precisa validar nada disso.
+function fpNpcMove(dx, dy) {
+  if (lvl < 6 || !_npcControl) return;
+  var plan = fpGetPlan(_npcControl.roomId);
+  if (!plan) return;
+  var floor = plan.floors[_npcControl.floorIdx];
+  var t = fbNpcTokens[_npcControl.key];
+  if (!t || !floor) return;
+  var nx = t.x + dx, ny = t.y + dy;
+  if (nx < 0 || ny < 0 || nx >= floor.cols || ny >= floor.rows) return;
+  var cell = floor.cells[nx + '_' + ny];
+  if (cell && (cell.t === 'w' || cell.t === 'q' || cell.t === 'f' || (cell.t === 'm' && fpFurnDef(cell.ft).blocks))) return;
+  t.x = nx; t.y = ny;
+  fbNpcTokens[_npcControl.key] = t;
+  if (typeof fbDB !== 'undefined') fbDB.ref('npcTokens/' + _npcControl.key).set(t);
+  if (_fpViewRoomId === _npcControl.roomId && _fpViewFloor === _npcControl.floorIdx) fpUpdateTokensLayer();
+}
+
+// Cria (se ainda nao existir) o token movel de um NPC na posicao onde ele esta
+// desenhado na planta, e passa a controla-lo. A partir daqui esse NPC ganha
+// um losango colorido que anda pelo mapa com as setas, visivel por todos.
+function fpNpcTakeControl(c, r) {
+  if (lvl < 6) return;
+  var plan = fpGetPlan(_fpViewRoomId);
+  if (!plan) return;
+  var npc = plan.floors[_fpViewFloor].npcs[c + '_' + r];
+  if (!npc) return;
+  var key = _fpViewRoomId + '|' + _fpViewFloor + '|' + c + '_' + r;
+  var data = fbNpcTokens[key] || { roomId: _fpViewRoomId, floorIdx: _fpViewFloor, x: parseInt(c), y: parseInt(r), name: npc.name || 'NPC', color: npc.color || 'r' };
+  fbNpcTokens[key] = data;
+  if (typeof fbDB !== 'undefined') fbDB.ref('npcTokens/' + key).set(data);
+  _npcControl = { key: key, roomId: _fpViewRoomId, floorIdx: _fpViewFloor, name: data.name };
+  fpRenderView();
+}
+
+// Libera o controle (o token do NPC continua visivel onde parou — representa
+// o NPC "ficando" naquele lugar ate' o Mestre assumir de novo).
+function fpNpcStopControl() {
+  _npcControl = null;
+  fpRenderView();
+}
+
+// Tira o token do NPC do mapa por completo (ele volta a ser so' o pontinho
+// estatico da planta, sem posicao propria ate' alguem controlar de novo).
+function fpNpcRemoveToken(key) {
+  if (lvl < 6) return;
+  delete fbNpcTokens[key];
+  if (typeof fbDB !== 'undefined') fbDB.ref('npcTokens/' + key).remove();
+  if (_npcControl && _npcControl.key === key) _npcControl = null;
+  fpRenderView();
+}
+
+// Menu rapido ao clicar no losango (token) de um NPC ja ativo no mapa.
+function fpNpcTokenMenu(key) {
+  if (lvl < 6) return;
+  var t = fbNpcTokens[key];
+  if (!t) return;
+  var h = '<div class="dv"><div class="dh"><h1>NPC: ' + fpFurnEsc(t.name || 'NPC') + '</h1></div>';
+  h += '<div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">';
+  var safeName = (t.name || 'NPC').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  h += '<button class="btn" onclick="_npcControl={key:\'' + key + '\',roomId:\'' + t.roomId + '\',floorIdx:' + t.floorIdx + ',name:\'' + safeName + '\'}; fpRenderView();">ASSUMIR CONTROLE</button>';
+  h += '<button class="btn btn-s btn-r" onclick="fpNpcRemoveToken(\'' + key + '\')">REMOVER DO MAPA</button>';
+  h += '<button class="btn btn-s" onclick="fpRenderView()">VOLTAR A PLANTA</button></div></div>';
+  document.getElementById('mt').textContent = 'NPC: ' + (t.name || '');
+  document.getElementById('mb').innerHTML = h;
+  document.getElementById('md').classList.add('on');
+}
+
+// ============== DAR NA MAO DIRETO DO MAPA (clique no token do jogador / entrega como NPC) ==============
+function fpHandModeButtons() {
+  function modeBtn(m, lab) {
+    var on = _handMode === m;
+    return '<button class="btn btn-s" style="' + (on ? 'border-color:var(--y); color:var(--y);' : '') + '" onclick="handSetMode(\'' + m + '\')">' + lab + '</button>';
+  }
+  return '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">' +
+    modeBtn('labcard', 'CARTA DO LABORATORIO') + modeBtn('item', 'ITEM DO CATALOGO') + modeBtn('dclass', 'DOSSIE CLASSE-D') + modeBtn('custom', 'PAPEL AVULSO') + '</div>';
+}
+
+// Clique direto no token de um jogador no mapa: abre a entrega ja com o alvo
+// escolhido, sem precisar ir ao painel admin.
+function fpOpenGiveForPlayer(key) {
+  if (lvl < 6) return;
+  var p = fbPlayers[key];
+  var name = (p && p.nm) || key;
+  var h = '<div class="dv"><div class="dh"><h1>DAR PARA ' + fpFurnEsc(name) + '</h1></div>';
+  h += fpHandModeButtons();
+  h += '<div id="handModeBody">' + handRenderModeBody() + '</div>';
+  h += '<div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">' +
+    '<button class="btn" onclick="handDeliverTo(\'' + key + '\')">ENTREGAR NA MAO</button>' +
+    '<button class="btn btn-s" onclick="fpRenderView()">VOLTAR A PLANTA</button></div></div>';
+  document.getElementById('mt').textContent = 'DAR NA MAO: ' + name;
+  document.getElementById('mb').innerHTML = h;
+  document.getElementById('md').classList.add('on');
+}
+
+// Entrega "como" o NPC que o Mestre esta controlando no momento — escolhe o
+// jogador destino na hora (o NPC pode estar perto de qualquer um deles).
+function fpOpenGiveAsNpc() {
+  if (lvl < 6 || !_npcControl) return;
+  var keys = Object.keys(PASS).sort();
+  var h = '<div class="dv"><div class="dh"><h1>DAR COMO ' + fpFurnEsc(_npcControl.name).toUpperCase() + '</h1></div>';
+  h += '<div class="fg"><label>Jogador</label><select id="handTargetSelect" style="width:100%; background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:8px;">';
+  for (var i = 0; i < keys.length; i++) {
+    if (keys[i] === userKey) continue;
+    h += '<option value="' + keys[i] + '">' + fpFurnEsc(PASS[keys[i]].nm) + ' (' + keys[i] + ')</option>';
+  }
+  h += '</select></div>';
+  h += fpHandModeButtons();
+  h += '<div id="handModeBody">' + handRenderModeBody() + '</div>';
+  h += '<div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">' +
+    '<button class="btn" onclick="handDeliverAsNpc()">ENTREGAR NA MAO</button>' +
+    '<button class="btn btn-s" onclick="fpRenderView()">VOLTAR A PLANTA</button></div></div>';
+  document.getElementById('mt').textContent = 'DAR COMO NPC';
+  document.getElementById('mb').innerHTML = h;
+  document.getElementById('md').classList.add('on');
 }
 
 var FP_WALL_SHAPES = [
@@ -6606,10 +6836,10 @@ function fpRenderView() {
     h += '<div id="fpPlanScroll" style="margin:18px 0; overflow:auto; max-width:100%;">';
     h += '<div style="position:relative; width:' + (curFloor.cols * FP_CELL) + 'px;">';
     h += fpRenderGrid(roomId, _fpViewFloor, curFloor, false);
-    h += fpRenderPlayerTokens(roomId, _fpViewFloor);
+    h += fpRenderTokensLayer(roomId, _fpViewFloor);
     h += '</div></div>';
-    h += '<div style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Linha solida = parede &nbsp;&nbsp; linha tracejada + &#128682;/&#128274; = porta (ande ate ela para destrancar/atravessar) &nbsp;&nbsp; &#9650;/&#9660; = escada para o andar de cima/baixo (ande ate ela para subir/descer) &nbsp;&nbsp; <span style="color:var(--b);">&#9654;</span> seta azul = passagem para OUTRA AREA (ande ate ela para ver a revelacao e atravessar) &nbsp;&nbsp; bloco colorido = quadrado/objeto de cenario (bloqueia a passagem) &nbsp;&nbsp; ponto colorido = NPC (clique para ver ficha) &nbsp;&nbsp; borda verde + &#9873; = ponto de entrada &nbsp;&nbsp; circulo colorido = jogador, cada um com a cor que escolheu &nbsp; (<span style="color:var(--y);">contorno amarelo</span> = voce)</div>';
-    h += '<div style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Mobília <span style="color:var(--y);">âmbar</span>: cadeira/sofá/cama nao bloqueiam — ande ate elas para sentar/deitar (o token fica menor sobre o desenho). Mesa/estante/armário bloqueiam e podem ser clicadas para deixar ou pegar itens (um pontinho amarelo no canto avisa que ha algo la). Vaso/luminária so decoram e bloqueiam; tapete e so decorativo e nao bloqueia.</div>';
+    h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Linha solida = parede &nbsp;&nbsp; linha tracejada + &#128682;/&#128274; = porta (ande ate ela para destrancar/atravessar) &nbsp;&nbsp; &#9650;/&#9660; = escada para o andar de cima/baixo (ande ate ela para subir/descer) &nbsp;&nbsp; <span style="color:var(--b);">&#9654;</span> seta azul = passagem para OUTRA AREA (ande ate ela para ver a revelacao e atravessar) &nbsp;&nbsp; bloco colorido = quadrado/objeto de cenario (bloqueia a passagem) &nbsp;&nbsp; ponto colorido = NPC (clique para ver ficha) &nbsp;&nbsp; losango colorido = NPC sob controle do Mestre &nbsp;&nbsp; borda verde + &#9873; = ponto de entrada &nbsp;&nbsp; circulo colorido = jogador, cada um com a cor que escolheu &nbsp; (<span style="color:var(--y);">contorno amarelo</span> = voce)</div>';
+    h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Mobília <span style="color:var(--y);">âmbar</span>: cadeira/sofá/cama nao bloqueiam — ande ate elas para sentar/deitar (o token fica menor sobre o desenho). Mesa/estante/armário bloqueiam e podem ser clicadas para deixar ou pegar itens (um pontinho amarelo no canto avisa que ha algo la). Vaso/luminária so decoram e bloqueiam; tapete e so decorativo e nao bloqueia.</div>';
     if (userKey) {
       fpEnsureMyPosition(roomId, _fpViewFloor, curFloor);
       var myColor = (fbPlayers[userKey] && fbPlayers[userKey].color) || 'y';
@@ -6620,6 +6850,15 @@ function fpRenderView() {
       h += '<div style="margin:16px 0; padding:14px; border:1px solid var(--bd);">';
       h += '<div style="color:var(--gd); font-size:0.72em; letter-spacing:1px; margin-bottom:10px; text-align:center;">COR DO SEU PERSONAGEM NO MAPA</div>';
       h += fpRenderPaletteSwatches(myColor, 'fpSetMyColor', true);
+      h += '</div>';
+    }
+    if (lvl >= 6 && _npcControl && _npcControl.roomId === roomId && _npcControl.floorIdx === _fpViewFloor) {
+      h += '<div style="margin:16px 0; padding:14px; border:1px solid var(--y);">';
+      h += '<div style="color:var(--y); font-size:0.75em; letter-spacing:1px; margin-bottom:10px; text-align:center;">CONTROLANDO NPC: ' + fpFurnEsc(_npcControl.name) + '</div>';
+      h += '<div style="text-align:center;">' + fpRenderNpcArrowPanel() + '</div>';
+      h += '<div style="text-align:center; margin-top:10px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">' +
+        '<button class="btn btn-s" onclick="fpOpenGiveAsNpc()">DAR COMO ' + fpFurnEsc(_npcControl.name).toUpperCase() + '</button>' +
+        '<button class="btn btn-s" onclick="fpNpcStopControl()">PARAR DE CONTROLAR</button></div>';
       h += '</div>';
     }
   }
@@ -6686,8 +6925,9 @@ function fpNpcInfo(c, r) {
   if (npc.section) h += '<div style="color:var(--gd); font-size:0.8em; letter-spacing:2px; margin-bottom:10px;">' + npc.section + '</div>';
   if (npc.img) h += '<img src="' + npc.img + '" style="max-width:100%; border:1px solid var(--bd); margin-bottom:10px;">';
   h += '<div class="ds"><p>' + (npc.desc || '<span style="color:var(--td);">Sem descricao.</span>') + '</p></div>';
-  h += '<div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">' +
-    '<button class="btn" onclick="fpRenderView()">VOLTAR A PLANTA</button></div></div>';
+  h += '<div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">';
+  if (lvl >= 6) h += '<button class="btn" onclick="fpNpcTakeControl(\'' + c + '\',\'' + r + '\')">ASSUMIR CONTROLE DESTE NPC</button>';
+  h += '<button class="btn btn-s" onclick="fpRenderView()">VOLTAR A PLANTA</button></div></div>';
   document.getElementById('mt').textContent = 'NPC: ' + (npc.name || '');
   document.getElementById('mb').innerHTML = h;
   document.getElementById('md').classList.add('on');
