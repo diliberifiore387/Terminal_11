@@ -1693,6 +1693,7 @@ function doLogin() {
     profileSyncStart();
     fpStartPlayerSync();
     chatStart();
+    handStart();
     document.getElementById('login').classList.remove('on');
     document.getElementById('term').classList.add('on');
     document.getElementById('tu').textContent = a.nm.toUpperCase();
@@ -2256,6 +2257,130 @@ function notesDiscardPaper(id) {
     var papers = notesLoadPapers().filter(function(p) { return p.id !== id; });
     notesSavePapers(papers);
     renderNotes(document.getElementById('tcnt'));
+}
+
+// ============== DAR NA MAO [MESTRE] ==============
+// Entrega direta: o Mestre manda uma carta de laboratorio (qualquer classe de
+// SCP), um item do catalogo, um dossie de Classe-D ou um papel avulso direto
+// pra aba PAPEIS do bloco de notas de um jogador especifico — sem precisar que
+// ele esteja perto de nenhuma mobilia na planta. Fica numa fila no Firebase
+// (hand/gifts/<login>); cada aparelho logado com aquele login recebe via
+// listener, guarda local (notesAddPaper, igual pegar de uma mesa) e a entrada
+// e' removida da fila (ja' foi entregue).
+var _handStarted = false;
+var _handKeysSeen = {};
+var _handMode = 'labcard'; // 'labcard' | 'item' | 'dclass' | 'custom'
+
+function handStart() {
+    if (_handStarted || !userKey || typeof fbDB === 'undefined') return;
+    _handStarted = true;
+    fbDB.ref('hand/gifts/' + userKey).on('child_added', function(snap) {
+        var key = snap.key;
+        if (_handKeysSeen[key]) return;
+        _handKeysSeen[key] = true;
+        var g = snap.val();
+        if (g) {
+            notesAddPaper({ kind: g.kind, refId: g.refId, name: g.name, desc: g.desc, by: g.by, ts: g.ts || Date.now() });
+            sfxNotify();
+            handShowToast(g);
+            if (nav === 'notes') renderNotes(document.getElementById('tcnt'));
+        }
+        fbDB.ref('hand/gifts/' + userKey + '/' + key).remove();
+    });
+}
+
+function handResolveLabel(g) {
+    if (g.kind === 'labcard') { var c = fpFindLabCard(g.refId); return c ? (c.num + ' — ' + c.title) : 'uma carta de laboratorio'; }
+    if (g.kind === 'item') { var it = fpFindCatalogItem(g.refId); return it ? it.name : 'um item'; }
+    if (g.kind === 'dclass') { var d = fpFindDClass(g.refId); return d ? (d.code + ' — ' + d.name) : 'um dossie'; }
+    return g.name || 'um papel avulso';
+}
+
+function handShowToast(g) {
+    var el = document.createElement('div');
+    el.textContent = '\u2709 VOCE RECEBEU ALGO DO MESTRE: ' + handResolveLabel(g) + ' — veja em NOTAS > PAPEIS';
+    el.style.cssText = 'position:fixed; top:16px; right:16px; left:16px; max-width:320px; margin-left:auto; z-index:99999; background:rgba(0,20,0,0.96); border:1px solid var(--g); color:var(--g); padding:12px 16px; font-size:0.78em; line-height:1.4; box-shadow:0 0 14px rgba(0,255,65,0.35); font-family:inherit; cursor:pointer;';
+    el.onclick = function() { go('notes'); notesSwitchTab('papers'); el.remove(); };
+    document.body.appendChild(el);
+    setTimeout(function() {
+        el.style.transition = 'opacity 0.5s';
+        el.style.opacity = '0';
+        setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 500);
+    }, 6000);
+}
+
+function handSetMode(m) {
+    _handMode = m;
+    var el = document.getElementById('handModeBody');
+    if (el) el.innerHTML = handRenderModeBody();
+}
+
+function handRenderModeBody() {
+    if (_handMode === 'labcard') {
+        if (!labCards.length) return '<div style="color:var(--td); font-size:0.8em; margin-bottom:14px;">Nenhuma carta de laboratorio cadastrada ainda.</div>';
+        var opts = '';
+        for (var i = 0; i < labCards.length; i++) opts += '<option value="' + labCards[i].id + '">' + fpFurnEsc(labCards[i].num) + ' — ' + fpFurnEsc(labCards[i].title) + ' [' + labCards[i].cls + ']</option>';
+        return '<div class="fg"><label>Carta (qualquer classe)</label><select id="handRefSelect" style="width:100%; background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:8px;">' + opts + '</select></div>';
+    } else if (_handMode === 'item') {
+        if (!items.length) return '<div style="color:var(--td); font-size:0.8em; margin-bottom:14px;">Nenhum item no catalogo de recursos.</div>';
+        var opts2 = '';
+        for (var j = 0; j < items.length; j++) opts2 += '<option value="' + items[j].id + '">' + fpFurnEsc(items[j].name) + ' (' + fpFurnEsc(items[j].type) + ')</option>';
+        return '<div class="fg"><label>Item do catalogo</label><select id="handRefSelect" style="width:100%; background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:8px;">' + opts2 + '</select></div>';
+    } else if (_handMode === 'dclass') {
+        if (!dclass.length) return '<div style="color:var(--td); font-size:0.8em; margin-bottom:14px;">Nenhum dossie de Classe-D cadastrado.</div>';
+        var opts3 = '';
+        for (var k = 0; k < dclass.length; k++) opts3 += '<option value="' + dclass[k].id + '">' + fpFurnEsc(dclass[k].code) + ' — ' + fpFurnEsc(dclass[k].name) + '</option>';
+        return '<div class="fg"><label>Dossie Classe-D</label><select id="handRefSelect" style="width:100%; background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:8px;">' + opts3 + '</select></div>';
+    }
+    return '<div class="fg"><label>Titulo do papel</label><input type="text" id="handCustomName" placeholder="Ex: Bilhete rasgado"></div>' +
+        '<div class="fg"><label>Conteudo</label><textarea id="handCustomDesc" placeholder="O que esta escrito no papel..." style="min-height:70px;"></textarea></div>';
+}
+
+function renderHandGiveSection() {
+    var keys = Object.keys(PASS).sort();
+    var h = '<div style="margin-bottom:25px;">' +
+        '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:12px;">&gt; DAR NA MAO [MESTRE]</div>' +
+        '<div style="background:rgba(0,20,0,0.3); border:1px solid var(--bd); padding:18px;">' +
+        '<div style="color:var(--td); font-size:0.75em; margin-bottom:12px;">Entrega algo direto na mao de um jogador — cai na aba PAPEIS do bloco de notas dele na hora, sem precisar estar perto de nenhuma mobilia na planta. Funciona com cartas de laboratorio de qualquer classe (Safe, Euclid, Keter, Thaumiel, Apollyon), itens do catalogo, dossies de Classe-D ou um papel avulso escrito na hora.</div>';
+    h += '<div class="fg"><label>Jogador</label><select id="handTargetSelect" style="width:100%; background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:8px;">';
+    for (var i = 0; i < keys.length; i++) {
+        if (keys[i] === userKey) continue;
+        h += '<option value="' + keys[i] + '">' + fpFurnEsc(PASS[keys[i]].nm) + ' (' + keys[i] + ')</option>';
+    }
+    h += '</select></div>';
+    function modeBtn(m, lab) {
+        var on = _handMode === m;
+        return '<button class="btn btn-s" style="' + (on ? 'border-color:var(--y); color:var(--y);' : '') + '" onclick="handSetMode(\'' + m + '\')">' + lab + '</button>';
+    }
+    h += '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">' +
+        modeBtn('labcard', 'CARTA DO LABORATORIO') + modeBtn('item', 'ITEM DO CATALOGO') + modeBtn('dclass', 'DOSSIE CLASSE-D') + modeBtn('custom', 'PAPEL AVULSO') + '</div>';
+    h += '<div id="handModeBody">' + handRenderModeBody() + '</div>';
+    h += '<button class="btn" style="margin-top:8px;" onclick="handDeliver()">ENTREGAR NA MAO</button>';
+    h += '</div></div>';
+    return h;
+}
+
+function handDeliver() {
+    if (lvl < 6) return;
+    var sel = document.getElementById('handTargetSelect');
+    if (!sel || !sel.value) { alert('ESCOLHA UM JOGADOR.'); return; }
+    var target = sel.value;
+    var entry = { kind: _handMode, by: (user && user.nm) || userKey, ts: Date.now() };
+    if (_handMode === 'custom') {
+        var nmEl = document.getElementById('handCustomName');
+        var dsEl = document.getElementById('handCustomDesc');
+        var nm = nmEl ? nmEl.value.trim() : '';
+        if (!nm) { alert('DE UM TITULO PRO PAPEL.'); return; }
+        entry.name = nm;
+        entry.desc = dsEl ? dsEl.value.trim() : '';
+    } else {
+        var refEl = document.getElementById('handRefSelect');
+        if (!refEl || !refEl.value) { alert('ESCOLHA UM ITEM PARA ENTREGAR.'); return; }
+        entry.refId = refEl.value;
+    }
+    if (typeof fbDB === 'undefined') { alert('SEM CONEXAO COM O BANCO DE DADOS.'); return; }
+    fbDB.ref('hand/gifts/' + target).push(entry);
+    alert('ENTREGUE NA MAO DE ' + ((PASS[target] && PASS[target].nm) || target) + '.');
 }
 
 // ============== BANCO DE DADOS SCP ==============
@@ -3047,16 +3172,16 @@ function renderItemForm(c, itemId) {
 // o mesmo card.itemEffects[itemId] que a tela da carta SCP tambem le/escreve.
 var _ifScpEffectsDraft = [];
 function ifRenderScpEffectRows() {
-    var safeCards = labCards.filter(function(cc) { return cc.cls === 'Safe'; });
-    if (!safeCards.length) return '<div style="color:var(--td); font-size:0.78em; margin-bottom:10px;">Nenhuma carta Classe Safe cadastrada ainda.</div>';
+    var allCards = labCards;
+    if (!allCards.length) return '<div style="color:var(--td); font-size:0.78em; margin-bottom:10px;">Nenhuma carta de laboratorio cadastrada ainda.</div>';
     if (!_ifScpEffectsDraft.length) return '<div style="color:var(--td); font-size:0.78em; margin-bottom:10px;">Nenhum efeito definido pra este item ainda.</div>';
     var rh = '';
     for (var i = 0; i < _ifScpEffectsDraft.length; i++) {
         var row = _ifScpEffectsDraft[i];
         rh += '<div style="border:1px solid var(--bd); padding:10px; margin-bottom:8px;">' +
             '<div class="fr"><div class="fg"><label>SCP</label><select onchange="_ifScpEffectsDraft[' + i + '].cardId=this.value">';
-        for (var j = 0; j < safeCards.length; j++) {
-            rh += '<option value="' + safeCards[j].id + '"' + (row.cardId === safeCards[j].id ? ' selected' : '') + '>' + safeCards[j].num + ' — ' + safeCards[j].title + '</option>';
+        for (var j = 0; j < allCards.length; j++) {
+            rh += '<option value="' + allCards[j].id + '"' + (row.cardId === allCards[j].id ? ' selected' : '') + '>' + allCards[j].num + ' — ' + allCards[j].title + ' [' + allCards[j].cls + ']</option>';
         }
         rh += '</select></div>' +
             '<div class="fg"><label>DT</label><input type="number" value="' + row.dt + '" oninput="_ifScpEffectsDraft[' + i + '].dt=parseInt(this.value)||0" style="width:100%;"></div></div>' +
@@ -3067,9 +3192,9 @@ function ifRenderScpEffectRows() {
     return rh;
 }
 function ifAddScpEffectRow() {
-    var safeCards = labCards.filter(function(cc) { return cc.cls === 'Safe'; });
-    if (!safeCards.length) { alert('NENHUMA CARTA CLASSE SAFE CADASTRADA AINDA.'); return; }
-    _ifScpEffectsDraft.push({ cardId: safeCards[0].id, efeito: '', dt: 15 });
+    var allCards = labCards;
+    if (!allCards.length) { alert('NENHUMA CARTA DE LABORATORIO CADASTRADA AINDA.'); return; }
+    _ifScpEffectsDraft.push({ cardId: allCards[0].id, efeito: '', dt: 15 });
     var el = document.getElementById('ifScpEffectsRows');
     if (el) el.innerHTML = ifRenderScpEffectRows();
 }
@@ -3636,6 +3761,7 @@ function renderAdmin(c) {
             '</div></div>';
         h += renderMusicAdminSection();
         h += renderSoundpadAdminSection();
+        h += renderHandGiveSection();
     }
     h += '<div style="margin-bottom:25px;">' +
         '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:12px;">&gt; GERENCIAMENTO DE CARTAS DO LABORATORIO [ADMIN]</div>' +
@@ -6618,8 +6744,9 @@ function fpFindLabCard(id) { for (var i = 0; i < labCards.length; i++) if (labCa
 function fpFindCatalogItem(id) { for (var i = 0; i < items.length; i++) if (items[i].id === id) return items[i]; return null; }
 function fpFindDClass(id) { for (var i = 0; i < dclass.length; i++) if (dclass[i].id === id) return dclass[i]; return null; }
 
-// ============== OBJETO SCP NA PLANTA (Classe Safe, por enquanto) ==============
-// Peca especial de mobilia que representa fisicamente um SCP (Classe Safe) numa
+// ============== OBJETO SCP NA PLANTA (qualquer classe) ==============
+// Peca especial de mobilia que representa fisicamente um SCP (de qualquer
+// classe — Safe, Euclid, Keter, Thaumiel, Apollyon) numa
 // sala (ex.: Camara de Testes, Ala de Contencao Safe). Pesquisadores (Nivel 1+)
 // colocam itens do catalogo na "bandeja de teste" em frente ao objeto. So' o
 // Mestre (Nivel 6) ve o que cada item faria naquele SCP e a DT — o resto (rolar
@@ -7080,16 +7207,16 @@ function fpRenderEditor() {
       h += fpRenderPaletteSwatches(_fpEdit.furnColor || 'r', 'fpSetFurnColor', false);
     }
     if (curFDef.scpObj) {
-      var safeCards = labCards.filter(function(cc) { return cc.cls === 'Safe'; });
-      h += '<div style="color:var(--gd); font-size:0.72em; margin-bottom:4px;">SCP VINCULADO (somente Classe Safe por enquanto):</div>';
-      if (!safeCards.length) {
-        h += '<div style="color:var(--r); font-size:0.75em; margin-bottom:10px;">Nenhuma carta Classe Safe cadastrada no Laboratorio ainda — crie uma antes de colocar um objeto SCP na planta.</div>';
+      var allScpCards = labCards;
+      h += '<div style="color:var(--gd); font-size:0.72em; margin-bottom:4px;">SCP VINCULADO (qualquer classe — Safe, Euclid, Keter, Thaumiel, Apollyon):</div>';
+      if (!allScpCards.length) {
+        h += '<div style="color:var(--r); font-size:0.75em; margin-bottom:10px;">Nenhuma carta cadastrada no Laboratorio ainda — crie uma antes de colocar um objeto SCP na planta.</div>';
       } else {
         h += '<select id="fpScpRefSelect" onchange="fpSetScpRef(this.value)" style="width:100%; margin-bottom:10px; background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:8px;">' +
           '<option value="">-- SELECIONE O SCP --</option>';
-        for (var sci = 0; sci < safeCards.length; sci++) {
-          var scc = safeCards[sci];
-          h += '<option value="' + scc.id + '"' + (_fpEdit.scpRef === scc.id ? ' selected' : '') + '>' + fpFurnEsc(scc.num) + ' — ' + fpFurnEsc(scc.title) + '</option>';
+        for (var sci = 0; sci < allScpCards.length; sci++) {
+          var scc = allScpCards[sci];
+          h += '<option value="' + scc.id + '"' + (_fpEdit.scpRef === scc.id ? ' selected' : '') + '>' + fpFurnEsc(scc.num) + ' — ' + fpFurnEsc(scc.title) + ' [' + scc.cls + ']</option>';
         }
         h += '</select>';
       }
@@ -7103,7 +7230,7 @@ function fpRenderEditor() {
     h += '<div style="color:var(--td); font-size:0.72em; margin-bottom:10px;">' + curFHelp + ' Qualquer jogador pode clicar na peca colocada para ler a descricao. Clique numa celula para colocar a mobilia selecionada (com a descricao acima).</div>';
   }
 
-  h += '<div style="margin:10px 0; overflow:auto; max-width:100%;">' + fpRenderGrid(_fpEdit.roomId, _fpEdit.floorIdx, floor, true) + '</div>';
+  h += '<div id="fpEditGridWrap" style="margin:10px 0; overflow:auto; max-width:100%;">' + fpRenderGrid(_fpEdit.roomId, _fpEdit.floorIdx, floor, true) + '</div>';
   h += '<div style="display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; margin:14px 0;">' +
     '<label style="font-size:0.75em; color:var(--gd);">COLUNAS<br><input id="fpCols" type="number" min="4" max="30" value="' + floor.cols + '" style="width:60px; background:rgba(0,20,0,0.5); border:1px solid var(--bd); color:var(--g); padding:5px; margin-top:3px;"></label>' +
     '<label style="font-size:0.75em; color:var(--gd);">LINHAS<br><input id="fpRows" type="number" min="4" max="30" value="' + floor.rows + '" style="width:60px; background:rgba(0,20,0,0.5); border:1px solid var(--bd); color:var(--g); padding:5px; margin-top:3px;"></label>' +
@@ -7153,6 +7280,21 @@ function fpRenameFloor() {
   fpRenderEditor();
 }
 
+// Atualiza SO' a grade do editor (sem recriar o modal ".dv" inteiro) — evita o
+// "flick" (a animacao fadeIn do ".dv" reiniciando a cada clique) e preserva a
+// posicao de scroll/zoom do jogador ao colocar parede/mobilia/quadrado/etc.
+// Usado no lugar de fpRenderEditor() para qualquer acao que so' muda o conteudo
+// de uma celula, sem alterar o restante do painel (ferramentas, andares...).
+function fpUpdateEditGrid() {
+  if (!_fpEdit) return;
+  var wrap = document.getElementById('fpEditGridWrap');
+  if (!wrap) { fpRenderEditor(); return; }
+  var prevScroll = { left: wrap.scrollLeft, top: wrap.scrollTop };
+  wrap.innerHTML = fpRenderGrid(_fpEdit.roomId, _fpEdit.floorIdx, fpCurFloor(), true);
+  wrap.scrollLeft = prevScroll.left;
+  wrap.scrollTop = prevScroll.top;
+}
+
 function fpCellClick(c, r) {
   if (!_fpEdit) return;
   var floor = fpCurFloor();
@@ -7196,7 +7338,7 @@ function fpCellClick(c, r) {
   } else if (_fpEdit.tool === 'm') {
     var placeFurnType = _fpEdit.furnType || 'chair';
     if (placeFurnType === 'scpobj') {
-      if (!_fpEdit.scpRef) { alert('Escolha um SCP (Classe Safe) vinculado antes de colocar o objeto.'); return; }
+      if (!_fpEdit.scpRef) { alert('Escolha um SCP vinculado antes de colocar o objeto.'); return; }
       floor.cells[key] = { t: 'm', ft: 'scpobj', scpRef: _fpEdit.scpRef, desc: (_fpEdit.furnDesc || '').trim() };
     } else {
       floor.cells[key] = { t: 'm', ft: placeFurnType, dir: _fpEdit.furnDir || 'n', color: _fpEdit.furnColor || 'r', desc: (_fpEdit.furnDesc || '').trim() };
@@ -7207,7 +7349,7 @@ function fpCellClick(c, r) {
   } else if (_fpEdit.tool === 'p') {
     floor.spawn = { x: c, y: r };
   }
-  fpRenderEditor();
+  fpUpdateEditGrid();
 }
 
 // Formulario da SETA DE SAIDA: escolhe a area de destino (nao pode ser a propria
