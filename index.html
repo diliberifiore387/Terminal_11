@@ -6560,9 +6560,14 @@ function mapSharedSyncStart() {
       // Na primeira leitura, se o Firebase ainda estiver vazio, mantem os dados
       // locais/padrao como estao (o primeiro save do Mestre semeia o mundo).
       if (_mapSharedFirstCallback[field]) { _mapSharedFirstCallback[field] = false; if (v === null) return; }
-      if (v === null) return;
+      // A PARTIR DAQUI, v === null NAO significa "sem dados ainda" — o Firebase apaga
+      // sozinho qualquer objeto/array que fique vazio (ex.: o Mestre retirou a ultima
+      // carta atribuida a uma area, e essa era a unica area com algo atribuido naquele
+      // mapa). Isso E' uma atualizacao real e precisa zerar o mapState local; se so'
+      // desse "return" aqui, os jogadores ficavam com a carta antiga presa na tela ate'
+      // recarregar a pagina.
       if (!mapState) loadMapState();
-      mapState[field] = v;
+      mapState[field] = (v === null) ? {} : v;
       // 'floorplans' e' um caso especial: o Firebase pode ter um snapshot antigo
       // ou incompleto (ex.: de antes de existir planta padrao pra toda area).
       // Sobrescrever mapState.floorplans direto com isso apagaria a planta de
