@@ -1839,28 +1839,22 @@ function loadItems() {
         if (s) items = JSON.parse(s);
         else { items = defaultItems(); saveItems(); }
     } catch(e) { items = defaultItems(); }
-    // Migracao: itens salvos antes de existir "usosMax" ganham o maximo igual ao valor atual
-    var needsSave = false;
-    for (var i = 0; i < items.length; i++) {
-        if (typeof items[i].usosMax !== 'number') { items[i].usosMax = items[i].uses; needsSave = true; }
-        if (items[i].uses > items[i].usosMax) { items[i].uses = items[i].usosMax; needsSave = true; }
-    }
-    if (needsSave) saveItems();
+    // Itens tem usos ilimitados: nao ha mais contagem/maximo de usos para migrar.
 }
 function saveItems() { try { localStorage.setItem('scpITEMS_v1', JSON.stringify(items)); } catch(e) {} worldPush('items', items); }
 
 function defaultItems() {
     return [
-        { id:'item-001', name:'Polaroid Instamatic', type:'Ferramenta', desc:'Camera instantanea capaz de capturar imagens de entidades incorporeas. As fotos revelam detalhes invisiveis ao olho nu.', effect:'Revela fraquezas ocultas de SCPs incorporeos. Eficacia varia.', efficacy:'media', uses:5, usosMax:5, rarity:'raro', clr:2, imgs:[], dt:new Date().toISOString() },
-        { id:'item-002', name:'Martelo de Contencao', type:'Arma/Utilitario', desc:'Martelo reforcado com ligas de titanio e insercoes de prata. Projetado para quebrar barreiras e incapacitar ameacas menores.', effect:'Causa dano fisico moderado. Ineficaz contra SCPs de classe Keter.', efficacy:'baixa', uses:10, usosMax:10, rarity:'comum', clr:1, imgs:[], dt:new Date().toISOString() },
-        { id:'item-003', name:'Lanterna UV-Especial', type:'Ferramenta', desc:'Lanterna que emite luz ultravioleta de alta intensidade. Capaz de revelar residuos organicos e tracos de anomalias.', effect:'Revela tracos organicos e residuos de SCPs. Nao causa dano direto.', efficacy:'media', uses:8, usosMax:8, rarity:'comum', clr:1, imgs:[], dt:new Date().toISOString() },
-        { id:'item-004', name:'Giz de Contencao', type:'Consumivel', desc:'Giz revestido com compostos quimicos retardantes. Usado para marcar zonas seguras ou criar barreiras temporarias.', effect:'Cria uma barreira temporaria de 1 metro. SCPs de baixa ameaca sao repelidos.', efficacy:'baixa', uses:3, usosMax:3, rarity:'comum', clr:1, imgs:[], dt:new Date().toISOString() },
-        { id:'item-005', name:'Caneta Amnestica', type:'Consumivel', desc:'Caneta contendo nanobots amnesticos. Ao tocar a pele, libera uma dose controlada de agentes de memetica.', effect:'Apaga memorias de contato com SCPs. Eficaz apenas em humanos.', efficacy:'alta', uses:1, usosMax:1, rarity:'epico', clr:3, imgs:[], dt:new Date().toISOString() },
-        { id:'item-006', name:'Camera Termica MTF', type:'Ferramenta', desc:'Camera termica militar com alcance de 500m. Detecta assinaturas termicas anomalas mesmo atraves de paredes.', effect:'Detecta presenca de SCPs termicos em ate 500m. Nao funciona com entidades frias.', efficacy:'media', uses:15, usosMax:15, rarity:'raro', clr:2, imgs:[], dt:new Date().toISOString() },
-        { id:'item-007', name:'Cruz de Prata', type:'Artefato', desc:'Cruz antiga de prata pura com inscricoes em latim. Origem desconhecida. Emite um campo de repulsao leve.', effect:'Repelente contra entidades de origem demoniaca ou sobrenatural. Resultados inconsistentes.', efficacy:'baixa', uses:999, usosMax:999, rarity:'raro', clr:2, imgs:[], dt:new Date().toISOString() },
-        { id:'item-008', name:'Kit Medico de Emergencia', type:'Consumivel', desc:'Kit medico padrao da Fundacao com bandagens, antissepticos e seringas de adrenalina.', effect:'Recupera saude de pessoal ferido. Nao funciona em SCPs.', efficacy:'alta', uses:3, usosMax:3, rarity:'comum', clr:1, imgs:[], dt:new Date().toISOString() },
-        { id:'item-009', name:'Dispositivo de Ressonancia', type:'Ferramenta', desc:'Emite ondas sonoras de frequencia especifica. Capaz de interromper padroes cognitivos hostis.', effect:'Interrompe efeitos cognitivos de SCPs memeticos por 30 segundos.', efficacy:'alta', uses:4, usosMax:4, rarity:'epico', clr:3, imgs:[], dt:new Date().toISOString() },
-        { id:'item-010', name:'Seringa de Acido', type:'Arma/Consumivel', desc:'Seringa contendo acido cloridrico concentrado. Perigosa para o usuario e alvo.', effect:'Causa dano quimico severo. Eficaz contra SCPs de materiais organicos.', efficacy:'media', uses:2, usosMax:2, rarity:'comum', clr:1, imgs:[], dt:new Date().toISOString() }
+        { id:'item-001', name:'Polaroid Instamatic', type:'Ferramenta', desc:'Camera instantanea capaz de capturar imagens de entidades incorporeas. As fotos revelam detalhes invisiveis ao olho nu.', effect:'Revela fraquezas ocultas de SCPs incorporeos. Eficacia varia.', efficacy:'media', rarity:'raro', clr:2, imgs:[], dt:new Date().toISOString() },
+        { id:'item-002', name:'Martelo de Contencao', type:'Arma/Utilitario', desc:'Martelo reforcado com ligas de titanio e insercoes de prata. Projetado para quebrar barreiras e incapacitar ameacas menores.', effect:'Causa dano fisico moderado. Ineficaz contra SCPs de classe Keter.', efficacy:'baixa', rarity:'comum', clr:1, imgs:[], dt:new Date().toISOString() },
+        { id:'item-003', name:'Lanterna UV-Especial', type:'Ferramenta', desc:'Lanterna que emite luz ultravioleta de alta intensidade. Capaz de revelar residuos organicos e tracos de anomalias.', effect:'Revela tracos organicos e residuos de SCPs. Nao causa dano direto.', efficacy:'media', rarity:'comum', clr:1, imgs:[], dt:new Date().toISOString() },
+        { id:'item-004', name:'Giz de Contencao', type:'Consumivel', desc:'Giz revestido com compostos quimicos retardantes. Usado para marcar zonas seguras ou criar barreiras temporarias.', effect:'Cria uma barreira temporaria de 1 metro. SCPs de baixa ameaca sao repelidos.', efficacy:'baixa', rarity:'comum', clr:1, imgs:[], dt:new Date().toISOString() },
+        { id:'item-005', name:'Caneta Amnestica', type:'Consumivel', desc:'Caneta contendo nanobots amnesticos. Ao tocar a pele, libera uma dose controlada de agentes de memetica.', effect:'Apaga memorias de contato com SCPs. Eficaz apenas em humanos.', efficacy:'alta', rarity:'epico', clr:3, imgs:[], dt:new Date().toISOString() },
+        { id:'item-006', name:'Camera Termica MTF', type:'Ferramenta', desc:'Camera termica militar com alcance de 500m. Detecta assinaturas termicas anomalas mesmo atraves de paredes.', effect:'Detecta presenca de SCPs termicos em ate 500m. Nao funciona com entidades frias.', efficacy:'media', rarity:'raro', clr:2, imgs:[], dt:new Date().toISOString() },
+        { id:'item-007', name:'Cruz de Prata', type:'Artefato', desc:'Cruz antiga de prata pura com inscricoes em latim. Origem desconhecida. Emite um campo de repulsao leve.', effect:'Repelente contra entidades de origem demoniaca ou sobrenatural. Resultados inconsistentes.', efficacy:'baixa', rarity:'raro', clr:2, imgs:[], dt:new Date().toISOString() },
+        { id:'item-008', name:'Kit Medico de Emergencia', type:'Consumivel', desc:'Kit medico padrao da Fundacao com bandagens, antissepticos e seringas de adrenalina.', effect:'Recupera saude de pessoal ferido. Nao funciona em SCPs.', efficacy:'alta', rarity:'comum', clr:1, imgs:[], dt:new Date().toISOString() },
+        { id:'item-009', name:'Dispositivo de Ressonancia', type:'Ferramenta', desc:'Emite ondas sonoras de frequencia especifica. Capaz de interromper padroes cognitivos hostis.', effect:'Interrompe efeitos cognitivos de SCPs memeticos por 30 segundos.', efficacy:'alta', rarity:'epico', clr:3, imgs:[], dt:new Date().toISOString() },
+        { id:'item-010', name:'Seringa de Acido', type:'Arma/Consumivel', desc:'Seringa contendo acido cloridrico concentrado. Perigosa para o usuario e alvo.', effect:'Causa dano quimico severo. Eficaz contra SCPs de materiais organicos.', efficacy:'media', rarity:'comum', clr:1, imgs:[], dt:new Date().toISOString() }
     ];
 }
 
@@ -2681,7 +2675,7 @@ function renderLab(c) {
         h += '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:10px;">Mostrando so' + ' os itens disponiveis nesta area (' + ((mapRoomById(mapState.current) || {}).name || mapState.current) + ').</div>';
         h += '<div class="lab-filters">' +
             '<button class="lab-filter-btn active" onclick="filterLabItem(\'all\',this)">TODOS</button>' +
-            '<button class="lab-filter-btn" onclick="filterLabItem(\'alta\',this)">USOS ALTA</button>' +
+            '<button class="lab-filter-btn" onclick="filterLabItem(\'raro\',this)">RAROS/EPICOS</button>' +
             '<button class="lab-filter-btn" onclick="filterLabItem(\'consumivel\',this)">CONSUMIVEIS</button>' +
             '</div>';
         h += '<div class="lab-grid" id="itemGrid">' + renderItemGrid(_labPool) + '</div>';
@@ -2699,49 +2693,72 @@ function renderLab(c) {
 }
 
 // ============== INVENTARIO PESSOAL ==============
-// Fora de areas marcadas como laboral, a aba LABORATORIO vira INVENTARIO: uma
-// listinha pessoal e simples do que o personagem carrega nos bolsos (caneta,
-// cracha, agrafador, chaves...). E' local (localStorage), so' o proprio jogador
-// ve e edita a sua.
+// Fora de areas marcadas como laboral, a aba LABORATORIO vira INVENTARIO: as
+// cartas de item que o proprio personagem esta carregando — exatamente as
+// mesmas cartas usadas dentro de um laboratorio (mesma imagem, descricao,
+// efeito contra SCPs), so' que escolhidas pelo jogador em vez de atribuidas
+// pelo Mestre a uma area. E' local (localStorage), so' o proprio jogador
+// ve e edita a sua. Os itens tem usos ilimitados — nao ha nenhum numero para
+// controlar, a carta so' fica ali disponivel para ser usada.
 var INV_STORAGE_KEY = 'scpINVENTORY_v1';
 function loadInventory() { try { return JSON.parse(localStorage.getItem(INV_STORAGE_KEY) || '[]'); } catch (e) { return []; } }
 function saveInventoryList(list) { try { localStorage.setItem(INV_STORAGE_KEY, JSON.stringify(list)); } catch (e) {} }
 
 function renderInventory(c) {
-    var list = loadInventory();
-    var h = '<div style="max-width:650px;">' +
-        '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:12px;">&gt; INVENTARIO PESSOAL</div>' +
-        '<div class="help-text" style="color:var(--td); font-size:0.8em; margin-bottom:18px;">O que o seu personagem carrega nos bolsos — coisas pequenas do dia a dia (uma caneta, um cracha, um agrafador). Isto e\' pessoal e so' + ' voce ve. Ao entrar numa area de laboratorio/testes, esta aba vira LABORATORIO com os itens daquele lugar.</div>';
-    h += '<div style="display:flex; gap:8px; margin-bottom:16px;">' +
-        '<input type="text" id="invNewItem" placeholder="Novo item (ex: caneta, agrafador...)" style="flex:1;" onkeydown="if(event.key===\'Enter\'){invAddItem();}">' +
-        '<button class="btn" onclick="invAddItem()">ADICIONAR</button></div>';
+    var ids = loadInventory();
+    var list = items.filter(function(it) { return ids.indexOf(it.id) !== -1; });
+    var h = '<div>' +
+        '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:12px;">&gt; INVENTARIO PESSOAL // CARTAS DE ITEM</div>' +
+        '<div class="help-text" style="color:var(--td); font-size:0.8em; margin-bottom:18px;">Os itens que o seu personagem esta carregando — as mesmas cartas de um laboratorio, so' + ' que escolhidas por voce e sempre disponiveis, sem limite de usos. Ao entrar numa area de laboratorio/testes, esta aba vira LABORATORIO com os itens daquele lugar.</div>';
+    h += '<div style="margin-bottom:16px;"><button class="btn" onclick="invOpenPicker()">+ ADICIONAR ITENS</button></div>';
     if (!list.length) {
         h += '<div style="text-align:center; padding:40px 20px; color:var(--td); border:1px dashed var(--bd);">SEUS BOLSOS ESTAO VAZIOS.</div>';
     } else {
-        h += '<div style="display:flex; flex-direction:column; gap:8px;">';
-        for (var i = 0; i < list.length; i++) {
-            h += '<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 14px; border:1px solid var(--bd);">' +
-                '<span>' + fpFurnEsc(list[i]) + '</span>' +
-                '<button class="btn btn-s btn-r" onclick="invRemoveItem(' + i + ')">REMOVER</button></div>';
-        }
-        h += '</div>';
+        h += '<div class="lab-grid" id="invGrid">' + renderItemGrid(list, true) + '</div>';
     }
     h += '</div>';
     c.innerHTML = h;
 }
 
-function invAddItem() {
-    var el = document.getElementById('invNewItem');
-    if (!el || !el.value.trim()) return;
-    var list = loadInventory();
-    list.push(el.value.trim());
-    saveInventoryList(list);
+// Tela pra o jogador escolher, dentre TODO o catalogo de itens ja cadastrado
+// (o mesmo catalogo que o Mestre usa pra montar os laboratorios), quais o seu
+// personagem esta carregando no inventario pessoal.
+function invOpenPicker() {
+    var current = loadInventory();
+    var h = '<div class="dv"><div class="dh"><h1>ADICIONAR ITENS AO INVENTARIO</h1></div>';
+    h += '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Escolha quais itens do catalogo o seu personagem esta carregando.</div>';
+    if (!items.length) {
+        h += '<div style="color:var(--td); font-size:0.8em; margin-bottom:14px;">Nenhum item cadastrado no catalogo ainda.</div>';
+    } else {
+        h += '<div style="display:flex; flex-direction:column; gap:8px; max-height:400px; overflow:auto; margin-bottom:14px; padding:10px; border:1px solid var(--bd);">';
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            var checked = current.indexOf(it.id) !== -1;
+            h += '<label style="display:flex; align-items:center; gap:8px; cursor:pointer;"><input type="checkbox" value="' + it.id + '" ' + (checked ? 'checked' : '') + ' id="invItemChk_' + it.id + '"> ' + fpFurnEsc(it.name || it.id) + '</label>';
+        }
+        h += '</div>';
+    }
+    h += '<div style="display:flex; gap:10px; flex-wrap:wrap;">' +
+        '<button class="btn" onclick="invSavePicked()">SALVAR</button>' +
+        '<button class="btn btn-s" onclick="xmd()">CANCELAR</button></div></div>';
+    document.getElementById('mt').textContent = 'INVENTARIO';
+    document.getElementById('mb').innerHTML = h;
+    document.getElementById('md').classList.add('on');
+}
+
+function invSavePicked() {
+    var boxes = document.querySelectorAll('#mb input[type="checkbox"][id^="invItemChk_"]');
+    var picked = [];
+    for (var i = 0; i < boxes.length; i++) if (boxes[i].checked) picked.push(boxes[i].value);
+    saveInventoryList(picked);
+    xmd();
     renderInventory(document.getElementById('tcnt'));
 }
 
-function invRemoveItem(idx) {
+function invRemoveItem(itemId) {
     var list = loadInventory();
-    list.splice(idx, 1);
+    var idx = list.indexOf(itemId);
+    if (idx !== -1) list.splice(idx, 1);
     saveInventoryList(list);
     renderInventory(document.getElementById('tcnt'));
 }
@@ -2929,8 +2946,15 @@ function doResearch(cardId) {
     viewLabCard(cardId);
 }
 
-// ============== LAB GRID ITENS ==============
-function renderItemGrid(itemList) {
+// ============== GRID DE CARTAS DE ITEM ==============
+// Usado tanto pelo LABORATORIO (itens atribuidos a area) quanto pelo INVENTARIO
+// pessoal (itens que o proprio jogador escolheu carregar) — sao exatamente as
+// mesmas cartas nos dois lugares. Os itens tem usos ilimitados: nao existe
+// nenhuma contagem de usos, o item so' fica disponivel para ser usado sempre
+// que precisar.
+// Se removable=true, a carta ganha um botao para tirar o item do inventario
+// pessoal (usado so' na aba INVENTARIO; no LABORATORIO isso nao aparece).
+function renderItemGrid(itemList, removable) {
     if (!itemList.length) return '<div style="text-align:center; padding:50px; color:var(--td);">NENHUM ITEM ENCONTRADO</div>';
     var h = '';
     for (var i = 0; i < itemList.length; i++) {
@@ -2957,21 +2981,16 @@ function renderItemGrid(itemList) {
             '<div class="item-effect-label">EFEITO CONTRA SCPs</div>' +
             '<div class="item-effect-text">' + it.effect + '</div>' +
             '</div>' +
-            '<div style="margin-top:10px; padding:8px; background:rgba(0,20,0,0.3); border:1px solid var(--bd); border-radius:4px;">' +
-            '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">' +
-            '<span style="font-size:0.75em; color:var(--td); letter-spacing:1px;">USOS RESTANTES</span>' +
-            '<span style="font-size:1em; font-weight:bold;"><span class="item-uses-value" style="color:var(--g);">' + it.uses + '</span><span style="color:var(--td); font-weight:normal;"> / ' + it.usosMax + '</span></span></div>' +
-            '<div style="display:flex; gap:4px;">' +
-            '<button class="btn btn-s" style="flex:1; padding:4px 8px; font-size:0.7em;" onclick="event.stopPropagation(); adjustItemUses(\'' + it.id + '\', -1)">-1</button>' +
-            '<button class="btn btn-s" style="flex:1; padding:4px 8px; font-size:0.7em;" onclick="event.stopPropagation(); adjustItemUses(\'' + it.id + '\', 1)">+1</button>' +
-            '<button class="btn btn-s" style="flex:1; padding:4px 8px; font-size:0.7em;" onclick="event.stopPropagation(); setItemUses(\'' + it.id + '\')">DEFINIR</button>' +
-            '</div></div>' +
             '</div>';
 
         h += '<div class="item-footer">' +
-            '<span style="font-size:0.7em; color:var(--td); letter-spacing:1px;">ITEM</span>' +
-            '<span class="item-uses">USOS MAX: <span class="item-usesmax-value">' + it.usosMax + '</span></span>' +
-            '</div>';
+            '<span class="item-uses" style="color:var(--g); font-size:0.7em; letter-spacing:1px;">&#8734; USO ILIMITADO</span>';
+        if (removable) {
+            h += '<button class="btn btn-s btn-r" style="padding:3px 8px; font-size:0.7em;" onclick="event.stopPropagation(); invRemoveItem(\'' + it.id + '\')">REMOVER</button>';
+        } else {
+            h += '<span style="font-size:0.7em; color:var(--td); letter-spacing:1px;">ITEM</span>';
+        }
+        h += '</div>';
 
         h += '</div>';
     }
@@ -2993,8 +3012,8 @@ function filterLabItem(filter, btn) {
     btn.classList.add('active');
     var pool = currentLabItemPool();
     var filtered = pool;
-    if (filter === 'alta') filtered = pool.filter(function(it) { return it.usosMax >= 8; });
-    else if (filter === 'consumivel') filtered = pool.filter(function(it) { return it.type.indexOf('Consumivel') !== -1 || it.usosMax <= 3; });
+    if (filter === 'raro') filtered = pool.filter(function(it) { return it.rarity === 'raro' || it.rarity === 'epico'; });
+    else if (filter === 'consumivel') filtered = pool.filter(function(it) { return it.type.indexOf('Consumivel') !== -1; });
     document.getElementById('itemGrid').innerHTML = renderItemGrid(filtered);
 }
 
@@ -3006,7 +3025,7 @@ function viewItem(itemId) {
     var h = '<div class="dv">' +
         '<div class="dh"><h1>' + it.name + '</h1><h2>' + it.type + '</h2>' +
         '<span class="dc" style="color:var(--b); border-color:var(--b);">ITEM/RECURSO</span>' +
-        '<div style="margin-top:8px; color:var(--y); font-size:0.82em;">USOS RESTANTES: ' + it.uses + ' / ' + it.usosMax + '</div></div>';
+        '<div style="margin-top:8px; color:var(--g); font-size:0.82em;">&#8734; USO ILIMITADO</div></div>';
 
     if (it.imgs && it.imgs.length) {
         h += '<div style="margin:18px 0; text-align:center; background:rgba(0,10,0,0.5); padding:18px; border:1px solid var(--bd);">';
@@ -3017,18 +3036,10 @@ function viewItem(itemId) {
     h += '<div class="ds"><h3>&gt; Descricao</h3><p>' + it.desc + '</p></div>' +
         '<div class="ds"><h3>&gt; Efeito Contra SCPs</h3><p>' + it.effect + '</p></div>' +
         '<div class="ds"><h3>&gt; Usos</h3>' +
-        '<div style="background:rgba(0,20,0,0.3); border:1px solid var(--bd); padding:18px; border-radius:8px;">' +
-        '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">' +
-        '<span style="color:var(--td); font-size:0.9em;">Usos Maximos:</span>' +
-        '<span style="color:var(--t); font-size:1.1em; font-weight:bold;">' + it.usosMax + '</span></div>' +
-        '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">' +
-        '<span style="color:var(--td); font-size:0.9em;">Usos Restantes:</span>' +
-        '<span style="color:var(--g); font-size:1.4em; font-weight:bold;">' + it.uses + '</span></div>' +
-        '<div style="display:flex; gap:8px;">' +
-        '<button class="btn btn-r" style="flex:1;" onclick="adjustItemUses(\'' + it.id + '\', -1)">-1 USO</button>' +
-        '<button class="btn" style="flex:1;" onclick="adjustItemUses(\'' + it.id + '\', 1)">+1 USO</button>' +
-        '<button class="btn" style="flex:1;" onclick="setItemUses(\'' + it.id + '\')">DEFINIR VALOR</button>' +
-        '</div></div></div>';
+        '<div style="background:rgba(0,20,0,0.3); border:1px solid var(--bd); padding:18px; border-radius:8px; text-align:center;">' +
+        '<span style="color:var(--g); font-size:1.1em; font-weight:bold; letter-spacing:2px;">&#8734; USO ILIMITADO</span>' +
+        '<div style="color:var(--td); font-size:0.8em; margin-top:6px;">Este item nao gasta usos — esta sempre disponivel.</div>' +
+        '</div></div>';
 
     if (lvl >= 1) {  // Nível 1 pode editar
         h += '<div style="margin-top:18px; display:flex; gap:10px;">' +
@@ -3237,8 +3248,7 @@ function renderItemForm(c, itemId) {
         '<option' + (isE && it.type==='Arma/Utilitario' ? ' selected' : '') + '>Arma/Utilitario</option>' +
         '<option' + (isE && it.type==='Consumivel' ? ' selected' : '') + '>Consumivel</option>' +
         '<option' + (isE && it.type==='Artefato' ? ' selected' : '') + '>Artefato</option>' +
-        '</select></div>' +
-        '<div class="fg"><label>Usos Maximos</label><input type="number" id="fiuses" min="0" value="' + (isE ? it.usosMax : '5') + '" required></div></div>' +
+        '</select></div></div>' +
         '<div class="fg"><label>Descricao</label><textarea id="fidesc" required>' + (isE ? it.desc : '') + '</textarea></div>' +
         '<div class="fg"><label>Efeito Contra SCPs</label><textarea id="fieffect" required>' + (isE ? it.effect : '') + '</textarea></div>' +
         '<div class="fg"><label>Anexos (Imagens)</label>' +
@@ -3337,24 +3347,15 @@ function rmItemImg(i) { itemImgs.splice(i, 1); rItemImgs(); }
 
 function sItemForm(e) {
     e.preventDefault();
-    var usosMax = parseInt(document.getElementById('fiuses').value);
     var existingIdx = -1;
     var newId = document.getElementById('fiid').value.trim();
     for (var i = 0; i < items.length; i++) if (items[i].id === newId) { existingIdx = i; break; }
-    // Ao editar, os usos restantes sao preservados (limitados ao novo maximo).
-    // Ao criar um item novo, comeca cheio (usos restantes = usos maximos).
-    var uses = usosMax;
-    if (existingIdx >= 0) {
-        uses = Math.min(items[existingIdx].uses, usosMax);
-    }
     var x = {
         id: newId,
         name: document.getElementById('finame').value.trim(),
         type: document.getElementById('fitype').value,
         desc: document.getElementById('fidesc').value,
         effect: document.getElementById('fieffect').value,
-        usosMax: usosMax,
-        uses: uses,
         clr: 1,
         imgs: itemImgs,
         dt: new Date().toISOString()
@@ -4025,49 +4026,7 @@ function clearDB() {
     updStats(); alert('Banco de dados apagado para todos os jogadores.'); go('db');
 }
 
-// ============== AJUSTE DE USOS ==============
-function adjustItemUses(itemId, delta) {
-    var it = null;
-    for (var i = 0; i < items.length; i++) if (items[i].id === itemId) { it = items[i]; break; }
-    if (!it) return;
-    var max = (typeof it.usosMax === 'number') ? it.usosMax : it.uses;
-    it.uses = Math.max(0, Math.min(max, it.uses + delta));
-    saveItems();
-    refreshItemDisplay(itemId);
-}
-
-function setItemUses(itemId) {
-    var it = null;
-    for (var i = 0; i < items.length; i++) if (items[i].id === itemId) { it = items[i]; break; }
-    if (!it) return;
-    var max = (typeof it.usosMax === 'number') ? it.usosMax : it.uses;
-    var val = prompt('DEFINIR USOS RESTANTES (0 a ' + max + '):', it.uses);
-    if (val === null) return;
-    var n = parseInt(val);
-    if (isNaN(n) || n < 0) { alert('VALOR INVALIDO'); return; }
-    if (n > max) { alert('O valor nao pode ultrapassar o maximo de usos (' + max + ').'); return; }
-    it.uses = n;
-    saveItems();
-    refreshItemDisplay(itemId);
-}
-
-// Atualiza a exibicao dos usos sem abrir a descricao do item.
-// Se a janela de descricao ja estiver aberta para ESTE item, ela e atualizada.
-// Caso contrario (ajuste feito direto na carta da grade), so a carta e atualizada.
-function refreshItemDisplay(itemId) {
-    var modal = document.getElementById('md');
-    var mt = document.getElementById('mt');
-    var modalOpenForThisItem = modal && modal.classList.contains('on') && mt && mt.textContent.indexOf('ITEM:') === 0;
-    if (modalOpenForThisItem) { viewItem(itemId); return; }
-    var it = null;
-    for (var i = 0; i < items.length; i++) if (items[i].id === itemId) { it = items[i]; break; }
-    if (!it) return;
-    var card = document.getElementById('itemcard-' + itemId);
-    if (card) {
-        var vals = card.querySelectorAll('.item-uses-value');
-        for (var j = 0; j < vals.length; j++) vals[j].textContent = it.uses;
-    }
-}
+// (Os itens tem usos ilimitados agora — nao ha mais ajuste/definicao de usos.)
 
 // ============== UTILS ==============
 function updStats() {
