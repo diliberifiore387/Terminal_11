@@ -2658,7 +2658,10 @@ function dItem(id) {
 
 // ============== LABORATORIO ==============
 function renderLab(c) {
-    if (!currentAreaIsLab()) { renderInventory(c); return; }
+    // O Mestre (Nivel 6) pode abrir o CATALOGO GLOBAL de qualquer lugar, mesmo
+    // fora de uma area laboral — todos os outros casos continuam caindo no
+    // INVENTARIO pessoal fora de areas marcadas.
+    if (!currentAreaIsLab() && !(lvl >= 6 && labTab === 'global')) { renderInventory(c); return; }
     var h = '<div style="margin-bottom:18px;">' +
         '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:12px;">&gt; LABORATORIO DE PESQUISA // CARTAS DE ANALISE</div>' +
         '<div style="color:var(--td); font-size:0.8em; margin-bottom:18px;">Examine cartas de pesquisa para adquirir conhecimento sobre SCPs, Itens e Classe-D.</div>';
@@ -2668,18 +2671,21 @@ function renderLab(c) {
         '<button class="lab-tab' + (labTab==='scp' ? ' on' : '') + '" onclick="switchLabTab(\'scp\')">&gt; SCPs</button>' +
         '<button class="lab-tab' + (labTab==='item' ? ' on' : '') + '" onclick="switchLabTab(\'item\')">&gt; ITENS/RECURSOS</button>' +
         '<button class="lab-tab' + (labTab==='dclass' ? ' on' : '') + '" onclick="switchLabTab(\'dclass\')">&gt; CLASSE-D</button>' +
+        (lvl >= 6 ? '<button class="lab-tab' + (labTab==='global' ? ' on' : '') + '" style="' + (labTab==='global' ? '' : 'border-color:var(--p,#b967ff); color:var(--p,#b967ff);') + '" onclick="switchLabTab(\'global\')">&gt; CATALOGO GLOBAL (MESTRE)</button>' : '') +
         '</div>';
 
     if (labTab === 'scp') {
+        var _cardPool = currentLabCardPool();
+        if (lvl >= 6) h += '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:10px;">Mostrando so' + ' as cartas SCP disponiveis nesta area (' + ((mapRoomById(mapState.current) || {}).name || mapState.current) + '). Use o CATALOGO GLOBAL para gerenciar todas de uma vez.</div>';
         h += '<div class="lab-filters">' +
             '<button class="lab-filter-btn active" onclick="filterLabSCP(\'all\',this)">TODAS</button>' +
             '<button class="lab-filter-btn" onclick="filterLabSCP(\'unlocked\',this)">DESBLOQUEADAS</button>' +
             '<button class="lab-filter-btn" onclick="filterLabSCP(\'locked\',this)">BLOQUEADAS</button>' +
             '</div>';
-        h += '<div class="lab-grid" id="labGrid">' + renderLabGrid(labCards) + '</div>';
+        h += '<div class="lab-grid" id="labGrid">' + renderLabGrid(_cardPool) + '</div>';
     } else if (labTab === 'item') {
         var _labPool = currentLabItemPool();
-        h += '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:10px;">Mostrando so' + ' os itens disponiveis nesta area (' + ((mapRoomById(mapState.current) || {}).name || mapState.current) + ').</div>';
+        h += '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:10px;">Mostrando so' + ' os itens disponiveis nesta area (' + ((mapRoomById(mapState.current) || {}).name || mapState.current) + ').' + (lvl >= 6 ? ' Use o CATALOGO GLOBAL para gerenciar todos de uma vez.' : '') + '</div>';
         h += '<div class="lab-filters">' +
             '<button class="lab-filter-btn active" onclick="filterLabItem(\'all\',this)">TODOS</button>' +
             '<button class="lab-filter-btn" onclick="filterLabItem(\'alta\',this)">USOS ALTA</button>' +
@@ -2687,12 +2693,16 @@ function renderLab(c) {
             '</div>';
         h += '<div class="lab-grid" id="itemGrid">' + renderItemGrid(_labPool) + '</div>';
     } else if (labTab === 'dclass') {
+        var _dclassPool = currentLabDClassPool();
+        if (lvl >= 6) h += '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:10px;">Mostrando so' + ' os dossies Classe-D disponiveis nesta area (' + ((mapRoomById(mapState.current) || {}).name || mapState.current) + '). Use o CATALOGO GLOBAL para gerenciar todos de uma vez.</div>';
         h += '<div class="lab-filters">' +
             '<button class="lab-filter-btn active" onclick="filterLabDClass(\'all\',this)">TODOS</button>' +
             '<button class="lab-filter-btn" onclick="filterLabDClass(\'ativo\',this)">ATIVOS</button>' +
             '<button class="lab-filter-btn" onclick="filterLabDClass(\'morto\',this)">MORTOS</button>' +
             '</div>';
-        h += '<div class="lab-grid" id="dclassGrid">' + renderDClassGrid(dclass) + '</div>';
+        h += '<div class="lab-grid" id="dclassGrid">' + renderDClassGrid(_dclassPool) + '</div>';
+    } else if (labTab === 'global') {
+        h += renderLabGlobalCatalog();
     }
 
     h += '</div>';
@@ -2735,7 +2745,8 @@ function renderInventory(c) {
     var h = '<div>' +
         '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:12px;">&gt; INVENTARIO PESSOAL</div>' +
         '<div class="help-text" style="color:var(--td); font-size:0.8em; margin-bottom:18px;">O que o seu personagem carrega, em cartoes — do mesmo jeito que no Laboratorio. Isto e\' pessoal e so' + ' voce ve e edita. Ao entrar numa area de laboratorio/testes, esta aba vira LABORATORIO com so' + ' os itens daquele lugar.</div>' +
-        '<div style="margin-bottom:16px;"><button class="btn" onclick="renderInvItemForm(document.getElementById(\'tcnt\'))">+ NOVO CARTAO DE ITEM</button></div>';
+        '<div style="margin-bottom:16px; display:flex; gap:10px; flex-wrap:wrap;"><button class="btn" onclick="renderInvItemForm(document.getElementById(\'tcnt\'))">+ NOVO CARTAO DE ITEM</button>' +
+        (lvl >= 6 ? '<button class="btn btn-s" style="border-color:var(--p,#b967ff); color:var(--p,#b967ff);" onclick="labTab=\'global\'; renderLab(document.getElementById(\'tcnt\'))">&gt; CATALOGO GLOBAL (MESTRE)</button>' : '') + '</div>';
     if (!list.length) {
         h += '<div style="text-align:center; padding:40px 20px; color:var(--td); border:1px dashed var(--bd);">SEUS BOLSOS ESTAO VAZIOS.</div>';
     } else {
@@ -3083,9 +3094,10 @@ function filterLabSCP(filter, btn) {
     var btns = document.querySelectorAll('.lab-filter-btn');
     for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
     btn.classList.add('active');
-    var filtered = labCards;
-    if (filter === 'unlocked') filtered = labCards.filter(function(c) { return c.unlocked; });
-    else if (filter === 'locked') filtered = labCards.filter(function(c) { return !c.unlocked; });
+    var pool = currentLabCardPool();
+    var filtered = pool;
+    if (filter === 'unlocked') filtered = pool.filter(function(c) { return c.unlocked; });
+    else if (filter === 'locked') filtered = pool.filter(function(c) { return !c.unlocked; });
     document.getElementById('labGrid').innerHTML = renderLabGrid(filtered);
 }
 
@@ -3235,6 +3247,145 @@ function currentLabItemPool() {
     if (!currentAreaIsLab()) return items;
     var ids = (mapState.labItems && mapState.labItems[mapState.current]) || [];
     return items.filter(function(it) { return ids.indexOf(it.id) !== -1; });
+}
+
+// Mesmo esquema do currentLabItemPool, mas para cartas SCP e dossies de
+// Classe-D — agora as tres "cartas do laboratorio" (SCP, Item, Classe-D)
+// funcionam no mesmo patamar: dentro de uma area laboral, o jogador so' ve
+// as que o Mestre atribuiu especificamente aquele lugar.
+function currentLabCardPool() {
+    if (!currentAreaIsLab()) return labCards;
+    var ids = (mapState.labScp && mapState.labScp[mapState.current]) || [];
+    return labCards.filter(function(c) { return ids.indexOf(c.id) !== -1; });
+}
+function currentLabDClassPool() {
+    if (!currentAreaIsLab()) return dclass;
+    var ids = (mapState.labDclass && mapState.labDclass[mapState.current]) || [];
+    return dclass.filter(function(d) { return ids.indexOf(d.id) !== -1; });
+}
+
+// Nome do campo em mapState que guarda a atribuicao por area para cada tipo
+// de carta do laboratorio.
+function labAssignMapFor(type) {
+    if (type === 'scp') return 'labScp';
+    if (type === 'item') return 'labItems';
+    return 'labDclass';
+}
+function labPoolFor(type) {
+    if (type === 'scp') return labCards;
+    if (type === 'item') return items;
+    return dclass;
+}
+function labEntryLabel(type, x) {
+    if (type === 'scp') return x.num + ' \u2014 ' + x.title;
+    if (type === 'item') return x.name || x.id;
+    return x.code + ' \u2014 ' + x.name;
+}
+function labTypeName(type) {
+    if (type === 'scp') return 'SCPS';
+    if (type === 'item') return 'ITENS';
+    return 'CLASSE-D';
+}
+
+// ============== CATALOGO GLOBAL DO LABORATORIO (APENAS MESTRE, NIVEL 6) ==============
+// Ao contrario das abas normais (que so' mostram as cartas atribuidas a area
+// atual), esta aba mostra TODAS as cartas do sistema — SCPs, Itens e Classe-D,
+// todas no mesmo patamar como "cartas do laboratorio" — e deixa o Mestre
+// gerenciar em quais areas laborais cada uma fica disponivel, sem precisar
+// entrar area por area.
+function renderLabGlobalCatalog() {
+    if (lvl < 6) return '<div style="color:var(--td); font-size:0.8em;">ACESSO RESTRITO AO MESTRE.</div>';
+    var h = '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Aqui estao TODAS as cartas do laboratorio cadastradas no sistema — SCPs, Itens e Classe-D, no mesmo patamar — independente de area. Escolha em quais areas laborais cada carta fica disponivel, ou crie novas cartas.</div>';
+    h += '<div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:22px;">' +
+        '<button class="btn" onclick="openCardEditor()">+ NOVA CARTA SCP</button>' +
+        '<button class="btn" style="border-color:var(--b); color:var(--b);" onclick="renderItemForm(document.getElementById(\'tcnt\'))">+ NOVO ITEM</button>' +
+        '<button class="btn" style="border-color:var(--y); color:var(--y);" onclick="renderDClassForm(document.getElementById(\'tcnt\'))">+ NOVO CLASSE-D</button>' +
+        '</div>';
+
+    h += renderGlobalCatalogSection('SCPS', labCards, 'scp');
+    h += renderGlobalCatalogSection('ITENS/RECURSOS', items, 'item');
+    h += renderGlobalCatalogSection('CLASSE-D', dclass, 'dclass');
+    return h;
+}
+
+function renderGlobalCatalogSection(title, list, type) {
+    var h = '<div class="ds" style="margin-bottom:24px;"><h3>&gt; ' + title + ' (' + list.length + ')</h3>';
+    if (!list.length) {
+        h += '<div style="color:var(--td); font-size:0.8em; padding:10px 0;">Nenhuma entrada cadastrada ainda.</div>';
+    } else {
+        var mapKey = labAssignMapFor(type);
+        var mp = (mapState && mapState[mapKey]) || {};
+        h += '<div style="display:flex; flex-direction:column; gap:6px; margin-top:10px;">';
+        for (var i = 0; i < list.length; i++) {
+            var x = list[i];
+            var count = 0;
+            for (var rid in mp) { if (mp[rid] && mp[rid].indexOf(x.id) !== -1) count++; }
+            h += '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 12px; background:rgba(0,20,0,0.3); border:1px solid var(--bd);">' +
+                '<span style="font-size:0.85em;">' + fpFurnEsc(labEntryLabel(type, x)) + '</span>' +
+                '<span style="display:flex; align-items:center; gap:8px;">' +
+                '<span style="font-size:0.7em; color:var(--td); letter-spacing:1px;">' + count + ' AREA(S)</span>' +
+                '<button class="btn btn-s" onclick="mapManageCardAreas(\'' + type + '\',\'' + x.id + '\')">GERENCIAR AREAS</button>' +
+                '</span></div>';
+        }
+        h += '</div>';
+    }
+    h += '</div>';
+    return h;
+}
+
+// Tela do Mestre pra escolher, dentre TODAS as areas ja marcadas como
+// laboral, em quais uma carta especifica (SCP, Item ou Classe-D) fica
+// disponivel. E' o inverso do mapEditLabPool: aqui parte-se da carta e
+// escolhe-se as areas; la' parte-se da area e escolhem-se as cartas.
+function mapManageCardAreas(type, cardId) {
+    if (lvl < 6) return;
+    if (!mapState) loadMapState();
+    var mapKey = labAssignMapFor(type);
+    if (!mapState[mapKey]) mapState[mapKey] = {};
+    var rooms = mapAllRooms().filter(function(r) { return mapState.labFlags && mapState.labFlags[r.id]; });
+    var pool = labPoolFor(type);
+    var entry = null;
+    for (var i = 0; i < pool.length; i++) if (pool[i].id === cardId) { entry = pool[i]; break; }
+    var label = entry ? labEntryLabel(type, entry) : cardId;
+
+    var h = '<div class="dv"><div class="dh"><h1>AREAS: ' + fpFurnEsc(label) + '</h1></div>';
+    h += '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Marque em quais areas laborais esta carta fica disponivel. So' + ' areas ja marcadas como AREA LABORAL aparecem aqui.</div>';
+    if (!rooms.length) {
+        h += '<div style="color:var(--td); font-size:0.8em; margin-bottom:14px;">Nenhuma area marcada como AREA LABORAL ainda. Va' + ' ao MAPA, abra uma area e marque-a como AREA LABORAL primeiro.</div>';
+    } else {
+        h += '<div style="display:flex; flex-direction:column; gap:8px; max-height:400px; overflow:auto; margin-bottom:14px; padding:10px; border:1px solid var(--bd);">';
+        for (var j = 0; j < rooms.length; j++) {
+            var r = rooms[j];
+            var assigned = (mapState[mapKey][r.id] || []).indexOf(cardId) !== -1;
+            h += '<label style="display:flex; align-items:center; gap:8px; cursor:pointer;"><input type="checkbox" value="' + r.id + '" ' + (assigned ? 'checked' : '') + ' id="cardAreaChk_' + r.id + '"> ' + fpFurnEsc(r.name) + '</label>';
+        }
+        h += '</div>';
+    }
+    h += '<div style="display:flex; gap:10px; flex-wrap:wrap;">' +
+        '<button class="btn" onclick="mapSaveCardAreas(\'' + type + '\',\'' + cardId + '\')">SALVAR</button>' +
+        '<button class="btn btn-s" onclick="xmd(); switchLabTab(\'global\')">VOLTAR</button></div></div>';
+    document.getElementById('mt').textContent = 'AREAS: ' + label;
+    document.getElementById('mb').innerHTML = h;
+    document.getElementById('md').classList.add('on');
+}
+
+function mapSaveCardAreas(type, cardId) {
+    if (lvl < 6) return;
+    var mapKey = labAssignMapFor(type);
+    if (!mapState[mapKey]) mapState[mapKey] = {};
+    var boxes = document.querySelectorAll('#mb input[type="checkbox"][id^="cardAreaChk_"]');
+    for (var i = 0; i < boxes.length; i++) {
+        var rid = boxes[i].value;
+        if (!mapState[mapKey][rid]) mapState[mapKey][rid] = [];
+        var idx = mapState[mapKey][rid].indexOf(cardId);
+        if (boxes[i].checked && idx === -1) mapState[mapKey][rid].push(cardId);
+        else if (!boxes[i].checked && idx !== -1) mapState[mapKey][rid].splice(idx, 1);
+    }
+    saveMapState();
+    mapPushShared(mapKey);
+    xmd();
+    labTab = 'global';
+    renderLab(document.getElementById('tcnt'));
 }
 
 function filterLabItem(filter, btn) {
@@ -3393,9 +3544,10 @@ function filterLabDClass(filter, btn) {
     var btns = document.querySelectorAll('.lab-filter-btn');
     for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
     btn.classList.add('active');
-    var filtered = dclass;
-    if (filter === 'ativo') filtered = dclass.filter(function(d) { return d.status === 'ativo'; });
-    else if (filter === 'morto') filtered = dclass.filter(function(d) { return d.status === 'morto'; });
+    var pool = currentLabDClassPool();
+    var filtered = pool;
+    if (filter === 'ativo') filtered = pool.filter(function(d) { return d.status === 'ativo'; });
+    else if (filter === 'morto') filtered = pool.filter(function(d) { return d.status === 'morto'; });
     document.getElementById('dclassGrid').innerHTML = renderDClassGrid(filtered);
 }
 
@@ -5342,7 +5494,7 @@ function mapIsExtraEdgeKey(key) {
 function cloneDefaultFloorplans() {
   try { return JSON.parse(JSON.stringify(DEFAULT_FLOORPLANS)); } catch (e) { return {}; }
 }
-function defaultMapState() { return { current: 'checkpoint-alfa', log: [], imgs: {}, floorplans: cloneDefaultFloorplans(), visited: { 'checkpoint-alfa': true }, customRooms: [], customLinks: [], posOverrides: {}, labFlags: {}, labItems: {} }; }
+function defaultMapState() { return { current: 'checkpoint-alfa', log: [], imgs: {}, floorplans: cloneDefaultFloorplans(), visited: { 'checkpoint-alfa': true }, customRooms: [], customLinks: [], posOverrides: {}, labFlags: {}, labItems: {}, labScp: {}, labDclass: {} }; }
 
 // Data de "hoje" no formato AAAA-MM-DD.
 function todayStr() { return new Date().toISOString().slice(0, 10); }
@@ -5387,6 +5539,8 @@ function loadMapState() {
   if (!mapState.posOverrides) mapState.posOverrides = {};
   if (!mapState.labFlags) mapState.labFlags = {};
   if (!mapState.labItems) mapState.labItems = {};
+  if (!mapState.labScp) mapState.labScp = {};
+  if (!mapState.labDclass) mapState.labDclass = {};
   mapState.visited[mapState.current] = true;
 }
 
@@ -6163,12 +6317,16 @@ function mapShowRoom(id) {
   if (lvl >= 6) {
     var isLabArea = !!(mapState.labFlags && mapState.labFlags[id]);
     var labItemCount = (mapState.labItems && mapState.labItems[id]) ? mapState.labItems[id].length : 0;
+    var labScpCount = (mapState.labScp && mapState.labScp[id]) ? mapState.labScp[id].length : 0;
+    var labDclassCount = (mapState.labDclass && mapState.labDclass[id]) ? mapState.labDclass[id].length : 0;
     h += '<div class="ds"><h3>&gt; Zona do Mestre</h3>' +
-      '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:10px;">Marque esta area como LABORATORIO/AREA DE TESTES para que, quando um jogador estiver aqui, a aba lateral vire LABORATORIO com so' + ' os itens que voce escolher pra este lugar. Fora de areas marcadas, essa aba mostra o INVENTARIO pessoal de cada jogador.</div>' +
+      '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:10px;">Marque esta area como LABORATORIO/AREA DE TESTES para que, quando um jogador estiver aqui, a aba lateral vire LABORATORIO com so' + ' as cartas (SCPs, Itens e Classe-D — todas no mesmo patamar) que voce escolher pra este lugar. Fora de areas marcadas, essa aba mostra o INVENTARIO pessoal de cada jogador. Voce tambem pode gerenciar tudo de uma vez pelo CATALOGO GLOBAL, na aba LABORATORIO.</div>' +
       '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
       '<button class="btn btn-s" style="' + (isLabArea ? 'border-color:var(--y); color:var(--y);' : '') + '" onclick="mapToggleLabArea(\'' + id + '\')">' + (isLabArea ? '&#10003; AREA LABORAL (ATIVA)' : 'MARCAR COMO AREA LABORAL') + '</button>';
     if (isLabArea) {
-      h += '<button class="btn btn-s" onclick="mapEditLabItems(\'' + id + '\')">ITENS DESTE LABORATORIO (' + labItemCount + ')</button>';
+      h += '<button class="btn btn-s" onclick="mapEditLabPool(\'' + id + '\',\'item\')">ITENS DESTE LABORATORIO (' + labItemCount + ')</button>' +
+        '<button class="btn btn-s" onclick="mapEditLabPool(\'' + id + '\',\'scp\')">SCPS DESTE LABORATORIO (' + labScpCount + ')</button>' +
+        '<button class="btn btn-s" onclick="mapEditLabPool(\'' + id + '\',\'dclass\')">CLASSE-D DESTE LABORATORIO (' + labDclassCount + ')</button>';
     }
     h += '</div></div>';
   }
@@ -6210,43 +6368,50 @@ function mapToggleLabArea(id) {
   mapShowRoom(id);
 }
 
-// Tela do Mestre pra escolher, dentre TODO o catalogo de itens ja cadastrado,
-// quais ficam disponiveis especificamente nesta area laboral. Cada laboratorio/
-// area de testes pode ter um conjunto diferente de itens.
-function mapEditLabItems(id) {
+// Tela do Mestre pra escolher, dentre TODO o catalogo ja cadastrado de um
+// tipo (SCP, Item ou Classe-D), quais ficam disponiveis especificamente
+// nesta area laboral. Cada laboratorio/area de testes pode ter um conjunto
+// diferente de cartas — e os tres tipos funcionam exatamente do mesmo jeito,
+// no mesmo patamar, como "cartas do laboratorio".
+function mapEditLabPool(id, type) {
   if (lvl < 6) return;
   var r = mapRoomById(id);
-  var assigned = (mapState.labItems && mapState.labItems[id]) || [];
-  var h = '<div class="dv"><div class="dh"><h1>ITENS DO LABORATORIO</h1></div>';
-  h += '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Escolha quais itens do catalogo ficam disponiveis nesta area especifica. Jogadores dentro dela so' + ' verao estes itens na aba LABORATORIO.</div>';
-  if (!items.length) {
-    h += '<div style="color:var(--td); font-size:0.8em; margin-bottom:14px;">Nenhum item cadastrado no catalogo ainda — crie itens em LABORATORIO &gt; ITENS/RECURSOS primeiro.</div>';
+  var mapKey = labAssignMapFor(type);
+  if (!mapState[mapKey]) mapState[mapKey] = {};
+  var assigned = mapState[mapKey][id] || [];
+  var pool = labPoolFor(type);
+  var typeName = labTypeName(type);
+  var h = '<div class="dv"><div class="dh"><h1>' + typeName + ' DO LABORATORIO</h1></div>';
+  h += '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Escolha quais ' + typeName.toLowerCase() + ' do catalogo ficam disponiveis nesta area especifica. Jogadores dentro dela so' + ' verao estas cartas na aba LABORATORIO.</div>';
+  if (!pool.length) {
+    h += '<div style="color:var(--td); font-size:0.8em; margin-bottom:14px;">Nenhuma entrada cadastrada no catalogo ainda — crie no CATALOGO GLOBAL, na aba LABORATORIO, primeiro.</div>';
   } else {
     h += '<div style="display:flex; flex-direction:column; gap:8px; max-height:400px; overflow:auto; margin-bottom:14px; padding:10px; border:1px solid var(--bd);">';
-    for (var i = 0; i < items.length; i++) {
-      var it = items[i];
-      var checked = assigned.indexOf(it.id) !== -1;
-      h += '<label style="display:flex; align-items:center; gap:8px; cursor:pointer;"><input type="checkbox" value="' + it.id + '" ' + (checked ? 'checked' : '') + ' id="labItemChk_' + it.id + '"> ' + fpFurnEsc(it.name || it.id) + '</label>';
+    for (var i = 0; i < pool.length; i++) {
+      var x = pool[i];
+      var checked = assigned.indexOf(x.id) !== -1;
+      h += '<label style="display:flex; align-items:center; gap:8px; cursor:pointer;"><input type="checkbox" value="' + x.id + '" ' + (checked ? 'checked' : '') + ' id="labPoolChk_' + x.id + '"> ' + fpFurnEsc(labEntryLabel(type, x)) + '</label>';
     }
     h += '</div>';
   }
   h += '<div style="display:flex; gap:10px; flex-wrap:wrap;">' +
-    '<button class="btn" onclick="mapSaveLabItems(\'' + id + '\')">SALVAR</button>' +
+    '<button class="btn" onclick="mapSaveLabPool(\'' + id + '\',\'' + type + '\')">SALVAR</button>' +
     '<button class="btn btn-s" onclick="mapShowRoom(\'' + id + '\')">VOLTAR</button></div></div>';
-  document.getElementById('mt').textContent = 'ITENS: ' + (r ? r.name : '');
+  document.getElementById('mt').textContent = typeName + ': ' + (r ? r.name : '');
   document.getElementById('mb').innerHTML = h;
   document.getElementById('md').classList.add('on');
 }
 
-function mapSaveLabItems(id) {
+function mapSaveLabPool(id, type) {
   if (lvl < 6) return;
-  var boxes = document.querySelectorAll('#mb input[type="checkbox"][id^="labItemChk_"]');
+  var mapKey = labAssignMapFor(type);
+  var boxes = document.querySelectorAll('#mb input[type="checkbox"][id^="labPoolChk_"]');
   var picked = [];
   for (var i = 0; i < boxes.length; i++) if (boxes[i].checked) picked.push(boxes[i].value);
-  if (!mapState.labItems) mapState.labItems = {};
-  mapState.labItems[id] = picked;
+  if (!mapState[mapKey]) mapState[mapKey] = {};
+  mapState[mapKey][id] = picked;
   saveMapState();
-  mapPushShared('labItems');
+  mapPushShared(mapKey);
   mapShowRoom(id);
 }
 
@@ -6377,8 +6542,8 @@ function fpUpdateFurnitureBadges() {
 // como a base de SCPs/itens/Classe-D ja faz — sem precisar dar reload na pagina.
 // (mapState.current/visited/log ficam DE FORA de proposito: cada jogador tem sua
 // propria posicao no mapa geral, essa parte continua so local por aparelho.)
-var MAP_SHARED_FIELDS = ['floorplans', 'imgs', 'customRooms', 'customLinks', 'posOverrides', 'labFlags', 'labItems'];
-var _mapSharedFirstCallback = { floorplans: true, imgs: true, customRooms: true, customLinks: true, posOverrides: true, labFlags: true, labItems: true };
+var MAP_SHARED_FIELDS = ['floorplans', 'imgs', 'customRooms', 'customLinks', 'posOverrides', 'labFlags', 'labItems', 'labScp', 'labDclass'];
+var _mapSharedFirstCallback = { floorplans: true, imgs: true, customRooms: true, customLinks: true, posOverrides: true, labFlags: true, labItems: true, labScp: true, labDclass: true };
 
 // Chamado depois de qualquer edicao do Mestre num desses campos (alem de
 // saveMapState(), que so grava local).
