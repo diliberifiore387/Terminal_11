@@ -7338,7 +7338,7 @@ function fpCellLineSVG(roomId, floorIdx, floor, c, r, cell) {
 }
 
 function fpRenderGrid(roomId, floorIdx, floor, editable) {
-  var h = '<div style="position:relative; width:' + (floor.cols * FP_CELL) + 'px; height:' + (floor.rows * FP_CELL) + 'px; background:rgba(0,10,0,0.5); border:1px solid var(--bd);">';
+  var h = '<div style="position:relative; width:' + (floor.cols * FP_CELL) + 'px; height:' + (floor.rows * FP_CELL) + 'px; margin:0 auto; background:rgba(0,10,0,0.5); border:1px solid var(--bd);">';
   for (var r = 0; r < floor.rows; r++) {
     for (var c = 0; c < floor.cols; c++) {
       var key = c + '_' + r;
@@ -7445,7 +7445,7 @@ function fpRenderView() {
     var curFloor = plan.floors[_fpViewFloor];
     h += fpFloorTabs(plan, _fpViewFloor, 'fpViewSwitchFloor');
     h += '<div id="fpPlanScroll" style="margin:18px 0; overflow:auto; max-width:100%;">';
-    h += '<div style="position:relative; width:' + (curFloor.cols * FP_CELL) + 'px;">';
+    h += '<div style="position:relative; width:' + (curFloor.cols * FP_CELL) + 'px; margin:0 auto;">';
     h += fpRenderGrid(roomId, _fpViewFloor, curFloor, false);
     h += fpRenderTokensLayer(roomId, _fpViewFloor);
     h += '</div></div>';
