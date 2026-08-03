@@ -7196,6 +7196,7 @@ function fpNormalizePlan(plan) {
     plan = { floors: [{ name: 'Piso 0', cols: plan.cols, rows: plan.rows, cells: plan.cells || {}, npcs: {} }] };
   }
   for (var i = 0; i < plan.floors.length; i++) {
+    if (!plan.floors[i].cells) plan.floors[i].cells = {};
     if (!plan.floors[i].npcs) plan.floors[i].npcs = {};
     if (!plan.floors[i].name) plan.floors[i].name = 'Piso ' + i;
   }
