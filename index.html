@@ -5891,7 +5891,7 @@ function renderMap(c) {
       'repeating-linear-gradient(0deg, rgba(185,103,255,0.1) 0px, rgba(185,103,255,0.1) 1px, transparent 1px, transparent ' + MAP_GRID_SIZE + 'px),' +
       'repeating-linear-gradient(90deg, rgba(185,103,255,0.1) 0px, rgba(185,103,255,0.1) 1px, transparent 1px, transparent ' + MAP_GRID_SIZE + 'px);' :
     '';
-  h += '<div id="mapCanvas" style="position:relative; width:' + totalW + 'px; height:' + totalH + 'px; font-family:\'Courier New\', monospace; zoom:' + _mapZoom + '; ' + gridBg + '">';
+  h += '<div id="mapCanvas" style="position:relative; width:' + totalW + 'px; height:' + totalH + 'px; margin:0 auto; font-family:\'Courier New\', monospace; zoom:' + _mapZoom + '; ' + gridBg + '">';
 
   var allLinks = mapAllLinks();
   var drawn = {};
