@@ -2523,14 +2523,44 @@ function dbAccessible(x) {
 }
 
 function renderDB(c) {
-    var vis = db.filter(dbAccessible);
-    var h = '<div style="margin-bottom:18px;">' +
-        '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:12px;">&gt; BANCO DE DADOS SCP // ' + vis.length + ' ITENS ACESSIVEIS</div>' +
-        '<div class="sbar">' +
-        '<input type="text" id="ds" placeholder="Buscar..." onkeyup="fDB()">' +
-        '<select id="dc" onchange="fDB()"><option value="">TODAS CLASSES</option><option>Safe</option><option>Euclid</option><option>Keter</option><option>Thaumiel</option><option>Apollyon</option></select>' +
-        '</div></div><div class="grid" id="dg">' + rGrid(vis) + '</div>';
-    c.innerHTML = h;
+    try {
+        if (!Array.isArray(db)) db = [];
+        var vis = db.filter(dbAccessible);
+        var h = '<div style="margin-bottom:18px;">' +
+            '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:12px;">&gt; BANCO DE DADOS SCP // ' + vis.length + ' ITENS ACESSIVEIS</div>' +
+            '<div class="sbar">' +
+            '<input type="text" id="ds" placeholder="Buscar..." onkeyup="fDB()">' +
+            '<select id="dc" onchange="fDB()"><option value="">TODAS CLASSES</option><option>Safe</option><option>Euclid</option><option>Keter</option><option>Thaumiel</option><option>Apollyon</option></select>' +
+            '</div></div><div class="grid" id="dg">' + rGrid(vis) + '</div>';
+        c.innerHTML = h;
+    } catch (e) {
+        console.error('ERRO AO RENDERIZAR BANCO DE DADOS:', e);
+        c.innerHTML = '<div style="padding:40px; color:var(--r,#f55); font-size:0.85em;">' +
+            '&gt; ERRO AO CARREGAR O BANCO DE DADOS<br><br>' +
+            'Um documento parece estar com dados invalidos/incompletos e travou a lista.<br>' +
+            'Detalhe tecnico: ' + (e && e.message ? e.message.replace(/</g,'&lt;') : e) + '<br><br>' +
+            '<button class="btn" onclick="dbRepairAndRetry()">TENTAR REPARAR E RECARREGAR</button></div>';
+    }
+}
+
+// Corrige documentos com campos ausentes (tags/desc/imgs/allowed) que podem ter
+// entrado via importacao/edicao manual, e tenta renderizar de novo.
+function dbRepairAndRetry() {
+    if (!Array.isArray(db)) db = [];
+    for (var i = 0; i < db.length; i++) {
+        var x = db[i];
+        if (!x || typeof x !== 'object') continue;
+        if (!Array.isArray(x.tags)) x.tags = [];
+        if (typeof x.desc !== 'string') x.desc = x.desc ? String(x.desc) : '';
+        if (typeof x.cnt !== 'string') x.cnt = x.cnt ? String(x.cnt) : '';
+        if (!Array.isArray(x.imgs)) x.imgs = [];
+        if (!Array.isArray(x.allowed)) x.allowed = [];
+        if (typeof x.num !== 'string') x.num = x.num ? String(x.num) : ('SCP-' + (x.id || i));
+        if (typeof x.tit !== 'string') x.tit = x.tit ? String(x.tit) : '(sem titulo)';
+        if (typeof x.cls !== 'string') x.cls = x.cls || 'Safe';
+    }
+    saveDB();
+    go('db');
 }
 
 function rGrid(items) {
@@ -2538,11 +2568,12 @@ function rGrid(items) {
     var h = '';
     for (var i = 0; i < items.length; i++) {
         var x = items[i];
+        var tg = Array.isArray(x.tags) ? x.tags : [];
         var t = '';
-        for (var j = 0; j < Math.min(x.tags.length, 3); j++) t += '<span style="color:var(--td); font-size:0.72em;">' + x.tags[j] + '</span> ';
+        for (var j = 0; j < Math.min(tg.length, 3); j++) t += '<span style="color:var(--td); font-size:0.72em;">' + tg[j] + '</span> ';
         h += '<div class="card" onclick="vItem(' + x.id + ')">' +
-            '<div class="c-h"><span class="c-n">' + x.num + '</span><span class="c-cl ' + x.cls + '">' + x.cls + '</span></div>' +
-            '<div class="c-t">' + x.tit + '</div>' +
+            '<div class="c-h"><span class="c-n">' + (x.num || '') + '</span><span class="c-cl ' + x.cls + '">' + x.cls + '</span></div>' +
+            '<div class="c-t">' + (x.tit || '') + '</div>' +
             '<div class="c-p">' + (x.desc ? x.desc.substring(0,110) + '...' : '') + '</div>' +
             '<div class="c-m"><span>' + t + '</span></div></div>';
     }
@@ -2554,7 +2585,8 @@ function fDB() {
     var c = document.getElementById('dc').value;
     var f = db.filter(function(x) {
         if (!dbAccessible(x)) return false;
-        var ms = !s || x.num.toLowerCase().indexOf(s) !== -1 || x.tit.toLowerCase().indexOf(s) !== -1 || x.desc.toLowerCase().indexOf(s) !== -1;
+        var num = (x.num || '').toLowerCase(), tit = (x.tit || '').toLowerCase(), desc = (x.desc || '').toLowerCase();
+        var ms = !s || num.indexOf(s) !== -1 || tit.indexOf(s) !== -1 || desc.indexOf(s) !== -1;
         var mc = !c || x.cls === c;
         return ms && mc;
     });
@@ -6830,6 +6862,13 @@ function worldSyncStart() {
       // locais/padrao como estao (o primeiro save de alguem vai semear o mundo).
       if (_worldFirstCallback[field]) { _worldFirstCallback[field] = false; if (!v) return; }
       if (!v) return;
+      // O Firebase transforma um array com "buracos" (indices faltando) num objeto
+      // com chaves string em vez de array — isso quebrava .filter()/.length depois.
+      if (!Array.isArray(v) && typeof v === 'object') {
+          var arr = [];
+          for (var k in v) if (v.hasOwnProperty(k)) arr.push(v[k]);
+          v = arr;
+      }
       if (field === 'db') db = v;
       else if (field === 'items') items = v;
       else if (field === 'dclass') dclass = v;
