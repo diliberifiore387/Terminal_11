@@ -2726,7 +2726,7 @@ function fmt(t) {
             .replace(/\n/g, '<br>');
 }
 
-function xmd() { document.getElementById('md').classList.remove('on'); _fpFurnitureModalKey = null; }
+function xmd() { document.getElementById('md').classList.remove('on'); _fpFurnitureModalKey = null; _invModalOpen = false; }
 
 // Bloco de checkboxes "quem pode ver este documento", embutido no formulario —
 // so' aparece pro Mestre (Nivel 6). Segue o mesmo esquema de x.allowed usado em
@@ -2876,7 +2876,10 @@ function renderLab(c) {
     // INVENTARIO pessoal fora de areas marcadas.
     if (!currentAreaIsLab() && !(lvl >= 6 && labTab === 'global')) { renderInventory(c); return; }
     var h = '<div style="margin-bottom:18px;">' +
-        '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:12px;">&gt; LABORATORIO DE PESQUISA // CARTAS DE ANALISE</div>' +
+        '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap; margin-bottom:12px;">' +
+        '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px;">&gt; LABORATORIO DE PESQUISA // CARTAS DE ANALISE</div>' +
+        (currentAreaIsLab() ? '<button class="btn btn-s" style="border-color:var(--b); color:var(--b); white-space:nowrap;" onclick="showInventoryModal()">&#127890; VER MEU INVENTARIO</button>' : '') +
+        '</div>' +
         '<div style="color:var(--td); font-size:0.8em; margin-bottom:18px;">Examine cartas de pesquisa para adquirir conhecimento sobre SCPs, Itens e Classe-D.</div>';
 
     // Abas
@@ -2967,6 +2970,29 @@ function renderInventory(c) {
     }
     h += '</div>';
     c.innerHTML = h;
+}
+
+// Mostra o Inventario Pessoal num dialogo flutuante (por cima da aba atual) —
+// e' a unica forma de ver o que voce esta carregando enquanto estiver dentro
+// de uma area laboral, ja que ali a aba lateral vira LABORATORIO e some o
+// INVENTARIO normal. Reaproveita o mesmo grid/cartao (renderInvGrid, viewInvItem)
+// que a aba de Inventario ja usa fora de areas laborais.
+var _invModalOpen = false;
+function showInventoryModal() {
+    _invModalOpen = true;
+    var list = loadInventory();
+    var h = '<div class="dv"><div class="dh"><h1>INVENTARIO PESSOAL</h1></div>' +
+        '<div class="ds"><p style="color:var(--td); font-size:0.85em;">O que o seu personagem esta carregando, mesmo estando dentro desta area laboral. Isto e\' pessoal e so' + ' voce ve e edita.</p></div>' +
+        '<div style="margin:14px 0; display:flex; gap:10px; flex-wrap:wrap;"><button class="btn btn-s" onclick="xmd(); renderInvItemForm(document.getElementById(\'tcnt\'));">+ NOVO CARTAO DE ITEM</button></div>';
+    if (!list.length) {
+        h += '<div style="text-align:center; padding:30px 20px; color:var(--td); border:1px dashed var(--bd);">SEUS BOLSOS ESTAO VAZIOS.</div>';
+    } else {
+        h += '<div class="lab-grid" id="invModalGrid">' + renderInvGrid(list) + '</div>';
+    }
+    h += '<div style="display:flex; gap:10px; margin-top:16px;"><button class="btn" onclick="xmd()">FECHAR</button></div></div>';
+    document.getElementById('mt').textContent = 'SEU INVENTARIO';
+    document.getElementById('mb').innerHTML = h;
+    document.getElementById('md').classList.add('on');
 }
 
 // Cartoes do Inventario pessoal — mesmo visual (.item-card) das cartas do
@@ -3062,7 +3088,8 @@ function viewInvItem(itemId) {
     }
     h += '</div></div>';
 
-    h += '<div style="margin-top:18px; display:flex; gap:10px;">' +
+    h += '<div style="margin-top:18px; display:flex; gap:10px; flex-wrap:wrap;">' +
+        (_invModalOpen ? '<button class="btn btn-s" onclick="showInventoryModal()">&lt; VOLTAR AO INVENTARIO</button>' : '') +
         '<button class="btn" onclick="editInvItem(\'' + it.id + '\')">EDITAR</button>' +
         '<button class="btn btn-r" onclick="deleteInvItem(\'' + it.id + '\')">EXCLUIR</button>' +
         '</div>';
@@ -3087,7 +3114,11 @@ function deleteInvItem(itemId) {
     for (var i = 0; i < list.length; i++) if (list[i].id !== itemId) nd.push(list[i]);
     saveInventoryList(nd);
     xmd();
-    renderInventory(document.getElementById('tcnt'));
+    // Se o cartao foi excluido enquanto o dialogo flutuante de inventario estava
+    // aberto (dentro de uma area laboral), reabre esse mesmo dialogo em vez de ir
+    // pra aba (que ali mostraria o LABORATORIO, nao o inventario).
+    if (currentAreaIsLab()) showInventoryModal();
+    else renderInventory(document.getElementById('tcnt'));
 }
 
 function adjustInvItemUses(itemId, delta) {
@@ -3127,6 +3158,8 @@ function refreshInvItemDisplay(itemId) {
     if (modalOpenForThisItem) viewInvItem(itemId);
     var grid = document.getElementById('invGrid');
     if (grid) grid.innerHTML = renderInvGrid(loadInventory());
+    var gridModal = document.getElementById('invModalGrid');
+    if (gridModal) gridModal.innerHTML = renderInvGrid(loadInventory());
 }
 
 // Formulario de cartao do Inventario pessoal — mesmos campos do item do
@@ -3160,10 +3193,18 @@ function renderInvItemForm(c, itemId) {
         '</div>' +
         '<div style="display:flex; gap:10px; margin-top:18px;">' +
         '<button type="submit" class="btn">' + (isE ? 'ATUALIZAR' : 'SALVAR') + '</button>' +
-        '<button type="button" class="btn btn-r" onclick="go(\'lab\')">CANCELAR</button></div></form></div>';
+        '<button type="button" class="btn btn-r" onclick="invItemFormCancel()">CANCELAR</button></div></form></div>';
     c.innerHTML = h;
     invItemImgs = isE ? (it.imgs || []) : [];
     rInvItemImgs();
+}
+
+// Cancelar/voltar do formulario de cartao pessoal: se estivermos dentro de uma
+// area laboral, volta pro dialogo flutuante de Inventario (de onde provavelmente
+// veio); fora dela, volta normalmente pra aba.
+function invItemFormCancel() {
+    if (currentAreaIsLab()) { go('lab'); showInventoryModal(); }
+    else go('lab');
 }
 
 function hInvItemImg(e) {
@@ -3216,7 +3257,11 @@ function sInvItemForm(e, editItemId) {
     if (existingIdx >= 0) list[existingIdx] = x; else list.push(x);
     saveInventoryList(list);
     invItemImgs = [];
-    go('lab');
+    // Mesma logica do cancelar: se o cartao foi criado/editado enquanto numa area
+    // laboral (via VER MEU INVENTARIO), volta pro dialogo flutuante em vez de
+    // deixar a aba presa no LABORATORIO sem mostrar o resultado.
+    if (currentAreaIsLab()) { go('lab'); showInventoryModal(); }
+    else go('lab');
 }
 
 function switchLabTab(tab) {
@@ -3250,6 +3295,7 @@ function renderLabGrid(cards) {
             '<div class="ctr-num">' + card.num + '</div>' +
             '<div class="ctr-title">' + card.title + '</div>' +
             '<div class="ctr-class-badge" style="color:' + clsColor + '; border-color:' + clsColor + ';">' + card.cls + '</div>' +
+            (card.pegavel === false ? '<div style="margin-top:4px; font-size:0.65em; letter-spacing:1px; color:var(--r);">&#9888; NAO PEGAVEL</div>' : '') +
             '</div>';
 
         h += '<div class="ctr-img-wrap">';
@@ -3415,6 +3461,7 @@ function renderItemGrid(itemList) {
         h += '<div class="item-header">' +
             '<div class="item-type">' + it.type + '</div>' +
             '<div class="item-name">' + it.name + '</div>' +
+            (it.pegavel === false ? '<div style="margin-top:4px; font-size:0.65em; letter-spacing:1px; color:var(--r);">&#9888; NAO PEGAVEL</div>' : '') +
             '</div>';
 
         h += '<div class="item-img-wrap">';
@@ -3861,6 +3908,8 @@ function renderItemForm(c, itemId) {
         '</select></div>' +
         '<div class="fg"><label>Usos Maximos</label><input type="number" id="fiuses" min="0" value="' + (isE ? it.usosMax : '5') + '"' + (isE && it.usosIlimitados ? ' disabled' : '') + ' required></div></div>' +
         '<div class="fg"><label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; letter-spacing:0; font-size:0.85em; color:var(--t);"><input type="checkbox" id="fiunlimited" style="width:auto;"' + (isE && it.usosIlimitados ? ' checked' : '') + ' onchange="toggleUnlimitedUsesField(this,\'fiuses\')"> USOS ILIMITADOS (&#8734; o item nunca acaba, sem numero pra controlar)</label></div>' +
+        '<div class="fg"><label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; letter-spacing:0; font-size:0.85em; color:var(--t);"><input type="checkbox" id="fipegavel" style="width:auto;"' + ((isE && it.pegavel !== false) || !isE ? ' checked' : '') + '> PEGAVEL (pode ser retirado do laboratorio)</label>' +
+        '<span style="display:block; color:var(--td); font-size:0.7em; margin-top:4px;">Desmarque para maquinas/equipamentos pesados demais para saírem do lugar — o botao PEGAR fica bloqueado pra este item em qualquer mobilia.</span></div>' +
         '<div class="fg"><label>Descricao</label><textarea id="fidesc" required>' + (isE ? it.desc : '') + '</textarea></div>' +
         '<div class="fg"><label>Efeito Contra SCPs</label><textarea id="fieffect" required>' + (isE ? it.effect : '') + '</textarea></div>' +
         '<div class="fg"><label>Anexos (Imagens)</label>' +
@@ -3988,6 +4037,7 @@ function sItemForm(e) {
         usosMax: usosMax,
         uses: usosIlimitados ? usosMax : uses,
         usosIlimitados: usosIlimitados,
+        pegavel: document.getElementById('fipegavel').checked,
         clr: 1,
         imgs: itemImgs,
         dt: new Date().toISOString()
@@ -4210,6 +4260,11 @@ function openCardEditor(cardId) {
         '<div class="fr"><div class="fg"><label><input type="checkbox" id="lcunl"' + ((isEdit && card.unlocked) || !isEdit ? ' checked' : '') + '> Desbloqueada para jogadores</label></div>' +
         '<div class="fg"><label>Desbloqueada por</label><input type="text" id="lcby" value="' + (isEdit ? card.unlockedBy : 'o5') + '"></div></div>';
 
+    h += '<div style="color:var(--g); font-size:0.8em; letter-spacing:2px; margin:18px 0 12px; border-bottom:1px solid var(--bd); padding-bottom:8px;">&gt; TRANSPORTE</div>' +
+        '<div class="fg"><label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; letter-spacing:0; font-size:0.85em; color:var(--t);">' +
+        '<input type="checkbox" id="lcpegavel" style="width:auto;"' + ((isEdit && card.pegavel !== false) || !isEdit ? ' checked' : '') + '> PEGAVEL (pode ser retirado do laboratorio e levado no inventario)</label>' +
+        '<span style="display:block; color:var(--td); font-size:0.7em; margin-top:4px;">Desmarque para SCPs grandes demais, sencientes ou perigosos demais para saírem do laboratorio — o botao PEGAR fica bloqueado para essa carta em qualquer mobilia.</span></div>';
+
     if (lvl >= 6) {
         h += '<div style="color:var(--r); font-size:0.8em; letter-spacing:2px; margin:18px 0 12px; border-bottom:1px solid var(--r); padding-bottom:8px;">&gt; EFEITOS DE ITEM [SOMENTE MESTRE]</div>';
         if (!isEdit) {
@@ -4313,6 +4368,7 @@ function saveLabCard(e) {
 
     var unlocked = document.getElementById('lcunl').checked;
     var unlockedBy = document.getElementById('lcby').value.trim() || 'o5';
+    var pegavel = document.getElementById('lcpegavel').checked;
 
     var existing = -1;
     for (var i = 0; i < labCards.length; i++) {
@@ -4342,6 +4398,7 @@ function saveLabCard(e) {
         research: research,
         unlocked: unlocked,
         unlockedBy: unlockedBy,
+        pegavel: pegavel,
         itemEffects: itemEffects,
         dt: existing >= 0 ? labCards[existing].dt : new Date().toISOString()
     };
@@ -7894,10 +7951,15 @@ function fpScpObjRenderModal(cell, canTouch) {
       var it = stored[si];
       var itemRef = it.kind === 'item' ? fpFindCatalogItem(it.refId) : null;
       var itLabel = itemRef ? itemRef.name : '(item removido do catalogo)';
+      var itPortable = !itemRef || itemRef.pegavel !== false;
+      var retirarBtn;
+      if (!canTouch) retirarBtn = '<button class="btn btn-s" disabled style="opacity:0.4; cursor:not-allowed;">RETIRAR</button>';
+      else if (!itPortable) retirarBtn = '<button class="btn btn-s" disabled style="opacity:0.5; cursor:not-allowed; border-color:var(--r); color:var(--r);" title="Isto nao pode ser retirado do laboratorio">IMPOSSIVEL DE LEVAR</button>';
+      else retirarBtn = '<button class="btn btn-s" onclick="fpFurnitureTake(' + si + ')">RETIRAR</button>';
       h += '<div style="border:1px solid var(--bd); padding:8px 10px; margin-bottom:6px;">' +
         '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">' +
-        '<span style="color:var(--t); font-size:0.88em;' + (itemRef ? ' cursor:pointer;' : '') + '"' + (itemRef ? ' onclick="viewItem(\'' + itemRef.id + '\')"' : '') + '><b>' + fpFurnEsc(itLabel) + '</b></span>' +
-        (canTouch ? '<button class="btn btn-s" onclick="fpFurnitureTake(' + si + ')">RETIRAR</button>' : '<button class="btn btn-s" disabled style="opacity:0.4; cursor:not-allowed;">RETIRAR</button>') +
+        '<span style="color:var(--t); font-size:0.88em;' + (itemRef ? ' cursor:pointer;' : '') + '"' + (itemRef ? ' onclick="viewItem(\'' + itemRef.id + '\')"' : '') + '><b>' + fpFurnEsc(itLabel) + '</b>' + (itPortable ? '' : '<br><span style="color:var(--r); font-size:0.72em;">NAO PODE SER RETIRADO</span>') + '</span>' +
+        retirarBtn +
         '</div>';
       if (lvl >= 6 && card && itemRef) {
         var eff = card.itemEffects && card.itemEffects[itemRef.id];
@@ -8026,17 +8088,22 @@ function fpFurnitureRenderModal() {
     } else {
       for (var i = 0; i < stored.length; i++) {
         var it = stored[i], rowInner;
+        var isPortable = true;
         if (it.kind === 'labcard') {
           var card = fpFindLabCard(it.refId);
+          isPortable = !card || card.pegavel !== false;
           rowInner = card ?
             '<span style="cursor:pointer;" onclick="viewLabCard(\'' + card.id + '\')"><b>' + fpFurnEsc(card.num) + '</b> — ' + fpFurnEsc(card.title) +
-            '<br><span style="color:var(--y); font-size:0.75em;">CARTA DE PESQUISA — clique para examinar</span></span>' :
+            '<br><span style="color:var(--y); font-size:0.75em;">CARTA DE PESQUISA — clique para examinar</span>' +
+            (isPortable ? '' : '<br><span style="color:var(--r); font-size:0.72em;">NAO PODE SER RETIRADO DO LABORATORIO</span>') + '</span>' :
             '<span style="color:var(--td);">(carta removida do laboratorio)</span>';
         } else if (it.kind === 'item') {
           var itemRef = fpFindCatalogItem(it.refId);
+          isPortable = !itemRef || itemRef.pegavel !== false;
           rowInner = itemRef ?
             '<span style="cursor:pointer;" onclick="viewItem(\'' + itemRef.id + '\')"><b>' + fpFurnEsc(itemRef.name) + '</b>' +
-            '<br><span style="color:var(--y); font-size:0.75em;">' + fpFurnEsc(itemRef.type) + ' — clique para examinar</span></span>' :
+            '<br><span style="color:var(--y); font-size:0.75em;">' + fpFurnEsc(itemRef.type) + ' — clique para examinar</span>' +
+            (isPortable ? '' : '<br><span style="color:var(--r); font-size:0.72em;">NAO PODE SER RETIRADO DO LABORATORIO</span>') + '</span>' :
             '<span style="color:var(--td);">(item removido do catalogo)</span>';
         } else if (it.kind === 'dclass') {
           var dRef = fpFindDClass(it.refId);
@@ -8048,9 +8115,16 @@ function fpFurnitureRenderModal() {
           rowInner = '<span><b>' + fpFurnEsc(it.name || it.txt || '') + '</b>' +
             (it.desc ? '<br><span style="color:var(--td); font-size:0.85em;">' + fpFurnEsc(it.desc) + '</span>' : '') + '</span>';
         }
+        var takeBtn;
+        if (!canTouch) {
+          takeBtn = '<button class="btn btn-s" disabled style="opacity:0.4; cursor:not-allowed;" title="Aproxime-se para pegar">PEGAR</button>';
+        } else if (!isPortable) {
+          takeBtn = '<button class="btn btn-s" disabled style="opacity:0.5; cursor:not-allowed; border-color:var(--r); color:var(--r);" title="Isto nao pode ser retirado do laboratorio">IMPOSSIVEL DE LEVAR</button>';
+        } else {
+          takeBtn = '<button class="btn btn-s" onclick="fpFurnitureTake(' + i + ')">PEGAR</button>';
+        }
         h += '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; padding:8px 10px; border:1px solid var(--bd); margin-bottom:6px;">' +
-          '<span style="color:var(--t); font-size:0.9em;">' + rowInner + '</span>' +
-          (canTouch ? '<button class="btn btn-s" onclick="fpFurnitureTake(' + i + ')">PEGAR</button>' : '<button class="btn btn-s" disabled style="opacity:0.4; cursor:not-allowed;" title="Aproxime-se para pegar">PEGAR</button>') + '</div>';
+          '<span style="color:var(--t); font-size:0.9em;">' + rowInner + '</span>' + takeBtn + '</div>';
       }
     }
     h += '</div>';
@@ -8167,6 +8241,13 @@ function fpFurnitureTake(idx) {
   if (!fpNearFurniture(kp2[0], parseInt(kp2[1], 10), parseInt(kcr2[0], 10), parseInt(kcr2[1], 10))) { alert('VOCE ESTA LONGE DEMAIS PARA MEXER AQUI. Aproxime-se ate no maximo 1 bloco de distancia.'); return; }
   var stored = (_fpFurnitureItems[_fpFurnitureModalKey] || []).slice();
   var taken = stored[idx];
+  if (taken && taken.kind === 'labcard') {
+    var _tc = fpFindLabCard(taken.refId);
+    if (_tc && _tc.pegavel === false) { alert('ISTO NAO PODE SER RETIRADO DO LABORATORIO.'); return; }
+  } else if (taken && taken.kind === 'item') {
+    var _ti = fpFindCatalogItem(taken.refId);
+    if (_ti && _ti.pegavel === false) { alert('ISTO NAO PODE SER RETIRADO DO LABORATORIO.'); return; }
+  }
   stored.splice(idx, 1);
   _fpFurnitureItems[_fpFurnitureModalKey] = stored;
   if (typeof fbDB !== 'undefined') {
