@@ -2163,8 +2163,76 @@ function notesLoadPapers() {
 function notesSavePapers(papers) {
     try { localStorage.setItem('scpPAPERS_v1', JSON.stringify(papers)); } catch (e) {}
 }
+// ============== ROTEAMENTO: INVENTARIO (carta/objeto) x PAPEIS (documento) ==============
+// Escolha de design: uma entrada so' pode ser UMA das duas coisas.
+// - 'labcard' e 'item' sao CARTAS — o jogo esta literalmente entregando o SCP
+//   (ou o item do catalogo) como se fosse um objeto fisico na mao/bolso do
+//   jogador. Isso e' inventario, nao anotacao: vai para o INVENTARIO PESSOAL,
+//   com uso independente dali pra frente (nao fica mais preso ao catalogo).
+// - 'dclass' e 'custom' sao DOCUMENTOS — um dossie de Classe-D ou um papel
+//   escrito na hora sao literalmente papeis. Continuam indo pro quadro de
+//   PAPEIS do Bloco de Notas, como sempre foi.
+// Isso vale tanto pra "pegar de uma mobilia" (fpFurnitureTake) quanto pra
+// "dar na mao" [Mestre] (handStart) — os dois caminhos usam esta funcao.
+function receiveEntry(entry) {
+    if (entry.kind === 'labcard') {
+        addInventoryCardFromLabCard(fpFindLabCard(entry.refId));
+        return 'inventory';
+    }
+    if (entry.kind === 'item') {
+        addInventoryCardFromCatalogItem(fpFindCatalogItem(entry.refId));
+        return 'inventory';
+    }
+    notesAddPaper(entry);
+    return 'papers';
+}
+
+// Converte um item do catalogo (mesmo formato de campos que um cartao de
+// Inventario) numa copia independente no Inventario Pessoal do jogador.
+function addInventoryCardFromCatalogItem(itemRef) {
+    var list = loadInventory();
+    if (itemRef) {
+        list.push({
+            id: 'inv-' + Date.now() + '-' + Math.floor(Math.random() * 10000),
+            name: itemRef.name, type: itemRef.type || 'Item', desc: itemRef.desc || '',
+            effect: itemRef.effect || '',
+            usosMax: itemRef.usosMax || 1,
+            uses: itemRef.usosIlimitados ? (itemRef.usosMax || 1) : (typeof itemRef.uses === 'number' ? itemRef.uses : (itemRef.usosMax || 1)),
+            usosIlimitados: !!itemRef.usosIlimitados,
+            clr: itemRef.clr || 1,
+            imgs: itemRef.imgs ? itemRef.imgs.slice() : [],
+            dt: new Date().toISOString()
+        });
+    } else {
+        list.push({ id: 'inv-' + Date.now() + '-' + Math.floor(Math.random() * 10000), name: '(item removido do catalogo)', type: 'Item', desc: '', effect: '', usosMax: 1, uses: 1, usosIlimitados: true, clr: 1, imgs: [], dt: new Date().toISOString() });
+    }
+    saveInventoryList(list);
+}
+
+// Converte uma carta de laboratorio (o SCP em si, como objeto) numa copia
+// independente no Inventario Pessoal do jogador — o SCP passa a existir
+// fisicamente com ele, fora do Laboratorio.
+function addInventoryCardFromLabCard(card) {
+    var list = loadInventory();
+    if (card) {
+        list.push({
+            id: 'inv-' + Date.now() + '-' + Math.floor(Math.random() * 10000),
+            name: card.num + ' — ' + card.title,
+            type: 'Objeto SCP (' + card.cls + ')',
+            desc: 'Carta de pesquisa retirada do Laboratorio. Classe: ' + card.cls + '.',
+            effect: '', usosMax: 1, uses: 1, usosIlimitados: true, clr: 1,
+            imgs: [], dt: new Date().toISOString()
+        });
+    } else {
+        list.push({ id: 'inv-' + Date.now() + '-' + Math.floor(Math.random() * 10000), name: '(carta removida do laboratorio)', type: 'Objeto SCP', desc: '', effect: '', usosMax: 1, uses: 1, usosIlimitados: true, clr: 1, imgs: [], dt: new Date().toISOString() });
+    }
+    saveInventoryList(list);
+}
+
 // Chamada por fpFurnitureTake quando o jogador pega algo de uma mobilia — guarda
 // uma copia do item no "bolso" local do jogador, espalhado no quadro de papeis.
+// (So' usada agora para 'dclass' e 'custom' — 'labcard' e 'item' vao direto pro
+// Inventario via receiveEntry, ver acima.)
 function notesAddPaper(entry) {
     var papers = notesLoadPapers();
     var n = papers.length;
@@ -2303,10 +2371,11 @@ function handStart() {
         _handKeysSeen[key] = true;
         var g = snap.val();
         if (g) {
-            notesAddPaper({ kind: g.kind, refId: g.refId, name: g.name, desc: g.desc, by: g.by, ts: g.ts || Date.now() });
+            var dest = receiveEntry({ kind: g.kind, refId: g.refId, name: g.name, desc: g.desc, by: g.by, ts: g.ts || Date.now() });
             sfxNotify();
-            handShowToast(g);
-            if (nav === 'notes') renderNotes(document.getElementById('tcnt'));
+            handShowToast(g, dest);
+            if (dest === 'papers' && nav === 'notes') renderNotes(document.getElementById('tcnt'));
+            if (dest === 'inventory' && nav === 'lab') renderLab(document.getElementById('tcnt'));
         }
         fbDB.ref('hand/gifts/' + userKey + '/' + key).remove();
     });
@@ -2319,11 +2388,12 @@ function handResolveLabel(g) {
     return g.name || 'um papel avulso';
 }
 
-function handShowToast(g) {
+function handShowToast(g, dest) {
+    var toInv = dest === 'inventory';
     var el = document.createElement('div');
-    el.textContent = '\u2709 VOCE RECEBEU DE ' + (g.by || 'ALGUEM') + ': ' + handResolveLabel(g) + ' — veja em NOTAS > PAPEIS';
+    el.textContent = '\u2709 VOCE RECEBEU DE ' + (g.by || 'ALGUEM') + ': ' + handResolveLabel(g) + (toInv ? ' — veja no INVENTARIO' : ' — veja em NOTAS > PAPEIS');
     el.style.cssText = 'position:fixed; top:16px; right:16px; left:16px; max-width:320px; margin-left:auto; z-index:99999; background:rgba(0,20,0,0.96); border:1px solid var(--g); color:var(--g); padding:12px 16px; font-size:0.78em; line-height:1.4; box-shadow:0 0 14px rgba(0,255,65,0.35); font-family:inherit; cursor:pointer;';
-    el.onclick = function() { go('notes'); notesSwitchTab('papers'); el.remove(); };
+    el.onclick = function() { if (toInv) { go('lab'); } else { go('notes'); notesSwitchTab('papers'); } el.remove(); };
     document.body.appendChild(el);
     setTimeout(function() {
         el.style.transition = 'opacity 0.5s';
@@ -8026,11 +8096,14 @@ function fpFurnitureTake(idx) {
     if (stored.length) fbDB.ref('world/furniture_items/' + _fpFurnitureModalKey).set(stored);
     else fbDB.ref('world/furniture_items/' + _fpFurnitureModalKey).remove();
   }
-  // O item pego passa a existir pro jogador: fica guardado localmente e aparece
-  // como um papel de verdade na aba PAPEIS do Bloco de Notas (arrastavel).
-  if (taken) notesAddPaper(taken);
+  // O item pego passa a existir pro jogador: cartas (SCP/catalogo) vao pro
+  // INVENTARIO como objetos de verdade; dossies/papeis avulsos continuam
+  // indo pro quadro de PAPEIS do Bloco de Notas (ver receiveEntry acima).
+  var takenDest = null;
+  if (taken) takenDest = receiveEntry(taken);
   fpFurnitureRenderModal();
   fpUpdateFurnitureBadges();
+  if (takenDest === 'inventory') alert('GUARDADO NO SEU INVENTARIO.');
 }
 
 // ============== SETA DE SAIDA (PORTAL PARA OUTRA AREA) ==============
