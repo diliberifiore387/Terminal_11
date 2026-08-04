@@ -1980,22 +1980,20 @@ function go(page) {
 // DESENHO (uma tela em branco pra rabiscar a mao livre) e PAPEIS (os itens que
 // o jogador PEGOU de mesas/estantes/armarios nas plantas — ver fpFurnitureTake).
 // Tudo aqui e' pessoal/local (localStorage), igual o bloco de notas ja era.
-var _notesTab = 'text'; // 'text' | 'draw' | 'papers'
+var _notesTab = 'text'; // 'text' | 'board'
 
 function renderNotes(c) {
     var h = '<div style="max-width:1000px;">' +
         '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:18px;">&gt; BLOCO DE NOTAS // ACESSO LIVRE</div>';
     h += '<div class="lab-tabs">' +
         '<button class="lab-tab' + (_notesTab === 'text' ? ' on' : '') + '" onclick="notesSwitchTab(\'text\')">&gt; ANOTACOES</button>' +
-        '<button class="lab-tab' + (_notesTab === 'draw' ? ' on' : '') + '" onclick="notesSwitchTab(\'draw\')">&gt; DESENHO</button>' +
-        '<button class="lab-tab' + (_notesTab === 'papers' ? ' on' : '') + '" onclick="notesSwitchTab(\'papers\')">&gt; PAPEIS (' + notesLoadPapers().length + ')</button>' +
+        '<button class="lab-tab' + (_notesTab === 'board' ? ' on' : '') + '" onclick="notesSwitchTab(\'board\')">&gt; QUADRO (' + notesLoadPapers().length + ')</button>' +
         '</div>';
-    if (_notesTab === 'draw') h += notesRenderDrawTab();
-    else if (_notesTab === 'papers') h += notesRenderPapersTab();
+    if (_notesTab === 'board') h += notesRenderBoardTab();
     else h += notesRenderTextTab();
     h += '</div>';
     c.innerHTML = h;
-    if (_notesTab === 'draw') notesInitCanvas();
+    if (_notesTab === 'board') notesInitCanvas();
 }
 
 function notesSwitchTab(id) { _notesTab = id; renderNotes(document.getElementById('tcnt')); }
@@ -2051,8 +2049,9 @@ function exportNotes() {
 var _drawCtx = null, _drawing = false, _drawColor = '#00ff41', _drawSize = 3, _lastDX = 0, _lastDY = 0;
 var NOTES_DRAW_COLORS = ['#00ff41', '#ffffff', '#ff3b3b', '#ffd23b', '#3ba0ff'];
 
-function notesRenderDrawTab() {
-    var h = '<div style="color:var(--td); font-size:0.8em; margin:14px 0 12px;">Rabisque a vontade — o desenho fica salvo automaticamente no navegador.</div>';
+function notesRenderBoardTab() {
+    var papers = notesLoadPapers();
+    var h = '<div style="color:var(--td); font-size:0.8em; margin:14px 0 12px;">Quadro livre, tipo mural: rabisque com o mouse/dedo e arraste os papeis que voce pegou nas plantas — tudo no mesmo espaco. O desenho e a posicao de cada papel sao salvos automaticamente. Clique num papel (sem arrastar) pra examinar; arraste pra reorganizar.</div>';
     h += '<div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">';
     h += '<span style="color:var(--gd); font-size:0.75em; letter-spacing:1px;">COR:</span>';
     for (var i = 0; i < NOTES_DRAW_COLORS.length; i++) {
@@ -2063,18 +2062,26 @@ function notesRenderDrawTab() {
     [2, 4, 8].forEach(function(sz) {
         h += '<button class="btn btn-s" style="' + (sz === _drawSize ? 'border-color:var(--y); color:var(--y);' : '') + '" onclick="notesSetDrawSize(' + sz + ')">' + sz + '</button>';
     });
+    h += '<button class="btn btn-r btn-s" style="margin-left:auto;" onclick="notesClearDrawing()">LIMPAR DESENHO</button>';
+    h += '<button class="btn btn-s" onclick="notesExportDrawing()">EXPORTAR PNG</button>';
     h += '</div>';
-    h += '<canvas id="notesCanvas" width="700" height="420" style="width:100%; max-width:700px; height:420px; background:rgba(0,10,0,0.55); border:1px solid var(--bd); touch-action:none; cursor:crosshair;"></canvas>';
-    h += '<div style="display:flex; gap:10px; margin:14px 0 18px;">' +
-        '<button class="btn btn-r" onclick="notesClearDrawing()">LIMPAR DESENHO</button>' +
-        '<button class="btn" onclick="notesExportDrawing()">EXPORTAR PNG</button>' +
-        '</div>';
+
+    h += '<div id="notesBoard" style="position:relative; width:100%; height:calc(100vh - 270px); min-height:480px; border:1px solid var(--bd); background:rgba(0,10,0,0.55); overflow:hidden; touch-action:none; margin-bottom:18px;">';
+    h += '<canvas id="notesCanvas" style="position:absolute; top:0; left:0; width:100%; height:100%; cursor:crosshair;"></canvas>';
+    h += '<div id="papersLayer" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;">' + notesRenderPapersOverlay(papers) + '</div>';
+    if (!papers.length) {
+        h += '<div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:var(--td); font-size:0.8em; pointer-events:none; text-align:center;">Voce ainda nao pegou nenhum papel nas plantas.<br>Rabisque a vontade — o desenho fica aqui do mesmo jeito.</div>';
+    }
+    h += '</div>';
     return h;
 }
 
 function notesInitCanvas() {
     var cv = document.getElementById('notesCanvas');
     if (!cv) return;
+    var rect = cv.getBoundingClientRect();
+    cv.width = Math.max(1, Math.round(rect.width));
+    cv.height = Math.max(1, Math.round(rect.height));
     _drawCtx = cv.getContext('2d');
     _drawCtx.lineCap = 'round';
     _drawCtx.lineJoin = 'round';
@@ -2155,7 +2162,7 @@ function notesSetDrawColor(cl) { _drawColor = cl; notesRedrawDrawControls(); }
 function notesSetDrawSize(sz) { _drawSize = sz; notesRedrawDrawControls(); }
 function notesRedrawDrawControls() {
     // Reconstroi so' a barra de cor/espessura (sem tocar no canvas, pra nao perder o desenho em andamento)
-    if (_notesTab !== 'draw') return;
+    if (_notesTab !== 'board') return;
     var cv = document.getElementById('notesCanvas');
     var savedImg = cv ? cv.toDataURL('image/png') : null;
     renderNotes(document.getElementById('tcnt'));
@@ -2257,16 +2264,9 @@ function notesAddPaper(entry) {
     notesSavePapers(papers);
 }
 
-function notesRenderPapersTab() {
-    var papers = notesLoadPapers();
-    var h = '<div style="color:var(--td); font-size:0.8em; margin:14px 0 12px;">Papeis que voce pegou de mesas, estantes e armarios pelas plantas. Arraste pra reorganizar; clique (sem arrastar) pra examinar.</div>';
-    if (!papers.length) {
-        h += '<div style="text-align:center; padding:30px 20px; color:var(--td); border:1px dashed var(--bd); margin-bottom:18px;">Voce nao pegou nenhum papel ainda.</div>';
-        return h;
-    }
-    var boardH = 16;
-    for (var i = 0; i < papers.length; i++) boardH = Math.max(boardH, papers[i].y + 130);
-    h += '<div id="papersBoard" style="position:relative; width:100%; min-height:' + boardH + 'px; border:1px solid var(--bd); background:repeating-linear-gradient(45deg, rgba(0,255,65,0.02) 0px, rgba(0,255,65,0.02) 2px, transparent 2px, transparent 14px); margin-bottom:18px; overflow:hidden;">';
+function notesRenderPapersOverlay(papers) {
+    papers = papers || notesLoadPapers();
+    var h = '';
     for (var j = 0; j < papers.length; j++) {
         var p = papers[j], label, sub;
         if (p.kind === 'labcard') {
@@ -2282,13 +2282,12 @@ function notesRenderPapersTab() {
             label = p.name || 'PAPEL AVULSO'; sub = 'ANOTACAO';
         }
         h += '<div id="paper_' + p.id + '" onmousedown="notesPaperDragStart(event,\'' + p.id + '\')" ontouchstart="notesPaperDragStart(event,\'' + p.id + '\')" ' +
-            'style="position:absolute; left:' + p.x + 'px; top:' + p.y + 'px; width:150px; min-height:100px; background:#e8e2c9; color:#1a1a12; padding:10px; box-shadow:2px 3px 8px rgba(0,0,0,0.5); transform:rotate(' + (((j * 37) % 7) - 3) + 'deg); cursor:grab; font-family:\'Courier New\', monospace; user-select:none;">' +
+            'style="position:absolute; left:' + p.x + 'px; top:' + p.y + 'px; width:150px; min-height:100px; background:#e8e2c9; color:#1a1a12; padding:10px; box-shadow:2px 3px 8px rgba(0,0,0,0.5); transform:rotate(' + (((j * 37) % 7) - 3) + 'deg); cursor:grab; font-family:\'Courier New\', monospace; user-select:none; pointer-events:auto;">' +
             '<div style="font-size:0.62em; letter-spacing:1px; color:#6b5c2f; margin-bottom:4px;">' + fpFurnEsc(sub) + '</div>' +
             '<div style="font-size:0.8em; font-weight:bold; line-height:1.3;">' + fpFurnEsc(label) + '</div>' +
             '<button onclick="event.stopPropagation(); notesDiscardPaper(\'' + p.id + '\')" title="Descartar" style="position:absolute; top:2px; right:4px; background:none; border:none; color:#7a2f2f; font-size:0.9em; cursor:pointer; padding:2px;">&times;</button>' +
             '</div>';
     }
-    h += '</div>';
     return h;
 }
 
@@ -2403,9 +2402,9 @@ function handResolveLabel(g) {
 function handShowToast(g, dest) {
     var toInv = dest === 'inventory';
     var el = document.createElement('div');
-    el.textContent = '\u2709 VOCE RECEBEU DE ' + (g.by || 'ALGUEM') + ': ' + handResolveLabel(g) + (toInv ? ' — veja no INVENTARIO' : ' — veja em NOTAS > PAPEIS');
+    el.textContent = '\u2709 VOCE RECEBEU DE ' + (g.by || 'ALGUEM') + ': ' + handResolveLabel(g) + (toInv ? ' — veja no INVENTARIO' : ' — veja em NOTAS > QUADRO');
     el.style.cssText = 'position:fixed; top:16px; right:16px; left:16px; max-width:320px; margin-left:auto; z-index:99999; background:rgba(0,20,0,0.96); border:1px solid var(--g); color:var(--g); padding:12px 16px; font-size:0.78em; line-height:1.4; box-shadow:0 0 14px rgba(0,255,65,0.35); font-family:inherit; cursor:pointer;';
-    el.onclick = function() { if (toInv) { go('lab'); } else { go('notes'); notesSwitchTab('papers'); } el.remove(); };
+    el.onclick = function() { if (toInv) { go('lab'); } else { go('notes'); notesSwitchTab('board'); } el.remove(); };
     document.body.appendChild(el);
     setTimeout(function() {
         el.style.transition = 'opacity 0.5s';
@@ -3580,10 +3579,12 @@ function renderGlobalCatalogSection(title, list, type) {
             var x = list[i];
             var count = 0;
             for (var rid in mp) { if (mp[rid] && mp[rid].indexOf(x.id) !== -1) count++; }
+            var viewFn = type === 'scp' ? 'viewLabCard' : (type === 'item' ? 'viewItem' : 'viewDClass');
             h += '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 12px; background:rgba(0,20,0,0.3); border:1px solid var(--bd);">' +
-                '<span style="font-size:0.85em;">' + fpFurnEsc(labEntryLabel(type, x)) + '</span>' +
-                '<span style="display:flex; align-items:center; gap:8px;">' +
+                '<span style="font-size:0.85em; cursor:pointer;" onclick="' + viewFn + '(\'' + x.id + '\')">' + fpFurnEsc(labEntryLabel(type, x)) + '</span>' +
+                '<span style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
                 '<span style="font-size:0.7em; color:var(--td); letter-spacing:1px;">' + count + ' AREA(S)</span>' +
+                '<button class="btn btn-s" onclick="' + viewFn + '(\'' + x.id + '\')">VER</button>' +
                 '<button class="btn btn-s" onclick="mapManageCardAreas(\'' + type + '\',\'' + x.id + '\')">GERENCIAR AREAS</button>' +
                 '</span></div>';
         }
