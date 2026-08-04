@@ -1346,6 +1346,7 @@ var labTab = 'scp'; // scp | item | dclass
 
 
 document.addEventListener('DOMContentLoaded', function() {
+  try {
     loadDB();
     loadLabCards();
     loadItems();
@@ -1356,6 +1357,13 @@ document.addEventListener('DOMContentLoaded', function() {
     initAudio();
     loadSfxPrefs();
     setupSfxDelegation();
+  } catch (e) {
+    // Antes, um erro aqui deixava a pagina inteira preta e muda (o fundo e' quase
+    // preto e nada chegava a ser desenhado). Agora pelo menos mostra o erro na tela
+    // e no console, pra dar pra saber o que quebrou em vez de so' recarregar as cegas.
+    console.error('ERRO NA INICIALIZACAO:', e);
+    document.body.innerHTML = '<div style="padding:30px; color:#ff003c; font-family:monospace; white-space:pre-wrap;">ERRO NA INICIALIZACAO DO TERMINAL:\n' + (e && e.message ? e.message : e) + '\n\nAbra o console (F12) pra ver mais detalhes e reporte esta mensagem.</div>';
+  }
 });
 
 // ============== MUSICA DE FUNDO (playlist) ==============
@@ -1711,6 +1719,9 @@ function doLogin() {
     sfxLogin();
     loadResearcherProfile();
     profileSyncStart();
+    rpState = null;
+    loadRPState();
+    rpStateSyncStart();
     fpStartPlayerSync();
     chatStart();
     handStart();
@@ -1772,6 +1783,7 @@ function logout() {
         try { fbDB.ref('players/' + userKey).remove(); } catch (e) {}
     }
     user = null; lvl = 0; userKey = null;
+    researcherProfile = null; rpState = null;
     document.getElementById('term').classList.remove('on'); 
     document.getElementById('o5fab').style.display = 'none';
     document.getElementById('fsBtn').style.display = 'none';
@@ -2773,8 +2785,13 @@ function sItem(e) {
         var aboxes = allowedBox.querySelectorAll('input[type="checkbox"]');
         allowedVal = [];
         for (var i = 0; i < aboxes.length; i++) if (aboxes[i].checked) allowedVal.push(aboxes[i].value);
+    } else if (editId) {
+        allowedVal = (function(){for(var i=0;i<db.length;i++)if(db[i].id===editId)return db[i].allowed||[];return [];})();
     } else {
-        allowedVal = editId ? ((function(){for(var i=0;i<db.length;i++)if(db[i].id===editId)return db[i].allowed||[];return [];})()) : [];
+        // Documento NOVO criado por quem nao e' Mestre (nao ve o bloco de checkboxes):
+        // o criador precisa ficar liberado pra ver o proprio documento. O Mestre pode
+        // depois ajustar/adicionar outros jogadores em GERENCIAR ACESSO normalmente.
+        allowedVal = (lvl < 6 && userKey) ? [userKey] : [];
     }
     var x = {
         id: editId || Date.now(),
@@ -5001,16 +5018,37 @@ function saveResearcherProfileInfo() {
   if (status) status.textContent = 'PERFIL SALVO // ' + new Date().toLocaleTimeString('pt-BR');
 }
 
+// A ficha D20 (atributos, perks, sanidade, exposicao...) e' por AGENTE (chave do
+// login), igual ao researcherProfile — cada um tem a sua, sincronizada via Firebase
+// em 'rpstates/<userKey>'. Antes ficava numa unica chave global partilhada por
+// aparelho, entao salvar como Mestre "vazava" pra qualquer outro login no mesmo
+// navegador.
 function loadRPState() {
   try {
-    var s = localStorage.getItem('scpRP_D20_v1');
+    var key = 'scpRP_D20_v1' + (userKey ? ('_' + userKey) : '');
+    var s = localStorage.getItem(key);
     if (s) { rpState = JSON.parse(s); }
     else { rpState = defaultRPState(); saveRPState(); }
   } catch(e) { rpState = defaultRPState(); }
 }
 
 function saveRPState() {
-  try { localStorage.setItem('scpRP_D20_v1', JSON.stringify(rpState)); } catch(e) {}
+  try { localStorage.setItem('scpRP_D20_v1' + (userKey ? ('_' + userKey) : ''), JSON.stringify(rpState)); } catch(e) {}
+  if (userKey && typeof fbDB !== 'undefined') fbDB.ref('rpstates/' + userKey).set(rpState);
+}
+
+function rpStateSyncStart() {
+  if (!userKey || typeof fbDB === 'undefined') return;
+  fbDB.ref('rpstates/' + userKey).on('value', function(snap) {
+    var v = snap.val();
+    if (v) {
+      rpState = v;
+      try { localStorage.setItem('scpRP_D20_v1_' + userKey, JSON.stringify(v)); } catch(e) {}
+    } else if (!rpState) {
+      rpState = defaultRPState();
+    }
+    if (nav === 'profile') { var c = document.getElementById('tcnt'); if (c) renderProfile(c); }
+  });
 }
 
 function defaultRPState() {
@@ -6797,7 +6835,7 @@ function worldSyncStart() {
       else if (field === 'dclass') dclass = v;
       else if (field === 'labCards') labCards = v;
       try { localStorage.setItem(WORLD_KEYS[field], JSON.stringify(v)); } catch(e) {}
-      refreshCurrentPage();
+      try { refreshCurrentPage(); } catch (e) { console.error('ERRO AO ATUALIZAR TELA APOS SYNC DE "' + field + '":', e); }
     });
   });
 }
