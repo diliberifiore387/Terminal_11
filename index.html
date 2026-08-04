@@ -2431,16 +2431,23 @@ function handDeliverAsNpc() {
 }
 
 // ============== BANCO DE DADOS SCP ==============
+// Acesso na Base de Dados NAO e' mais por nivel de autorizacao — cada documento
+// tem sua PROPRIA lista de jogadores liberados (x.allowed, array de logins),
+// escolhida a dedo pelo Mestre em GERENCIAR ACESSO (ver vItem/dbManageAccess).
+// O Mestre (Nivel 6) sempre ve tudo, esteja ou nao na lista.
+function dbAccessible(x) {
+    if (lvl >= 6) return true;
+    return !!(x.allowed && x.allowed.indexOf(userKey) !== -1);
+}
+
 function renderDB(c) {
-    var vis = db.filter(function(x) { return x.clr <= lvl; });
+    var vis = db.filter(dbAccessible);
     var h = '<div style="margin-bottom:18px;">' +
         '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:12px;">&gt; BANCO DE DADOS SCP // ' + vis.length + ' ITENS ACESSIVEIS</div>' +
         '<div class="sbar">' +
         '<input type="text" id="ds" placeholder="Buscar..." onkeyup="fDB()">' +
         '<select id="dc" onchange="fDB()"><option value="">TODAS CLASSES</option><option>Safe</option><option>Euclid</option><option>Keter</option><option>Thaumiel</option><option>Apollyon</option></select>' +
-        '<select id="dl" onchange="fDB()"><option value="">TODOS NIVEIS</option>';
-    for (var i = 1; i <= lvl; i++) h += '<option value="' + i + '">NVL ' + i + '</option>';
-    h += '</select></div></div><div class="grid" id="dg">' + rGrid(vis) + '</div>';
+        '</div></div><div class="grid" id="dg">' + rGrid(vis) + '</div>';
     c.innerHTML = h;
 }
 
@@ -2455,7 +2462,7 @@ function rGrid(items) {
             '<div class="c-h"><span class="c-n">' + x.num + '</span><span class="c-cl ' + x.cls + '">' + x.cls + '</span></div>' +
             '<div class="c-t">' + x.tit + '</div>' +
             '<div class="c-p">' + (x.desc ? x.desc.substring(0,110) + '...' : '') + '</div>' +
-            '<div class="c-m"><span>' + t + '</span><span class="c-ml">NVL ' + x.clr + '</span></div></div>';
+            '<div class="c-m"><span>' + t + '</span></div></div>';
     }
     return h;
 }
@@ -2463,13 +2470,11 @@ function rGrid(items) {
 function fDB() {
     var s = (document.getElementById('ds').value || '').toLowerCase();
     var c = document.getElementById('dc').value;
-    var l = document.getElementById('dl').value;
     var f = db.filter(function(x) {
-        if (x.clr > lvl) return false;
+        if (!dbAccessible(x)) return false;
         var ms = !s || x.num.toLowerCase().indexOf(s) !== -1 || x.tit.toLowerCase().indexOf(s) !== -1 || x.desc.toLowerCase().indexOf(s) !== -1;
         var mc = !c || x.cls === c;
-        var ml = !l || x.clr === parseInt(l);
-        return ms && mc && ml;
+        return ms && mc;
     });
     document.getElementById('dg').innerHTML = rGrid(f);
 }
@@ -2486,13 +2491,14 @@ function vItem(id) {
     if (x.imgs && x.imgs.length) {
         im = '<div style="margin:18px 0; text-align:center; background:rgba(0,10,0,0.5); padding:18px; border:1px solid var(--bd);">';
         for (var i = 0; i < x.imgs.length; i++) im += '<img src="' + x.imgs[i] + '" style="max-width:100%; margin:4px 0; border:1px solid var(--bd); filter:contrast(1.1) brightness(0.9);">';
-        im += '<div style="color:var(--td); font-size:0.78em; margin-top:8px; font-style:italic;">[ANEXO FOTOGRAFICO - NIVEL ' + x.clr + ']</div></div>';
+        im += '<div style="color:var(--td); font-size:0.78em; margin-top:8px; font-style:italic;">[ANEXO FOTOGRAFICO]</div></div>';
     }
     var wf = buildWireframeViewer(x);
     var h = '<div class="dv">' +
         '<div class="dh"><h1>' + x.num + '</h1><h2>' + x.tit + '</h2>' +
         '<span class="dc ' + x.cls + '">' + x.cls + '</span>' +
-        '<div style="margin-top:8px; color:var(--y); font-size:0.82em;">NIVEL DE AUTORIZACAO: ' + x.clr + '</div></div>' +
+        (lvl >= 6 ? '<div style="margin-top:8px; color:var(--y); font-size:0.82em;">ACESSO LIBERADO PARA: ' + (dbAllowedNames(x).length ? dbAllowedNames(x).join(', ') : '(ninguem ainda — so' + ' voce, Mestre)') + '</div>' : '') +
+        '</div>' +
         wf + im +
         '<div class="ds"><h3>&gt; Procedimentos Especiais de Contencao</h3><p>' + fmt(x.cnt) + '</p></div>' +
         '<div class="ds"><h3>&gt; Descricao</h3><p>' + fmt(x.desc) + '</p></div>' +
@@ -2500,9 +2506,10 @@ function vItem(id) {
         '<div style="margin-top:25px; padding-top:18px; border-top:1px solid var(--bd);">' +
         '<div style="margin-bottom:12px;"><span style="color:var(--td);">Tags:</span> ' + t + '</div>' +
         '<div style="color:var(--td); font-size:0.78em;">Criado: ' + new Date(x.dt).toLocaleString('pt-BR') + '</div></div>';
-    if (ce || cd) {
-        h += '<div style="margin-top:18px; display:flex; gap:10px;">';
+    if (ce || cd || lvl >= 6) {
+        h += '<div style="margin-top:18px; display:flex; gap:10px; flex-wrap:wrap;">';
         if (ce) h += '<button class="btn" onclick="eItem(' + x.id + ')">EDITAR</button>';
+        if (lvl >= 6) h += '<button class="btn" style="border-color:var(--y); color:var(--y);" onclick="dbManageAccess(' + x.id + ')">GERENCIAR ACESSO</button>';
         h += '<button class="btn" onclick="exportItem(' + x.id + ')">EXPORTAR</button>';
         if (cd) h += '<button class="btn btn-r" onclick="dItem(' + x.id + ')">EXCLUIR</button>';
         h += '</div>';
@@ -2521,6 +2528,60 @@ function vItem(id) {
     document.getElementById('mt').textContent = 'DOCUMENTO ' + x.num;
     document.getElementById('mb').innerHTML = h;
     document.getElementById('md').classList.add('on');
+}
+
+// Nomes de exibicao de quem esta liberado a ver um documento (para a tela do Mestre).
+function dbAllowedNames(x) {
+    var names = [];
+    if (x.allowed) {
+        for (var i = 0; i < x.allowed.length; i++) {
+            var acc = PASS[x.allowed[i]];
+            names.push(acc ? acc.nm : x.allowed[i]);
+        }
+    }
+    return names;
+}
+
+// Tela do Mestre pra escolher, entre TODAS as contas de jogador cadastradas,
+// quais podem ver este documento SCP especifico na Base de Dados. Contas de
+// Mestre (Nivel 6) nem aparecem na lista porque ja tem acesso a tudo sempre.
+function dbManageAccess(id) {
+    if (lvl < 6) return;
+    var x = null;
+    for (var i = 0; i < db.length; i++) if (db[i].id === id) { x = db[i]; break; }
+    if (!x) return;
+    var allowed = x.allowed || [];
+    var h = '<div class="dv"><div class="dh"><h1>ACESSO: ' + x.num + '</h1><h2>' + x.tit + '</h2></div>';
+    h += '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Marque quais jogadores podem ver este documento na Base de Dados. Voce (Mestre) sempre tem acesso, mesmo sem marcar ninguem.</div>';
+    h += '<div style="display:flex; flex-direction:column; gap:8px; max-height:400px; overflow:auto; margin-bottom:14px; padding:10px; border:1px solid var(--bd);">';
+    var any = false;
+    for (var k in PASS) {
+        if (PASS[k].lv >= 6) continue;
+        any = true;
+        var checked = allowed.indexOf(k) !== -1;
+        h += '<label style="display:flex; align-items:center; gap:8px; cursor:pointer;"><input type="checkbox" value="' + k + '" ' + (checked ? 'checked' : '') + ' id="dbAccessChk_' + k + '"> ' + fpFurnEsc(PASS[k].nm) + ' (' + k + ')</label>';
+    }
+    if (!any) h += '<div style="color:var(--td); font-size:0.8em;">Nenhuma conta de jogador cadastrada.</div>';
+    h += '</div>';
+    h += '<div style="display:flex; gap:10px; flex-wrap:wrap;">' +
+        '<button class="btn" onclick="dbSaveAccess(' + id + ')">SALVAR</button>' +
+        '<button class="btn btn-s" onclick="vItem(' + id + ')">VOLTAR</button></div></div>';
+    document.getElementById('mt').textContent = 'ACESSO: ' + x.num;
+    document.getElementById('mb').innerHTML = h;
+    document.getElementById('md').classList.add('on');
+}
+
+function dbSaveAccess(id) {
+    if (lvl < 6) return;
+    var x = null;
+    for (var i = 0; i < db.length; i++) if (db[i].id === id) { x = db[i]; break; }
+    if (!x) return;
+    var boxes = document.querySelectorAll('#mb input[type="checkbox"][id^="dbAccessChk_"]');
+    var picked = [];
+    for (var i = 0; i < boxes.length; i++) if (boxes[i].checked) picked.push(boxes[i].value);
+    x.allowed = picked;
+    saveDB();
+    vItem(id);
 }
 
 function exportItem(id) {
@@ -2553,6 +2614,25 @@ function fmt(t) {
 
 function xmd() { document.getElementById('md').classList.remove('on'); _fpFurnitureModalKey = null; }
 
+// Bloco de checkboxes "quem pode ver este documento", embutido no formulario —
+// so' aparece pro Mestre (Nivel 6). Segue o mesmo esquema de x.allowed usado em
+// dbManageAccess/dbSaveAccess.
+function renderFormAllowedBlock(ed) {
+    var allowed = (ed && ed.allowed) || [];
+    var h = '<div class="fg"><label>Acesso (quem pode ver este documento)</label>' +
+        '<div id="fAllowedBox" style="display:flex; flex-direction:column; gap:6px; max-height:220px; overflow:auto; padding:10px; border:1px solid var(--bd);">';
+    var any = false;
+    for (var k in PASS) {
+        if (PASS[k].lv >= 6) continue;
+        any = true;
+        var checked = allowed.indexOf(k) !== -1;
+        h += '<label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:normal;"><input type="checkbox" value="' + k + '"' + (checked ? ' checked' : '') + '> ' + fpFurnEsc(PASS[k].nm) + ' (' + k + ')</label>';
+    }
+    if (!any) h += '<div style="color:var(--td); font-size:0.8em;">Nenhuma conta de jogador cadastrada.</div>';
+    h += '</div><span style="display:block; color:var(--td); font-size:0.7em; margin-top:4px;">Voce (Mestre) sempre tem acesso, mesmo sem marcar ninguem.</span></div>';
+    return h;
+}
+
 // ============== FORMULARIO SCP ==============
 function renderForm(c, ed) {
     var isE = !!ed;
@@ -2568,10 +2648,11 @@ function renderForm(c, ed) {
         '<option' + (isE && ed.cls==='Apollyon' ? ' selected' : '') + '>Apollyon</option>' +
         '</select></div></div>' +
         '<div class="fg"><label>Titulo</label><input type="text" id="ft" value="' + (isE ? ed.tit : '') + '" required></div>' +
-        '<div class="fr"><div class="fg"><label>Nivel de Acesso</label><select id="fl">';
+        '<div class="fr"><div class="fg"><label>Nivel de Classificacao (informativo)</label><select id="fl">';
     var flMax = Math.min(lvl + 1, 5);
     for (var i = 1; i <= flMax; i++) h += '<option value="' + i + '"' + ((isE && ed.clr===i) || (!isE && i===1) ? ' selected' : '') + '>Nivel ' + i + '</option>';
-    h += '</select><span style="display:block; color:var(--td); font-size:0.7em; margin-top:4px;">Seu nivel de acesso (' + lvl + ') permite criar/editar ate o Nivel ' + flMax + '.</span></div><div class="fg"><label>Tags (virgula)</label><input type="text" id="ftg" value="' + (isE ? ed.tags.join(', ') : '') + '"></div></div>' +
+    h += '</select><span style="display:block; color:var(--td); font-size:0.7em; margin-top:4px;">So' + ' aparece no documento como classificacao — nao controla mais quem pode ver.</span></div><div class="fg"><label>Tags (virgula)</label><input type="text" id="ftg" value="' + (isE ? ed.tags.join(', ') : '') + '"></div></div>' +
+        (lvl >= 6 ? renderFormAllowedBlock(isE ? ed : null) : '') +
         '<div class="fg"><label>Procedimentos de Contencao</label><textarea id="fcnt">' + (isE ? ed.cnt : '') + '</textarea></div>' +
         '<div class="fg"><label>Descricao</label><textarea id="fd">' + (isE ? ed.desc : '') + '</textarea></div>' +
         '<div class="fg"><label>Adendos</label><textarea id="fa">' + (isE ? (ed.add || '') : '') + '</textarea></div>' +
@@ -2613,6 +2694,18 @@ function rmImg(i) { imgs.splice(i, 1); rFImgs(); }
 
 function sItem(e) {
     e.preventDefault();
+    // O bloco de checkboxes so' existe no formulario pro Mestre (Nivel 6). Quem
+    // nao e' Mestre nao ve/mexe nessa lista — nesse caso preserva o que ja
+    // existia no documento (ou fica vazio, se for um documento novo).
+    var allowedBox = document.getElementById('fAllowedBox');
+    var allowedVal;
+    if (allowedBox) {
+        var aboxes = allowedBox.querySelectorAll('input[type="checkbox"]');
+        allowedVal = [];
+        for (var i = 0; i < aboxes.length; i++) if (aboxes[i].checked) allowedVal.push(aboxes[i].value);
+    } else {
+        allowedVal = editId ? ((function(){for(var i=0;i<db.length;i++)if(db[i].id===editId)return db[i].allowed||[];return [];})()) : [];
+    }
     var x = {
         id: editId || Date.now(),
         num: document.getElementById('fn').value,
@@ -2625,6 +2718,7 @@ function sItem(e) {
         tags: document.getElementById('ftg').value.split(',').map(function(t) { return t.trim(); }).filter(function(t) { return t; }),
         imgs: imgs,
         wireframes: wfImgs,
+        allowed: allowedVal,
         dt: editId ? ((function(){for(var i=0;i<db.length;i++)if(db[i].id===editId)return db[i].dt;return new Date().toISOString()})()) : new Date().toISOString()
     };
     if (editId) {
@@ -4335,17 +4429,21 @@ function renderAdmin(c) {
         '<th style="text-align:left; padding:8px; color:var(--gd);">TITULO</th>' +
         '<th style="text-align:left; padding:8px; color:var(--gd);">CLASSE</th>' +
         '<th style="text-align:left; padding:8px; color:var(--gd);">NVL</th>' +
+        '<th style="text-align:left; padding:8px; color:var(--gd);">ACESSO</th>' +
         '<th style="text-align:left; padding:8px; color:var(--gd);">ACAO</th></tr></thead><tbody>';
     for (var i = 0; i < db.length; i++) {
         var x = db[i];
+        var accCount = (x.allowed || []).length;
         h += '<tr style="border-bottom:1px solid var(--bd);">' +
             '<td style="padding:8px; color:var(--g);">' + x.num + '</td>' +
             '<td style="padding:8px; color:var(--t);">' + x.tit + '</td>' +
             '<td style="padding:8px;"><span class="c-cl ' + x.cls + '">' + x.cls + '</span></td>' +
             '<td style="padding:8px; color:var(--y);">' + x.clr + '</td>' +
+            '<td style="padding:8px; color:' + (accCount ? 'var(--g)' : 'var(--td)') + ';">' + accCount + ' jogador(es)</td>' +
             '<td style="padding:8px;">' +
             '<button class="btn btn-s" onclick="vItem(' + x.id + ')">VER</button> ' +
             '<button class="btn btn-s" onclick="eItem(' + x.id + ')">EDIT</button> ' +
+            '<button class="btn btn-s" style="border-color:var(--y); color:var(--y);" onclick="dbManageAccess(' + x.id + ')">ACESSO</button> ' +
             '<button class="btn btn-s btn-r" onclick="dItem(' + x.id + ')">DEL</button></td></tr>';
     }
     h += '</tbody></table></div></div></div>';
