@@ -6485,6 +6485,7 @@ function renderMap(c) {
     (lvl >= 1 ? '<button class="btn btn-s" style="border-color:var(--r); color:var(--r);" onclick="mapResetExploration()">APAGAR HISTORICO DE EXPLORACAO</button>' : '') +
     (lvl >= 5 ? '<button class="btn btn-s" onclick="mapShowSessionPin()">VER PINS DE HOJE</button>' : '') +
     (lvl >= 6 ? '<button class="btn btn-s" style="border-color:var(--p, #b967ff); color:var(--p, #b967ff);" onclick="mapOpenRoomPicker()">ACESSO DIRETO A AREA</button>' : '') +
+    (lvl >= 6 ? '<button class="btn btn-s" style="border-color:var(--p, #b967ff); color:var(--p, #b967ff);" onclick="mapOpenTeleportForm()">TELETRANSPORTAR JOGADORES</button>' : '') +
     (lvl >= 6 ? '<button class="btn btn-s" style="border-color:var(--p, #b967ff); color:var(--p, #b967ff);" onclick="mapOpenAddRoomForm()">+ ADICIONAR LOCALIZACAO</button>' : '') +
     (lvl >= 6 ? '<button class="btn btn-s" style="border-color:var(--p, #b967ff); color:var(--p, #b967ff);" onclick="mapOpenManageRoomsForm()">EDITAR/MOVER/APAGAR LOCALIZACOES</button>' : '') +
     (lvl >= 6 ? '<button class="btn btn-s" style="border-color:var(--p, #b967ff); color:var(--p, #b967ff);" onclick="mapOpenLinkManagerForm()">LIGAR/DESLIGAR AREAS</button>' : '') +
@@ -6895,6 +6896,146 @@ function mapPickOpenFloorplan() {
   if (!sel) return;
   mapShowFloorplan(sel.value);
 }
+
+// ============== TELETRANSPORTAR JOGADORES (Nivel 6) ==============
+// Diferente de "trocar o mapa ativo" (que reposiciona TODOS na area inicial e
+// zera a exploracao de cada um), isto move um jogador especifico (ou todos) para
+// uma area e um quadrado exatos da planta, SEM apagar nada do que ele ja
+// explorou — a area de destino so' e adicionada ao que ele ja conhece. O
+// comando e' entregue pelo Firebase (ramo 'teleport/<chave>') e cada aparelho
+// aplica sozinho quando recebe um comando destinado a ele (ver mapTeleportSyncStart).
+function mapOpenTeleportForm() {
+  if (lvl < 6) { alert('APENAS O MESTRE (NIVEL 6) PODE TELETRANSPORTAR JOGADORES.'); return; }
+  var rooms = mapAllRooms();
+  var roomOpts = '';
+  for (var i = 0; i < rooms.length; i++) roomOpts += '<option value="' + rooms[i].id + '">' + rooms[i].name + ' [' + mapLvlShort(rooms[i].lvl) + ']</option>';
+  var playerOpts = '<option value="__all__">— TODOS OS JOGADORES CONECTADOS —</option>';
+  var anyPlayers = false;
+  for (var k in fbPlayers) {
+    var p = fbPlayers[k];
+    playerOpts += '<option value="' + k + '">' + fpFurnEsc((p && p.nm) || k) + (k === userKey ? ' (voce)' : '') + '</option>';
+    anyPlayers = true;
+  }
+  var h = '<div class="dv"><div class="dh"><h1>Teletransportar Jogadores</h1></div>';
+  if (!anyPlayers) h += '<div class="help-text" style="color:var(--td); font-size:0.75em; margin-bottom:12px;">Nenhum jogador conectado no momento.</div>';
+  h += '<div class="fg"><label>Jogador</label><select id="tpPlayer">' + playerOpts + '</select></div>' +
+    '<div class="fg"><label>Area de destino</label><select id="tpRoom" onchange="mapTeleportRoomChanged()">' + roomOpts + '</select></div>' +
+    '<div class="fg" id="tpFloorWrap"><label>Andar</label><select id="tpFloor"></select></div>' +
+    '<div class="fr"><div class="fg"><label>Quadrado X (opcional)</label><input type="number" id="tpX" min="0" placeholder="auto"></div>' +
+    '<div class="fg"><label>Quadrado Y (opcional)</label><input type="number" id="tpY" min="0" placeholder="auto"></div></div>' +
+    '<div class="help-text" style="color:var(--td); font-size:0.72em; margin:8px 0 14px;">Deixe X/Y em branco para usar o ponto de entrada padrao da area (ou o centro da planta, se nenhum ponto de entrada foi definido). O historico de exploracao do jogador NAO e apagado — a area de destino so' + ' e adicionada as areas conhecidas dele.</div>' +
+    '<div style="display:flex; gap:10px; flex-wrap:wrap;">' +
+    (anyPlayers ? '<button class="btn" onclick="mapTeleportConfirm()">TELETRANSPORTAR</button>' : '') +
+    '<button class="btn btn-s" onclick="xmd()">CANCELAR</button></div></div>';
+  document.getElementById('mt').textContent = 'TELETRANSPORTE';
+  document.getElementById('mb').innerHTML = h;
+  document.getElementById('md').classList.add('on');
+  mapTeleportRoomChanged();
+}
+
+// Repovoa o seletor de ANDAR conforme a planta da area escolhida (algumas areas
+// tem varios pisos) — sem planta desenhada ainda, assume um unico andar (0).
+function mapTeleportRoomChanged() {
+  var roomSel = document.getElementById('tpRoom');
+  var floorSel = document.getElementById('tpFloor');
+  if (!roomSel || !floorSel) return;
+  var plan = mapState ? fpGetPlan(roomSel.value) : null;
+  var opts = '';
+  var n = (plan && plan.floors) ? plan.floors.length : 1;
+  for (var i = 0; i < n; i++) opts += '<option value="' + i + '">' + ((plan && plan.floors[i] && plan.floors[i].name) || ('Piso ' + i)) + '</option>';
+  floorSel.innerHTML = opts;
+}
+
+function mapTeleportConfirm() {
+  if (lvl < 6) { alert('ACESSO NEGADO.'); return; }
+  var playerSel = document.getElementById('tpPlayer');
+  var roomSel = document.getElementById('tpRoom');
+  var floorSel = document.getElementById('tpFloor');
+  var xInput = document.getElementById('tpX');
+  var yInput = document.getElementById('tpY');
+  if (!playerSel || !roomSel) return;
+  var roomId = roomSel.value;
+  var room = mapRoomById(roomId);
+  if (!room) return;
+  var floorIdx = parseInt(floorSel.value, 10) || 0;
+  var xVal = (xInput.value !== '') ? parseInt(xInput.value, 10) : null;
+  var yVal = (yInput.value !== '') ? parseInt(yInput.value, 10) : null;
+  if (xVal === null || yVal === null) {
+    if (!mapState) loadMapState();
+    var plan = fpGetPlan(roomId);
+    var floor = plan && plan.floors[floorIdx];
+    var sp = floor && floor.spawn;
+    if (xVal === null) xVal = sp ? sp.x : (floor ? Math.floor(floor.cols / 2) : 0);
+    if (yVal === null) yVal = sp ? sp.y : (floor ? Math.floor(floor.rows / 2) : 0);
+  }
+  var targets = [];
+  if (playerSel.value === '__all__') {
+    for (var k in fbPlayers) targets.push(k);
+  } else {
+    targets.push(playerSel.value);
+  }
+  if (!targets.length) { alert('NENHUM JOGADOR PARA TELETRANSPORTAR.'); return; }
+  var alvoLabel = (playerSel.value === '__all__') ? 'TODOS OS JOGADORES CONECTADOS' : ('"' + ((fbPlayers[playerSel.value] && fbPlayers[playerSel.value].nm) || playerSel.value) + '"');
+  if (!confirm('TELETRANSPORTAR ' + alvoLabel + ' PARA "' + room.name + '"?')) return;
+  if (typeof fbDB === 'undefined') { alert('SEM CONEXAO COM O FIREBASE — NAO E POSSIVEL TELETRANSPORTAR.'); return; }
+  var ts = Date.now();
+  targets.forEach(function(key) {
+    fbDB.ref('teleport/' + key).set({ roomId: roomId, floorIdx: floorIdx, x: xVal, y: yVal, ts: ts, by: (user && user.nm) || 'MESTRE' });
+  });
+  alert('COMANDO DE TELETRANSPORTE ENVIADO.');
+  xmd();
+}
+
+// Cada aparelho escuta SO o proprio ramo (teleport/<suaChave>) — assim um
+// comando destinado a outro jogador nunca chega aqui. Guarda o timestamp do
+// ultimo comando ja aplicado (por aparelho, em localStorage) para nao reaplicar
+// o mesmo teletransporte de novo sozinho ao reconectar/recarregar a pagina.
+function mapTeleportLastTs() {
+  try { return parseInt(localStorage.getItem('scpTELEPORT_LAST_v1') || '0', 10) || 0; } catch (e) { return 0; }
+}
+function mapTeleportSetLastTs(ts) {
+  try { localStorage.setItem('scpTELEPORT_LAST_v1', String(ts)); } catch (e) {}
+}
+function mapTeleportSyncStart() {
+  if (!userKey || typeof fbDB === 'undefined') return;
+  fbDB.ref('teleport/' + userKey).on('value', function(snap) {
+    var v = snap.val();
+    if (!v || !v.ts || v.ts <= mapTeleportLastTs()) return;
+    mapTeleportSetLastTs(v.ts);
+    mapApplyTeleport(v);
+  });
+}
+
+// Aplica um comando de teletransporte recebido: leva o jogador direto para a
+// area/quadrado escolhidos pelo Mestre. So' ADICIONA a area de destino as
+// conhecidas (mapState.visited) — nunca apaga o que ja estava la, ao contrario
+// de uma troca de mapa ativo.
+function mapApplyTeleport(cmd) {
+  if (!mapState) loadMapState();
+  var room = mapRoomById(cmd.roomId);
+  if (!room) return;
+  if (!mapState.visited) mapState.visited = {};
+  mapState.visited[cmd.roomId] = true;
+  mapState.current = cmd.roomId;
+  saveMapState();
+  mapInvalidateCache();
+  if (userKey && typeof fbDB !== 'undefined') {
+    var floorIdx = cmd.floorIdx || 0;
+    var meOld = fbPlayers[userKey] || {};
+    var data = { roomId: cmd.roomId, floorIdx: floorIdx, x: (cmd.x != null ? cmd.x : (meOld.x || 0)), y: (cmd.y != null ? cmd.y : (meOld.y || 0)), nm: (user && user.nm) || userKey };
+    if (meOld.color) data.color = meOld.color;
+    if (lvl >= 6) data.hidden = !_fpMestreVisible;
+    fbPlayers[userKey] = data;
+    fbDB.ref('players/' + userKey).set(data);
+  }
+  try { document.getElementById('md').classList.remove('on'); } catch (e) {}
+  _fpViewRoomId = null;
+  go('map');
+  renderMap(document.getElementById('tcnt'));
+  alert('VOCE FOI TELETRANSPORTADO PARA "' + room.name + '" PELO MESTRE.');
+  mapShowFloorplan(cmd.roomId);
+}
+
 // Apaga TODAS as plantas ja desenhadas (paredes, portas, escadas, setas de saida,
 // quadrados de cenario e NPCs) de TODAS as areas, em todos os aparelhos conectados.
 // Usado para comecar do zero com o novo sistema de SETAS/QUADRADOS, no lugar do
@@ -7103,6 +7244,7 @@ function fpStartPlayerSync() {
   glitchSyncStart();
   mapRegistrySyncStart();
   mapSharedSyncStart();
+  mapTeleportSyncStart();
   musicForceSyncStart();
   sfxLibSyncStart();
   furnitureSyncStart();
