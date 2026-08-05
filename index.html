@@ -1242,6 +1242,7 @@ body.simple-mode .help-text{display:none !important;}
                 <div class="tsi on" data-nav="db" onclick="go('db')">&gt; BANCO DE DADOS</div>
                 <div class="tsi" data-nav="profile" onclick="go('profile')">&gt; PERFIL DE PESQUISADOR</div>
                 <div class="tsi" data-nav="lab" onclick="go('lab')">&gt; LABORATORIO</div>
+                <div class="tsi" data-nav="logs" onclick="go('logs')">&gt; LOGS DE CAMPO</div>
                 <div class="tsi" data-nav="map" onclick="go('map')">&gt; MAPA DO SITE</div>
                 <div class="tsi" data-nav="notes" onclick="go('notes')">&gt; NOTAS</div>
                 <div class="tsi" data-nav="chat" onclick="go('chat')">&gt; COMUNICACOES <span id="chatBadge" style="display:none; background:var(--r); color:#fff; border-radius:8px; font-size:0.75em; padding:1px 6px; margin-left:6px;"></span></div>
@@ -1330,6 +1331,7 @@ function toggleSimpleMode() {
 
 // ============== ESTADO ==============
 var db = [], labCards = [], items = [], dclass = [];
+var testLogs = [], interviewLogs = [];
 var user = null, userKey = null, lvl = 0, nav = 'db', editId = null, imgs = [];
 var researcherProfile = null;
 var labTab = 'scp'; // scp | item | dclass
@@ -1343,6 +1345,8 @@ document.addEventListener('DOMContentLoaded', function() {
     loadLabCards();
     loadItems();
     loadDClass();
+    loadTestLogs();
+    loadInterviewLogs();
     startSplash();
     startClock();
     loadResearcherProfile();
@@ -1798,6 +1802,8 @@ function loadDB() {
         if (s) db = JSON.parse(s);
         else { db = defaultDB(); saveDB(); }
     } catch(e) { db = defaultDB(); }
+    // Migracao: documentos salvos antes de existir "interv" (pode ser entrevistado) ganham false por padrao
+    for (var i = 0; i < db.length; i++) if (typeof db[i].interv !== 'boolean') db[i].interv = false;
 }
 function saveDB() { try { localStorage.setItem('scpDB_v2', JSON.stringify(db)); } catch(e) { alert('ERRO: DB muito grande!'); } worldPush('db', db); }
 
@@ -1807,32 +1813,32 @@ function defaultDB() {
           cnt:"Item SCP-173 deve ser mantido em um container trancado em todos os momentos. Quando o pessoal precisar entrar no container do SCP-173, nao menos de 3 pessoas podem entrar a qualquer momento e a porta deve ser retrancada atras deles. Em todos os momentos, duas pessoas devem manter contato visual direto com o SCP-173 ate que todo o pessoal tenha evacuado e retranque o container.",
           desc:"Movido para o Site-19 em 1993. A origem ainda e desconhecida. E construido de concreto e vergalhoes com tracos de tinta spray marca Krylon. O SCP-173 e animado e extremamente hostil. O objeto nao pode se mover enquanto estiver dentro da linha de visao direta. A linha de visao nao deve ser quebrada a qualquer momento com o SCP-173. O objeto ataca quebrando o pescoco na base do cranio ou por estrangulamento.",
           add:"Adendo 173-1: SCP-173 parece produzir uma substancia similar a ferrugem quando nao esta sendo observado. A limpeza da cela e obrigatoria a cada duas semanas.\n\nAdendo 173-2: [REDACTED]",
-          tags:["animado","escultura","hostil","concreto"], imgs:[], wireframes:[], dt:new Date().toISOString() },
+          tags:["animado","escultura","hostil","concreto"], imgs:[], wireframes:[], interv:false, dt:new Date().toISOString() },
         { id:2, num:"SCP-096", tit:"O Carinha Timido", cls:"Euclid", clr:2,
           cnt:"SCP-096 deve ser contido em sua cela, um cubo de aco hermetico de 5m x 5m x 5m, em todos os momentos. Verificacoes semanais de rachaduras ou buracos sao obrigatorias. Nao deve haver absolutamente nenhuma vigilancia por video ou ferramentas opticas de qualquer tipo dentro da cela do SCP-096.",
           desc:"SCP-096 e uma criatura humanoide medindo aproximadamente 2,38 metros de altura. O sujeito mostra muito pouca massa muscular, com analise preliminar da massa corporal sugerindo desnutricao leve. Os bracos sao desproporcionalmente grandes em relacao ao resto do corpo do sujeito, com comprimento aproximado de 1,5 metros cada. A pele e praticamente despigmentada, sem sinais de pelos corporais.",
           add:"Adendo 096-1: SCP-096 entra em estado de extrema agitacao quando seu rosto e visto, direta ou indiretamente. Apos aproximadamente 1-2 minutos, SCP-096 comeca a correr em direcao a pessoa que viu seu rosto. Nenhum material conhecido pode impedir seu avanco.\n\nAdendo 096-2: Velocidade maxima registrada: [REDACTED] km/h.",
-          tags:["humanoide","hostil","visual","predador"], imgs:[], wireframes:[], dt:new Date().toISOString() },
+          tags:["humanoide","hostil","visual","predador"], imgs:[], wireframes:[], interv:false, dt:new Date().toISOString() },
         { id:3, num:"SCP-682", tit:"Reptil Dificil de Destruir", cls:"Keter", clr:3,
           cnt:"SCP-682 deve ser destruido o mais rapido possivel. No momento, nenhum meio disponivel para as equipes SCP e capaz de destruir o SCP-682, apenas causar dano fisico massivo. SCP-682 deve ser contido em uma camara de 5m x 5m x 5m com placas de aco reforcado resistentes a acido revestindo todas as superficies internas.",
           desc:"SCP-682 e uma criatura grande, vagamente similar a um reptil, de origem desconhecida. Ele parece ser extremamente inteligente, e foi observado se envolvendo em comunicacao complexa com o SCP-079 durante seu tempo limitado de exposicao. SCP-682 parece ter um odio por toda a vida, que tem sido expresso em varias entrevistas durante a contencao. O corpo do SCP-682 passa por mudancas extremas de forma como reacao a dano sofrido.",
           add:"Adendo 682-1: SCP-682 demonstrou repetidamente consciencia de pessoal e eventos fora de sua camara de contencao.\n\nAdendo 682-2: Tentativas de destruicao incluem: [REDACTED]. Nenhuma bem-sucedida ate o momento.\n\nAdendo 682-3: ENTREVISTA LOG 682-A: \"Voce... e tao... repugnante.\"",
-          tags:["reptiliano","adaptativo","hostil","imortal"], imgs:[], wireframes:[], dt:new Date().toISOString() },
+          tags:["reptiliano","adaptativo","hostil","imortal"], imgs:[], wireframes:[], interv:true, dt:new Date().toISOString() },
         { id:4, num:"SCP-999", tit:"O Blob Feliz", cls:"Safe", clr:1,
           cnt:"SCP-999 e permitido vaguear livremente pelo Site-19 desde que nao saia dos limites do predio. E proibido entrar na camara de contencao do SCP-682 a qualquer momento. O pessoal e livre para interagir com o SCP-999 a vontade durante o horario de expediente.",
           desc:"SCP-999 e uma grande, amorfa, gelatinosa massa de laranja claro, pesando aproximadamente 54 kg. A consistencia do SCP-999 e similar a de uma massa de chiclete. O objeto parece ser capaz de se mover sob vontade propria. SCP-999 emite sons descritos como 'gargalhadas' ou 'risadinhas'.",
           add:"Adendo 999-1: SCP-999 e capaz de fazer qualquer pessoa toca-lo sentir imensa felicidade. Util no tratamento de depressao e PTSD entre o pessoal.\n\nAdendo 999-2: Testes com SCP-682 mostraram que SCP-999 e capaz de temporariamente acalmar o reptil.",
-          tags:["animado","gelatinoso","amigavel","terapeutico"], imgs:[], wireframes:[], dt:new Date().toISOString() },
+          tags:["animado","gelatinoso","amigavel","terapeutico"], imgs:[], wireframes:[], interv:false, dt:new Date().toISOString() },
         { id:5, num:"SCP-2000", tit:"O Segundo Sol", cls:"Thaumiel", clr:4,
           cnt:"SCP-2000 e mantido operacional e pronto para ativacao em todos os momentos. O acesso ao SCP-2000 e restrito ao Conselho O5 e pessoal de Nivel 4 com autorizacao especifica. Todas as tentativas de ativacao devem ser registradas e aprovadas pelo Conselho O5.",
           desc:"SCP-2000 e uma instalacao subterranea localizada em [REDACTED], projetada para reconstruir a civilizacao humana em caso de um evento de extincao em nivel XK, ZK ou AK. A instalacao contem recursos geneticos suficientes para recriar toda a populacao humana, juntamente com bancos de dados contendo todo o conhecimento humano acumulado. O sistema e capaz de produzir clones humanos funcionais em aproximadamente 50 anos.",
           add:"Adendo 2000-1: SCP-2000 ja foi ativado pelo menos ███ vezes. A historia registrada da humanidade pode nao ser a original.\n\nAdendo 2000-2: [DADOS EXPURGADOS PELO CONSELHO O5]\n\nAdendo 2000-3: O pessoal nao deve investigar discrepancias em registros historicos anteriores a 19██.",
-          tags:["thaumiel","instalacao","reconstrucao","clonagem"], imgs:[], wireframes:[], dt:new Date().toISOString() },
+          tags:["thaumiel","instalacao","reconstrucao","clonagem"], imgs:[], wireframes:[], interv:false, dt:new Date().toISOString() },
         { id:6, num:"SCP-001", tit:"A Proposta [O5 APENAS]", cls:"Apollyon", clr:5,
           cnt:"[ACESSO RESTRITO AO CONSELHO O5]\n\nAs informacoes contidas neste arquivo sao protegidas por protocolos de memetica letal. A visualizacao nao autorizada resultara em [REDACTED].\n\nO Protocolo 001-Omega deve ser mantido em vigor em todos os momentos. Nenhuma excecao.",
           desc:"[DADOS EXPURGADOS]\n\nVoce nao deveria estar lendo isso.\n\nO Conselho O5 deliberou que a natureza do SCP-001 deve permanecer classificada para prevenir colapso da realidade percebida. Multiplas propostas foram apresentadas, cada uma mais aterradora que a anterior.\n\nA verdadeira identidade do SCP-001 e conhecida apenas por membros ativos do Conselho O5 e pelo Administrador.\n\n[REDACTED]\n\n[REDACTED]\n\nEle esta acordado.",
           add:"Adendo 001-1: [REDACTED]\n\nAdendo 001-2: [REDACTED]\n\nAdendo 001-Omega: A Fundacao nao contem SCP-001. SCP-001 nos contem.",
-          tags:["apollyon","restrito","o5","memetico"], imgs:[], wireframes:[], dt:new Date().toISOString() }
+          tags:["apollyon","restrito","o5","memetico"], imgs:[], wireframes:[], interv:false, dt:new Date().toISOString() }
     ];
 }
 
@@ -1888,6 +1894,30 @@ function defaultDClass() {
         { id:'d-005', code:'D-0001', name:'Sujeito D-0001', age:31, desc:'Primeiro sujeito Classe-D do Site-11. Veterano de multiplos testes. Conhecimento extenso sobre procedimentos de contencao.', status:'morto', traits:["veterano","experiente","leal"], sentenciado:"Executado", clr:1, imgs:[], dt:new Date().toISOString(), attrs:{ fisico: 5, intel: 6, emocional: 6 } }
     ];
 }
+
+// ============== LOGS DE TESTE ==============
+// Registros de testes feitos em objetos SCP (qualquer SCP pode ser testado):
+// data, sujeito/executor, itens usados, efeitos observados e resultado.
+function loadTestLogs() {
+    try {
+        var s = localStorage.getItem('scpTESTLOGS_v1');
+        if (s) testLogs = JSON.parse(s);
+        else testLogs = [];
+    } catch(e) { testLogs = []; }
+}
+function saveTestLogs() { try { localStorage.setItem('scpTESTLOGS_v1', JSON.stringify(testLogs)); } catch(e) {} worldPush('testLogs', testLogs); }
+
+// ============== LOGS DE ENTREVISTA ==============
+// Igual aos logs de teste, mas so' fazem sentido pra SCPs marcados com
+// "interv:true" no Banco de Dados (objetos/itens normalmente nao "respondem").
+function loadInterviewLogs() {
+    try {
+        var s = localStorage.getItem('scpINTERVIEWLOGS_v1');
+        if (s) interviewLogs = JSON.parse(s);
+        else interviewLogs = [];
+    } catch(e) { interviewLogs = []; }
+}
+function saveInterviewLogs() { try { localStorage.setItem('scpINTERVIEWLOGS_v1', JSON.stringify(interviewLogs)); } catch(e) {} worldPush('interviewLogs', interviewLogs); }
 
 // ============== LABORATORIO - CARTAS CTR ==============
 function loadLabCards() {
@@ -1957,6 +1987,7 @@ function go(page) {
     var c = document.getElementById('tcnt');
     if (page === 'db') renderDB(c);
     else if (page === 'lab') { labTab = 'scp'; renderLab(c); }
+    else if (page === 'logs') renderLogs(c);
     else if (page === 'map') renderMap(c);
     else if (page === 'notes') renderNotes(c);
     else if (page === 'chat') { chatActiveThread = null; renderChat(c); chatUpdateBadge(); }
@@ -2035,6 +2066,218 @@ function exportNotes() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(u);
+}
+
+// ============== LOGS DE CAMPO (TESTES / ENTREVISTAS) ==============
+// Duas abas: LOGS DE TESTE (qualquer SCP pode ser testado) e LOGS DE
+// ENTREVISTA (so' lista SCPs marcados com "interv:true" no Banco de Dados,
+// ja' que objetos/instalacoes normalmente nao respondem a perguntas).
+var _logsTab = 'test'; // 'test' | 'interview'
+
+function renderLogs(c) {
+    var h = '<div style="max-width:900px;">' +
+        '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:18px;">&gt; LOGS DE CAMPO</div>';
+    h += '<div class="lab-tabs">' +
+        '<button class="lab-tab' + (_logsTab === 'test' ? ' on' : '') + '" onclick="logsSwitchTab(\'test\')">&gt; LOGS DE TESTE (' + testLogs.length + ')</button>' +
+        '<button class="lab-tab' + (_logsTab === 'interview' ? ' on' : '') + '" onclick="logsSwitchTab(\'interview\')">&gt; LOGS DE ENTREVISTA (' + interviewLogs.length + ')</button>' +
+        '</div>';
+    if (_logsTab === 'test') h += renderTestLogsTab();
+    else h += renderInterviewLogsTab();
+    h += '</div>';
+    c.innerHTML = h;
+}
+
+function logsSwitchTab(id) { _logsTab = id; renderLogs(document.getElementById('tcnt')); }
+
+function testResultColor(r) {
+    r = (r || '').toLowerCase();
+    if (r === 'sucesso') return 'var(--g)';
+    if (r === 'falha' || r === 'fatal') return 'var(--r)';
+    if (r === 'inconclusivo') return 'var(--y)';
+    return 'var(--td)';
+}
+
+// ---- LOGS DE TESTE ----
+function renderTestLogsTab() {
+    var h = '<div style="color:var(--td); font-size:0.8em; margin:14px 0 18px;">Registros de testes feitos em objetos SCP — data, sujeito/executor, itens usados, efeitos observados e resultado. Qualquer SCP pode ser testado.</div>' +
+        '<div style="margin-bottom:18px;"><button class="btn btn-s" onclick="openTestLogForm()">+ NOVO LOG DE TESTE</button></div>';
+    if (!testLogs.length) {
+        h += '<div style="text-align:center; padding:30px 20px; color:var(--td); border:1px dashed var(--bd);">NENHUM LOG DE TESTE REGISTRADO.</div>';
+        return h;
+    }
+    var sorted = testLogs.slice().sort(function(a, b) { return new Date(b.dt) - new Date(a.dt); });
+    for (var i = 0; i < sorted.length; i++) {
+        var t = sorted[i];
+        h += '<div class="item-card" style="margin-bottom:12px; cursor:default;">' +
+            '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">' +
+            '<div><div style="color:var(--g); font-weight:bold;">' + fpFurnEsc(t.scpNum || 'NAO ESPECIFICADO') + '</div>' +
+            '<div style="color:var(--td); font-size:0.75em; margin-top:2px;">Data (in-game): ' + fpFurnEsc(t.data || '-') + ' &nbsp;|&nbsp; Registrado por: ' + fpFurnEsc(t.autor || '-') + '</div></div>' +
+            '<div style="display:flex; gap:6px;">' +
+            '<button class="btn btn-s" onclick="editTestLog(\'' + t.id + '\')">EDITAR</button>' +
+            '<button class="btn btn-r btn-s" onclick="delTestLog(\'' + t.id + '\')">EXCLUIR</button>' +
+            '</div></div>' +
+            (t.sujeito ? '<div style="margin-top:8px; font-size:0.85em;"><span style="color:var(--td);">Sujeito/Executor:</span> ' + fpFurnEsc(t.sujeito) + '</div>' : '') +
+            (t.itens ? '<div style="margin-top:4px; font-size:0.85em;"><span style="color:var(--td);">Itens utilizados:</span> ' + fpFurnEsc(t.itens) + '</div>' : '') +
+            (t.efeitos ? '<div style="margin-top:6px; font-size:0.85em; white-space:pre-wrap;"><span style="color:var(--td);">Efeitos observados:</span><br>' + fpFurnEsc(t.efeitos) + '</div>' : '') +
+            (t.resultado ? '<div style="margin-top:6px; font-size:0.8em;"><span style="color:var(--td);">Resultado:</span> <span style="color:' + testResultColor(t.resultado) + ';">' + fpFurnEsc(t.resultado.toUpperCase()) + '</span></div>' : '') +
+            '</div>';
+    }
+    return h;
+}
+
+function openTestLogForm(logId) {
+    var ed = null;
+    if (logId) { for (var i = 0; i < testLogs.length; i++) if (testLogs[i].id === logId) { ed = testLogs[i]; break; } }
+    var scpOpts = '<option value="">— nao especificado —</option>';
+    for (var i = 0; i < db.length; i++) {
+        var s = db[i];
+        scpOpts += '<option value="' + fpFurnEsc(s.num) + '"' + (ed && ed.scpNum === s.num ? ' selected' : '') + '>' + fpFurnEsc(s.num) + ' — ' + fpFurnEsc(s.tit) + '</option>';
+    }
+    var resultOpts = ['', 'sucesso', 'inconclusivo', 'falha', 'fatal'];
+    var resultH = '';
+    for (var i = 0; i < resultOpts.length; i++) {
+        var r = resultOpts[i];
+        var lbl = r === '' ? '— nao definido —' : r.toUpperCase();
+        resultH += '<option value="' + r + '"' + (ed && ed.resultado === r ? ' selected' : '') + '>' + lbl + '</option>';
+    }
+    var h = '<div class="dv"><div class="dh"><h1>' + (ed ? 'EDITAR' : 'NOVO') + ' LOG DE TESTE</h1></div>' +
+        '<form onsubmit="sTestLog(event, \'' + (ed ? ed.id : '') + '\')">' +
+        '<div class="fr"><div class="fg"><label>SCP testado</label><select id="tlScp">' + scpOpts + '</select></div>' +
+        '<div class="fg"><label>Data (in-game)</label><input type="text" id="tlData" value="' + (ed ? fpFurnEsc(ed.data || '') : '') + '" placeholder="ex: 14/03/2024"></div></div>' +
+        '<div class="fg"><label>Sujeito / Executor do teste</label><input type="text" id="tlSujeito" value="' + (ed ? fpFurnEsc(ed.sujeito || '') : '') + '" placeholder="ex: D-9341, Dr. Fulano..."></div>' +
+        '<div class="fg"><label>Itens utilizados</label><input type="text" id="tlItens" value="' + (ed ? fpFurnEsc(ed.itens || '') : '') + '" placeholder="ex: Lanterna UV, Giz de Contencao..."></div>' +
+        '<div class="fg"><label>Efeitos observados</label><textarea id="tlEfeitos" placeholder="Descreva o que aconteceu durante o teste...">' + (ed ? (ed.efeitos || '') : '') + '</textarea></div>' +
+        '<div class="fg"><label>Resultado</label><select id="tlResultado">' + resultH + '</select></div>' +
+        '<div style="display:flex; gap:10px; margin-top:18px;"><button type="submit" class="btn">' + (ed ? 'ATUALIZAR' : 'SALVAR') + '</button>' +
+        '<button type="button" class="btn btn-r" onclick="xmd()">CANCELAR</button></div></form></div>';
+    document.getElementById('mt').textContent = ed ? 'EDITAR LOG DE TESTE' : 'NOVO LOG DE TESTE';
+    document.getElementById('mb').innerHTML = h;
+    document.getElementById('md').classList.add('on');
+}
+
+function sTestLog(e, logId) {
+    e.preventDefault();
+    var oldDt = null;
+    if (logId) for (var i = 0; i < testLogs.length; i++) if (testLogs[i].id === logId) { oldDt = testLogs[i].dt; break; }
+    var x = {
+        id: logId || ('test-' + Date.now() + '-' + Math.floor(Math.random() * 10000)),
+        scpNum: document.getElementById('tlScp').value,
+        data: document.getElementById('tlData').value,
+        sujeito: document.getElementById('tlSujeito').value,
+        itens: document.getElementById('tlItens').value,
+        efeitos: document.getElementById('tlEfeitos').value,
+        resultado: document.getElementById('tlResultado').value,
+        autor: (user && user.nm) || userKey || 'Desconhecido',
+        dt: oldDt || new Date().toISOString()
+    };
+    if (logId) {
+        var idx = -1;
+        for (var i = 0; i < testLogs.length; i++) if (testLogs[i].id === logId) { idx = i; break; }
+        if (idx !== -1) testLogs[idx] = x;
+    } else testLogs.push(x);
+    saveTestLogs();
+    xmd();
+    renderLogs(document.getElementById('tcnt'));
+}
+
+function editTestLog(id) { openTestLogForm(id); }
+function delTestLog(id) {
+    if (!confirm('EXCLUIR ESTE LOG DE TESTE?')) return;
+    for (var i = 0; i < testLogs.length; i++) if (testLogs[i].id === id) { testLogs.splice(i, 1); break; }
+    saveTestLogs();
+    renderLogs(document.getElementById('tcnt'));
+}
+
+// ---- LOGS DE ENTREVISTA ----
+function renderInterviewLogsTab() {
+    var h = '<div style="color:var(--td); font-size:0.8em; margin:14px 0 18px;">Registros de entrevistas — so' + ' disponivel para SCPs marcados como "pode ser entrevistado" no Banco de Dados (o Mestre habilita isso ao criar/editar o documento).</div>' +
+        '<div style="margin-bottom:18px;"><button class="btn btn-s" onclick="openInterviewLogForm()">+ NOVO LOG DE ENTREVISTA</button></div>';
+    if (!interviewLogs.length) {
+        h += '<div style="text-align:center; padding:30px 20px; color:var(--td); border:1px dashed var(--bd);">NENHUM LOG DE ENTREVISTA REGISTRADO.</div>';
+        return h;
+    }
+    var sorted = interviewLogs.slice().sort(function(a, b) { return new Date(b.dt) - new Date(a.dt); });
+    for (var i = 0; i < sorted.length; i++) {
+        var t = sorted[i];
+        h += '<div class="item-card" style="margin-bottom:12px; cursor:default;">' +
+            '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">' +
+            '<div><div style="color:var(--g); font-weight:bold;">' + fpFurnEsc(t.scpNum || 'NAO ESPECIFICADO') + '</div>' +
+            '<div style="color:var(--td); font-size:0.75em; margin-top:2px;">Data (in-game): ' + fpFurnEsc(t.data || '-') + ' &nbsp;|&nbsp; Entrevistador: ' + fpFurnEsc(t.entrevistador || '-') + ' &nbsp;|&nbsp; Registrado por: ' + fpFurnEsc(t.autor || '-') + '</div></div>' +
+            '<div style="display:flex; gap:6px;">' +
+            '<button class="btn btn-s" onclick="editInterviewLog(\'' + t.id + '\')">EDITAR</button>' +
+            '<button class="btn btn-r btn-s" onclick="delInterviewLog(\'' + t.id + '\')">EXCLUIR</button>' +
+            '</div></div>' +
+            (t.transcricao ? '<div style="margin-top:8px; font-size:0.85em; white-space:pre-wrap;"><span style="color:var(--td);">Transcricao:</span><br>' + fpFurnEsc(t.transcricao) + '</div>' : '') +
+            (t.notas ? '<div style="margin-top:6px; font-size:0.85em; white-space:pre-wrap;"><span style="color:var(--td);">Notas:</span><br>' + fpFurnEsc(t.notas) + '</div>' : '') +
+            '</div>';
+    }
+    return h;
+}
+
+function openInterviewLogForm(logId) {
+    var ed = null;
+    if (logId) { for (var i = 0; i < interviewLogs.length; i++) if (interviewLogs[i].id === logId) { ed = interviewLogs[i]; break; } }
+    var interviewable = [];
+    for (var i = 0; i < db.length; i++) if (db[i].interv) interviewable.push(db[i]);
+    if (!interviewable.length && !(ed && ed.scpNum)) {
+        alert('NENHUM SCP MARCADO COMO "PODE SER ENTREVISTADO" NO BANCO DE DADOS.\nO Mestre pode habilitar isso ao editar um documento SCP.');
+        return;
+    }
+    var scpOpts = '<option value="">— nao especificado —</option>';
+    for (var i = 0; i < interviewable.length; i++) {
+        var s = interviewable[i];
+        scpOpts += '<option value="' + fpFurnEsc(s.num) + '"' + (ed && ed.scpNum === s.num ? ' selected' : '') + '>' + fpFurnEsc(s.num) + ' — ' + fpFurnEsc(s.tit) + '</option>';
+    }
+    if (ed && ed.scpNum) {
+        var found = false;
+        for (var i = 0; i < interviewable.length; i++) if (interviewable[i].num === ed.scpNum) { found = true; break; }
+        if (!found) scpOpts += '<option value="' + fpFurnEsc(ed.scpNum) + '" selected>' + fpFurnEsc(ed.scpNum) + ' (nao entrevistavel atualmente)</option>';
+    }
+    var h = '<div class="dv"><div class="dh"><h1>' + (ed ? 'EDITAR' : 'NOVO') + ' LOG DE ENTREVISTA</h1></div>' +
+        '<div class="ds"><p style="color:var(--td); font-size:0.8em;">So' + ' SCPs marcados como "pode ser entrevistado" aparecem na lista.</p></div>' +
+        '<form onsubmit="sInterviewLog(event, \'' + (ed ? ed.id : '') + '\')">' +
+        '<div class="fr"><div class="fg"><label>SCP entrevistado</label><select id="ilScp">' + scpOpts + '</select></div>' +
+        '<div class="fg"><label>Data (in-game)</label><input type="text" id="ilData" value="' + (ed ? fpFurnEsc(ed.data || '') : '') + '" placeholder="ex: 14/03/2024"></div></div>' +
+        '<div class="fg"><label>Entrevistador</label><input type="text" id="ilEntrevistador" value="' + (ed ? fpFurnEsc(ed.entrevistador || '') : '') + '" placeholder="ex: Dr. Fulano"></div>' +
+        '<div class="fg"><label>Transcricao</label><textarea id="ilTranscricao" style="min-height:200px;" placeholder="Pergunta: ...&#10;Resposta: ...">' + (ed ? (ed.transcricao || '') : '') + '</textarea></div>' +
+        '<div class="fg"><label>Notas / observacoes</label><textarea id="ilNotas" placeholder="Estado psicologico, comportamento, observacoes gerais...">' + (ed ? (ed.notas || '') : '') + '</textarea></div>' +
+        '<div style="display:flex; gap:10px; margin-top:18px;"><button type="submit" class="btn">' + (ed ? 'ATUALIZAR' : 'SALVAR') + '</button>' +
+        '<button type="button" class="btn btn-r" onclick="xmd()">CANCELAR</button></div></form></div>';
+    document.getElementById('mt').textContent = ed ? 'EDITAR LOG DE ENTREVISTA' : 'NOVO LOG DE ENTREVISTA';
+    document.getElementById('mb').innerHTML = h;
+    document.getElementById('md').classList.add('on');
+}
+
+function sInterviewLog(e, logId) {
+    e.preventDefault();
+    var oldDt = null;
+    if (logId) for (var i = 0; i < interviewLogs.length; i++) if (interviewLogs[i].id === logId) { oldDt = interviewLogs[i].dt; break; }
+    var x = {
+        id: logId || ('int-' + Date.now() + '-' + Math.floor(Math.random() * 10000)),
+        scpNum: document.getElementById('ilScp').value,
+        data: document.getElementById('ilData').value,
+        entrevistador: document.getElementById('ilEntrevistador').value,
+        transcricao: document.getElementById('ilTranscricao').value,
+        notas: document.getElementById('ilNotas').value,
+        autor: (user && user.nm) || userKey || 'Desconhecido',
+        dt: oldDt || new Date().toISOString()
+    };
+    if (logId) {
+        var idx = -1;
+        for (var i = 0; i < interviewLogs.length; i++) if (interviewLogs[i].id === logId) { idx = i; break; }
+        if (idx !== -1) interviewLogs[idx] = x;
+    } else interviewLogs.push(x);
+    saveInterviewLogs();
+    xmd();
+    renderLogs(document.getElementById('tcnt'));
+}
+
+function editInterviewLog(id) { openInterviewLogForm(id); }
+function delInterviewLog(id) {
+    if (!confirm('EXCLUIR ESTE LOG DE ENTREVISTA?')) return;
+    for (var i = 0; i < interviewLogs.length; i++) if (interviewLogs[i].id === id) { interviewLogs.splice(i, 1); break; }
+    saveInterviewLogs();
+    renderLogs(document.getElementById('tcnt'));
 }
 
 // ---- DESENHO: tela em branco pra rabiscar a mao livre (mouse ou dedo) ----
@@ -2757,6 +3000,7 @@ function renderForm(c, ed) {
     var flMax = Math.min(lvl + 1, 5);
     for (var i = 1; i <= flMax; i++) h += '<option value="' + i + '"' + ((isE && ed.clr===i) || (!isE && i===1) ? ' selected' : '') + '>Nivel ' + i + '</option>';
     h += '</select><span style="display:block; color:var(--td); font-size:0.7em; margin-top:4px;">So' + ' aparece no documento como classificacao — nao controla mais quem pode ver.</span></div><div class="fg"><label>Tags (virgula)</label><input type="text" id="ftg" value="' + (isE ? ed.tags.join(', ') : '') + '"></div></div>' +
+        '<div class="fg"><label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:normal;"><input type="checkbox" id="finterv"' + (isE && ed.interv ? ' checked' : '') + '> Pode ser entrevistado (possui comunicacao/consciencia)</label></div>' +
         (lvl >= 6 ? renderFormAllowedBlock(isE ? ed : null) : '') +
         '<div class="fg"><label>Procedimentos de Contencao</label><textarea id="fcnt">' + (isE ? ed.cnt : '') + '</textarea></div>' +
         '<div class="fg"><label>Descricao</label><textarea id="fd">' + (isE ? ed.desc : '') + '</textarea></div>' +
@@ -2826,6 +3070,7 @@ function sItem(e) {
         desc: document.getElementById('fd').value,
         add: document.getElementById('fa').value,
         tags: document.getElementById('ftg').value.split(',').map(function(t) { return t.trim(); }).filter(function(t) { return t; }),
+        interv: document.getElementById('finterv') ? document.getElementById('finterv').checked : false,
         imgs: imgs,
         wireframes: wfImgs,
         allowed: allowedVal,
@@ -4621,7 +4866,7 @@ function renderAdmin(c) {
 
 // ============== IMPORT/EXPORT ==============
 function exportDB() {
-    var data = { scps: db, labCards: labCards, items: items, dclass: dclass };
+    var data = { scps: db, labCards: labCards, items: items, dclass: dclass, testLogs: testLogs, interviewLogs: interviewLogs };
     var s = JSON.stringify(data, null, 2);
     var b = new Blob([s], {type: 'application/json'});
     var u = URL.createObjectURL(b);
@@ -4667,6 +4912,14 @@ function importDB() {
                     dclass = d.dclass;
                     msg += d.dclass.length + ' Classe-D ';
                 }
+                if (d.testLogs && Array.isArray(d.testLogs)) {
+                    testLogs = d.testLogs;
+                    msg += d.testLogs.length + ' Logs-Teste ';
+                }
+                if (d.interviewLogs && Array.isArray(d.interviewLogs)) {
+                    interviewLogs = d.interviewLogs;
+                    msg += d.interviewLogs.length + ' Logs-Entrevista ';
+                }
                 if (Array.isArray(d) && !d.scps) {
                     for (var i = 0; i < d.length; i++) {
                         var found = false;
@@ -4677,7 +4930,7 @@ function importDB() {
                     }
                     msg = d.length + ' SCPs (formato legado)';
                 }
-                saveDB(); saveLabCards(); saveItems(); saveDClass();
+                saveDB(); saveLabCards(); saveItems(); saveDClass(); saveTestLogs(); saveInterviewLogs();
                 updStats(); alert('Importacao concluida! ' + msg);
                 go('db');
             } catch(err) { alert('Erro: ' + err.message); }
@@ -6894,8 +7147,8 @@ function mapRefreshLiveViews() {
 // Firebase em vez de uma copia por aparelho. O localStorage continua sendo escrito
 // (serve de cache local pra abrir rapido/offline), mas quem manda e' o Firebase:
 // qualquer edicao feita por alguem aparece pros outros na hora, sem recarregar.
-var WORLD_KEYS = { db: 'scpDB_v2', items: 'scpITEMS_v1', dclass: 'scpDCLASS_v1', labCards: 'scpLAB_v1' };
-var _worldFirstCallback = { db: true, items: true, dclass: true, labCards: true };
+var WORLD_KEYS = { db: 'scpDB_v2', items: 'scpITEMS_v1', dclass: 'scpDCLASS_v1', labCards: 'scpLAB_v1', testLogs: 'scpTESTLOGS_v1', interviewLogs: 'scpINTERVIEWLOGS_v1' };
+var _worldFirstCallback = { db: true, items: true, dclass: true, labCards: true, testLogs: true, interviewLogs: true };
 
 // Chamado de dentro de cada saveX() depois de escrever no localStorage.
 function worldPush(field, value) {
@@ -6905,7 +7158,7 @@ function worldPush(field, value) {
 
 function worldSyncStart() {
   if (typeof fbDB === 'undefined') return;
-  ['db', 'items', 'dclass', 'labCards'].forEach(function(field) {
+  ['db', 'items', 'dclass', 'labCards', 'testLogs', 'interviewLogs'].forEach(function(field) {
     fbDB.ref('world/' + field).on('value', function(snap) {
       var v = snap.val();
       // Na primeira leitura, se o Firebase ainda estiver vazio, mantem os dados
@@ -6923,6 +7176,8 @@ function worldSyncStart() {
       else if (field === 'items') items = v;
       else if (field === 'dclass') dclass = v;
       else if (field === 'labCards') labCards = v;
+      else if (field === 'testLogs') testLogs = v;
+      else if (field === 'interviewLogs') interviewLogs = v;
       try { localStorage.setItem(WORLD_KEYS[field], JSON.stringify(v)); } catch(e) {}
       try { refreshCurrentPage(); } catch (e) { console.error('ERRO AO ATUALIZAR TELA APOS SYNC DE "' + field + '":', e); }
     });
@@ -6937,6 +7192,7 @@ function refreshCurrentPage() {
   if (nav === 'db') renderDB(c);
   else if (nav === 'lab') renderLab(c);
   else if (nav === 'adm') renderAdmin(c);
+  else if (nav === 'logs') renderLogs(c);
 }
 
 // ============== GLITCH (efeito visual disparado pelo Mestre para todos) ==============
