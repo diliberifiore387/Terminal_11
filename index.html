@@ -1308,8 +1308,8 @@ body.simple-mode .help-text{display:none !important;}
 var PASS = {
     "mestre":     { pw: "mss22",            lv: 6, nm: "Mestre" },
     "teste":      { pw: "teste",            lv: 1, nm: "Teste" },
-    "victor":     { pw: "AtlasMolecular@9", lv: 1, nm: "Victor Ortiz" },
-    "alan":       { pw: "20AlanV0S$25",     lv: 1, nm: "Alan Voss" }
+    "Victor Ortiz":     { pw: "AtlasMolecular@9", lv: 1, nm: "Victor Ortiz" },
+    "Alan Voss":       { pw: "20AlanV0S$25",     lv: 1, nm: "Alan Voss" }
 };
 
 // ============== MODO LIMPO (esconde textos de ajuda compridos) ==============
@@ -1781,6 +1781,7 @@ function logout() {
     if (userKey && typeof fbDB !== 'undefined') {
         try { fbDB.ref('players/' + userKey).remove(); } catch (e) {}
     }
+    mapExplorerSyncStop(); // para de escutar o historico pessoal do login que esta saindo
     user = null; lvl = 0; userKey = null;
     researcherProfile = null; rpState = null;
     document.getElementById('term').classList.remove('on'); 
@@ -6146,7 +6147,63 @@ function loadMapState() {
   if (mapState.current) mapState.visited[mapState.current] = true;
 }
 
-function saveMapState() { try { localStorage.setItem('scpMAP_v1_' + MAP_ACTIVE_ID, JSON.stringify(mapState)); } catch(e) {} }
+function saveMapState() {
+  try { localStorage.setItem('scpMAP_v1_' + MAP_ACTIVE_ID, JSON.stringify(mapState)); } catch(e) {}
+  mapExplorerPush();
+}
+
+// ============== HISTORICO/POSICAO POR JOGADOR (sincronizado via Firebase) ==============
+// current/visited/log SAO pessoais de cada jogador (cada um tem seu proprio progresso
+// de exploracao) — mas precisam ficar amarrados ao LOGIN dele, nao ao aparelho. Antes
+// isso vivia so' no localStorage: um jogador que trocasse de aparelho, limpasse os
+// dados do navegador, ou entrasse com o mesmo login em outro lugar perdia tudo, e o
+// localStorage nao tinha como saber "de quem" era aquele progresso. Agora cada login
+// tem sua propria "pasta" no Firebase (explorers/<chave>/<mapa>), e o localStorage
+// vira so' um cache local (usado enquanto a sincronizacao nao chega/se a conexao cair).
+var _mapExplorerRef = null, _mapExplorerCb = null;
+
+function mapExplorerPush() {
+  if (!userKey || typeof fbDB === 'undefined' || !mapState) return;
+  fbDB.ref('explorers/' + userKey + '/' + MAP_ACTIVE_ID).set({
+    current: mapState.current || null,
+    visited: mapState.visited || {},
+    log: mapState.log || []
+  });
+}
+
+function mapExplorerSyncStop() {
+  if (_mapExplorerRef && _mapExplorerCb) { try { _mapExplorerRef.off('value', _mapExplorerCb); } catch (e) {} }
+  _mapExplorerRef = null; _mapExplorerCb = null;
+}
+
+// Reassina o listener do historico pessoal para o mapa ATIVO agora — chamada no
+// login e sempre que o mapa ativo muda (mapApplyActiveMapChange).
+function mapExplorerSyncStart() {
+  mapExplorerSyncStop();
+  if (!userKey || typeof fbDB === 'undefined') return;
+  var ref = fbDB.ref('explorers/' + userKey + '/' + MAP_ACTIVE_ID);
+  var firstCb = true;
+  var cb = function(snap) {
+    var v = snap.val();
+    if (firstCb) {
+      firstCb = false;
+      // Nada salvo na nuvem ainda pra este login+mapa: sobe o que ja existir no
+      // cache local (ex.: progresso feito antes desta sincronizacao existir) —
+      // essa mesma escrita volta pelo listener e completa a migracao sozinha.
+      if (v === null) { mapExplorerPush(); return; }
+    }
+    if (!mapState) loadMapState();
+    mapState.current = (v && v.current) ? v.current : mapState.current;
+    mapState.visited = (v && v.visited) ? v.visited : (mapState.visited || {});
+    mapState.log = (v && v.log) ? v.log : (mapState.log || []);
+    try { localStorage.setItem('scpMAP_v1_' + MAP_ACTIVE_ID, JSON.stringify(mapState)); } catch (e) {}
+    mapInvalidateCache();
+    if (nav === 'map') renderMap(document.getElementById('tcnt'));
+  };
+  ref.on('value', cb);
+  _mapExplorerRef = ref; _mapExplorerCb = cb;
+}
+
 
 // ============== AREA LABORAL (Inventario vs Laboratorio) ==============
 // O Mestre pode marcar qualquer area do mapa como "laboral" (laboratorio/area de
@@ -7245,6 +7302,7 @@ function fpStartPlayerSync() {
   mapRegistrySyncStart();
   mapSharedSyncStart();
   mapTeleportSyncStart();
+  mapExplorerSyncStart();
   musicForceSyncStart();
   sfxLibSyncStart();
   furnitureSyncStart();
@@ -7431,12 +7489,14 @@ function mapApplyActiveMapChange(newId) {
   saveMapActiveLocal();
   mapState = null;
   loadMapState();
-  var home = mapHomeRoomId();
-  mapState.current = home;
-  mapState.visited = home ? (function() { var v = {}; v[home] = true; return v; })() : {};
+  // loadMapState() ja' cuida dos dois casos sozinha: se este jogador nunca esteve
+  // neste mapa (nada salvo ainda), ela poe current/visited na area inicial; se ja'
+  // tinha estado aqui antes (voltando de outro mapa), ela recupera o progresso que
+  // ja existia — por isso NAO se forca mais current/visited pra area inicial aqui.
   saveMapState();
   mapInvalidateCache();
   mapSharedSyncStart(); // reassina os campos compartilhados (plantas, salas, imagens...) para a pasta do novo mapa
+  mapExplorerSyncStart(); // reassina o historico pessoal (current/visited/log), amarrado ao login, para o novo mapa
   refreshLabNavLabel();
   var c = document.getElementById('tcnt');
   if (nav === 'map' && c) renderMap(c);
