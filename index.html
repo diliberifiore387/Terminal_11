@@ -1244,6 +1244,7 @@ body.simple-mode .help-text{display:none !important;}
                 <div class="tsi" data-nav="lab" onclick="go('lab')">&gt; LABORATORIO</div>
                 <div class="tsi" data-nav="logs" onclick="go('logs')">&gt; LOGS DE CAMPO</div>
                 <div class="tsi" data-nav="map" onclick="go('map')">&gt; MAPA DO SITE</div>
+                <div class="tsi" id="nmapmgr" onclick="mapOpenMapManager(); closeSidebar();" style="display:none;">&gt; GERENCIAR MAPAS</div>
                 <div class="tsi" data-nav="notes" onclick="go('notes')">&gt; NOTAS</div>
                 <div class="tsi" data-nav="chat" onclick="go('chat')">&gt; COMUNICACOES <span id="chatBadge" style="display:none; background:var(--r); color:#fff; border-radius:8px; font-size:0.75em; padding:1px 6px; margin-left:6px;"></span></div>
                 <div class="tsi" data-nav="radio" onclick="go('radio')">&gt; CANAL DE VOZ <span id="radioBadge" style="display:none; background:var(--g); color:#000; border-radius:8px; font-size:0.75em; padding:1px 6px; margin-left:6px;">NO AR</span></div>
@@ -1730,6 +1731,8 @@ function doLogin() {
     c.className = 'th-c c' + a.lv;
     var n = document.getElementById('nadm');
     n.style.display = a.lv >= 4 ? '' : 'none';
+    var nmm = document.getElementById('nmapmgr');
+    if (nmm) nmm.style.display = a.lv >= 6 ? '' : 'none';
     document.getElementById('o5fab').style.display = a.lv >= 5 ? 'flex' : 'none';
     var rs = document.getElementById('researcherSection');
     if (rs) rs.style.display = 'block';
@@ -5977,6 +5980,47 @@ var _mapAdjCache = null;
 var _mapLayoutCache = null;
 var _mapTreeEdgeKeys = null; // ligacoes que formam a "arvore" principal do layout (ver mapComputeLayout)
 
+// ============== MULTIPLOS MAPAS (o Mestre pode criar/apagar mapas e escolher QUAL fica ativo) ==============
+// Antes so existia UM mapa (Site-11, com as MAP_ROOMS/MAP_LINKS fixas). Agora o Mestre
+// (Nivel 6) pode criar mapas adicionais (cada um com suas proprias areas/plantas, criadas
+// do zero ou duplicadas de outro mapa) e escolher a qualquer momento QUAL deles fica
+// "ativo" — e' o unico que TODOS os jogadores conectados veem e percorrem. Trocar o mapa
+// ativo NAO apaga os outros: cada mapa guarda seus proprios dados (salas, plantas, imagens,
+// areas laborais etc.) separadamente, e o Mestre pode voltar pra eles depois.
+// MAP_REGISTRY e MAP_ACTIVE_ID sao sincronizados pelo Firebase (ver mapRegistrySyncStart),
+// igual as plantas/salas — assim TODOS os aparelhos veem a mesma lista de mapas e o mesmo
+// mapa ativo, na hora.
+var MAP_REGISTRY = [{ id: 'site-11', name: 'SITE-11', builtin: true }]; // sempre existe pelo menos o Site-11 (mapa padrao do sistema, nao pode ser apagado)
+var MAP_ACTIVE_ID = 'site-11';
+var _mapRegistryFirstCb = true, _mapActiveFirstCb = true;
+var _mapSharedFbRefs = []; // refs+callbacks atualmente escutados no Firebase para o mapa ativo, para poder .off() ao trocar de mapa
+function loadMapUniverseLocal() {
+  try { var r = localStorage.getItem('scpMAP_REGISTRY_v1'); if (r) MAP_REGISTRY = JSON.parse(r); } catch (e) {}
+  try { var a = localStorage.getItem('scpMAP_ACTIVE_v1'); if (a) MAP_ACTIVE_ID = a; } catch (e) {}
+  var hasSite11 = false;
+  for (var i = 0; i < MAP_REGISTRY.length; i++) if (MAP_REGISTRY[i].id === 'site-11') hasSite11 = true;
+  if (!hasSite11) MAP_REGISTRY.unshift({ id: 'site-11', name: 'SITE-11', builtin: true });
+}
+function saveMapRegistryLocal() { try { localStorage.setItem('scpMAP_REGISTRY_v1', JSON.stringify(MAP_REGISTRY)); } catch (e) {} }
+function saveMapActiveLocal() { try { localStorage.setItem('scpMAP_ACTIVE_v1', MAP_ACTIVE_ID); } catch (e) {} }
+loadMapUniverseLocal();
+function mapActiveMapName() {
+  for (var i = 0; i < MAP_REGISTRY.length; i++) if (MAP_REGISTRY[i].id === MAP_ACTIVE_ID) return MAP_REGISTRY[i].name;
+  return MAP_ACTIVE_ID;
+}
+// Salas/ligacoes FIXAS de codigo: so existem no Site-11 (MAP_ROOMS/MAP_LINKS). Qualquer
+// outro mapa comeca 100% vazio e cresce so' com customRooms/customLinks — exatamente o
+// mesmo mecanismo que ja' existia pra adicionar localizacoes extras ao Site-11.
+function mapBaseRooms() { return MAP_ACTIVE_ID === 'site-11' ? MAP_ROOMS : []; }
+function mapBaseLinks() { return MAP_ACTIVE_ID === 'site-11' ? MAP_LINKS : []; }
+// A "area inicial" de um mapa e' sempre a primeira sala que ele tiver (rooms[0]) — no
+// Site-11 isso e' o Checkpoint Alfa. Um mapa recem-criado, ainda sem nenhuma area, nao
+// tem area inicial (retorna null) ate o Mestre adicionar a primeira localizacao.
+function mapHomeRoomId() {
+  var rooms = mapAllRooms();
+  return rooms.length ? rooms[0].id : null;
+}
+
 // ============== MODO DE EDICAO DE POSICOES (Nivel 6: arrastar areas livremente) ==============
 var _mapDragMode = false;  // quando true, todas as areas ficam visiveis e arrastaveis em vez de clicaveis
 var _mapOffX = 0, _mapOffY = 0;  // deslocamento usado no ultimo renderMap para converter pixel de tela <-> coordenada logica
@@ -6011,14 +6055,15 @@ function mapSetZoom(z) {
 }
 function mapZoomBy(delta) { mapSetZoom(_mapZoom + delta); }
 
-// Retorna todas as salas: as fixas do codigo + as adicionadas pelo Administrador (Nivel 6+), guardadas no mapState.
+// Retorna todas as salas DO MAPA ATIVO: as fixas do codigo (so no Site-11) + as
+// adicionadas pelo Administrador (Nivel 6+), guardadas no mapState daquele mapa.
 function mapAllRooms() {
   var custom = (mapState && mapState.customRooms) ? mapState.customRooms : [];
-  return MAP_ROOMS.concat(custom);
+  return mapBaseRooms().concat(custom);
 }
 function mapAllLinks() {
   var custom = (mapState && mapState.customLinks) ? mapState.customLinks : [];
-  return MAP_LINKS.concat(custom);
+  return mapBaseLinks().concat(custom);
 }
 function mapInvalidateCache() { _mapAdjCache = null; _mapLayoutCache = null; _mapTreeEdgeKeys = null; }
 
@@ -6035,7 +6080,15 @@ function mapIsExtraEdgeKey(key) {
 function cloneDefaultFloorplans() {
   try { return JSON.parse(JSON.stringify(DEFAULT_FLOORPLANS)); } catch (e) { return {}; }
 }
-function defaultMapState() { return { current: 'checkpoint-alfa', log: [], imgs: {}, floorplans: cloneDefaultFloorplans(), visited: { 'checkpoint-alfa': true }, customRooms: [], customLinks: [], posOverrides: {}, labFlags: {}, labItems: {}, labScp: {}, labDclass: {} }; }
+function defaultMapState() {
+  var home = mapHomeRoomId();
+  var visited = {};
+  if (home) visited[home] = true;
+  return { current: home, log: [], imgs: {}, floorplans: cloneDefaultFloorplans(), visited: visited, customRooms: [], customLinks: [], posOverrides: {}, labFlags: {}, labItems: {}, labScp: {}, labDclass: {} };
+}
+// Estado "em branco" usado ao criar um mapa novo do zero (sem nenhuma area ainda) —
+// diferente de defaultMapState() porque nao depende do mapa ativo no momento da chamada.
+function mapBlankState() { return { current: null, log: [], imgs: {}, floorplans: {}, visited: {}, customRooms: [], customLinks: [], posOverrides: {}, labFlags: {}, labItems: {}, labScp: {}, labDclass: {} }; }
 
 // Data de "hoje" no formato AAAA-MM-DD.
 function todayStr() { return new Date().toISOString().slice(0, 10); }
@@ -6061,7 +6114,11 @@ function mapSessionPin(dateStr, level) {
 
 function loadMapState() {
   try {
-    var s = localStorage.getItem('scpMAP_v1');
+    var s = localStorage.getItem('scpMAP_v1_' + MAP_ACTIVE_ID);
+    // MIGRACAO: antes de existirem multiplos mapas, o Site-11 salvava direto na chave
+    // 'scpMAP_v1' (sem sufixo de mapa). Se ainda nao existir a chave nova pro Site-11,
+    // aproveita o save antigo em vez de comecar do zero.
+    if (!s && MAP_ACTIVE_ID === 'site-11') { try { s = localStorage.getItem('scpMAP_v1'); } catch (e) {} }
     if (s) mapState = JSON.parse(s);
     else { mapState = defaultMapState(); saveMapState(); }
   } catch(e) { mapState = defaultMapState(); }
@@ -6074,7 +6131,7 @@ function loadMapState() {
   for (var _rid in _defFp) { if (!mapState.floorplans[_rid]) mapState.floorplans[_rid] = JSON.parse(JSON.stringify(_defFp[_rid])); }
   if (!mapState.log) mapState.log = [];
   if (!mapState.visited) mapState.visited = {};
-  if (!mapState.current) mapState.current = 'checkpoint-alfa';
+  if (!mapState.current) mapState.current = mapHomeRoomId();
   if (!mapState.customRooms) mapState.customRooms = [];
   if (!mapState.customLinks) mapState.customLinks = [];
   if (!mapState.posOverrides) mapState.posOverrides = {};
@@ -6082,10 +6139,10 @@ function loadMapState() {
   if (!mapState.labItems) mapState.labItems = {};
   if (!mapState.labScp) mapState.labScp = {};
   if (!mapState.labDclass) mapState.labDclass = {};
-  mapState.visited[mapState.current] = true;
+  if (mapState.current) mapState.visited[mapState.current] = true;
 }
 
-function saveMapState() { try { localStorage.setItem('scpMAP_v1', JSON.stringify(mapState)); } catch(e) {} }
+function saveMapState() { try { localStorage.setItem('scpMAP_v1_' + MAP_ACTIVE_ID, JSON.stringify(mapState)); } catch(e) {} }
 
 // ============== AREA LABORAL (Inventario vs Laboratorio) ==============
 // O Mestre pode marcar qualquer area do mapa como "laboral" (laboratorio/area de
@@ -6131,7 +6188,7 @@ function mapComputeLayout() {
   if (_mapLayoutCache) return _mapLayoutCache;
   var rooms = mapAllRooms();
   var adj = mapAdj();
-  var rootId = 'checkpoint-alfa';
+  var rootId = mapHomeRoomId();
   if (!adj[rootId] && rooms.length) rootId = rooms[0].id;
 
   // 1) Constroi uma arvore (parent/children) a partir da raiz via BFS
@@ -6363,6 +6420,23 @@ function renderMap(c) {
   if (!mapState) loadMapState();
   if (!rpState) loadRPState();
   if (!mapState.visited) mapState.visited = {};
+
+  // Mapa recem-criado e ainda vazio (sem nenhuma area cadastrada) — nao da pra
+  // calcular layout/navegacao de nada. Mostra um estado vazio em vez de quebrar.
+  if (!mapAllRooms().length) {
+    var hEmpty = '<div style="max-width:1050px; margin:0 auto;">' +
+      '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:14px;">&gt; MAPA: ' + fpFurnEsc(mapActiveMapName()) + '</div>' +
+      '<div style="border:1px dashed var(--bd); padding:40px; text-align:center; color:var(--td);">' +
+      'ESTE MAPA AINDA NAO TEM NENHUMA AREA CADASTRADA.' +
+      (lvl >= 6 ? '<div style="margin-top:18px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">' +
+        '<button class="btn" onclick="mapOpenAddRoomForm()">+ ADICIONAR LOCALIZACAO</button>' +
+        '<button class="btn btn-s" style="border-color:var(--p, #b967ff); color:var(--p, #b967ff);" onclick="mapOpenMapManager()">GERENCIAR MAPAS</button></div>'
+        : '<div style="margin-top:10px; font-size:0.8em;">Aguarde o Mestre configurar este mapa.</div>') +
+      '</div></div>';
+    c.innerHTML = hEmpty;
+    return;
+  }
+  if (!mapState.current) mapState.current = mapHomeRoomId();
   mapState.visited[mapState.current] = true;
 
   var adj = mapAdj();
@@ -6381,7 +6455,7 @@ function renderMap(c) {
   // todas as salas), para que ele fique sempre no meio, nao importa para que
   // lado o site se espalhe mais.
   var pad = 75;
-  var cpCoord = coords['checkpoint-alfa'] || { x: 0, y: 0 };
+  var cpCoord = coords[mapHomeRoomId()] || { x: 0, y: 0 };
   var halfX = Math.max(Math.abs(minX - cpCoord.x), Math.abs(maxX - cpCoord.x)) + pad;
   var halfY = Math.max(Math.abs(minY - cpCoord.y), Math.abs(maxY - cpCoord.y)) + pad;
   var offX = halfX - cpCoord.x, offY = halfY - cpCoord.y;
@@ -6390,7 +6464,7 @@ function renderMap(c) {
   _mapOffX = offX; _mapOffY = offY;
 
   var h = '<div style="max-width:1050px; margin:0 auto;">';
-  h += '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:14px;">&gt; MAPA DO SITE-11 // NAVEGACAO POR PROXIMIDADE</div>';
+  h += '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:14px;">&gt; MAPA: ' + fpFurnEsc(mapActiveMapName()) + ' // NAVEGACAO POR PROXIMIDADE</div>';
 
   if (_mapDragMode) {
     h += '<div style="border:1px solid var(--p, #b967ff); padding:10px 14px; margin-bottom:14px; background:rgba(185,103,255,0.06); color:var(--p, #b967ff); font-size:0.75em; letter-spacing:1px;">' +
@@ -6410,6 +6484,7 @@ function renderMap(c) {
     (lvl >= 6 ? '<button class="btn btn-s" style="border-color:var(--p, #b967ff); color:var(--p, #b967ff);" onclick="mapOpenAddRoomForm()">+ ADICIONAR LOCALIZACAO</button>' : '') +
     (lvl >= 6 ? '<button class="btn btn-s" style="border-color:var(--p, #b967ff); color:var(--p, #b967ff);" onclick="mapOpenManageRoomsForm()">EDITAR/MOVER/APAGAR LOCALIZACOES</button>' : '') +
     (lvl >= 6 ? '<button class="btn btn-s" style="border-color:var(--p, #b967ff); color:var(--p, #b967ff);" onclick="mapOpenLinkManagerForm()">LIGAR/DESLIGAR AREAS</button>' : '') +
+    (lvl >= 6 ? '<button class="btn btn-s" style="border-color:var(--p, #b967ff); color:var(--p, #b967ff);" onclick="mapOpenMapManager()">GERENCIAR MAPAS</button>' : '') +
     (lvl >= 6 ? '<button class="btn btn-s" style="border-color:var(--p, #b967ff); color:var(--p, #b967ff); ' + (_mapDragMode ? 'background:rgba(185,103,255,0.18);' : '') + '" onclick="mapToggleDragMode()">' + (_mapDragMode ? 'CONCLUIR EDICAO DE POSICOES' : 'MOVER AREAS (ARRASTAR)') + '</button>' : '') +
     (lvl >= 6 && _mapDragMode ? '<button class="btn btn-s btn-r" onclick="mapResetAllPositions()">RESETAR TODAS AS POSICOES</button>' : '') +
     '</div></div>';
@@ -7022,6 +7097,7 @@ function fpStartPlayerSync() {
   });
   worldSyncStart();
   glitchSyncStart();
+  mapRegistrySyncStart();
   mapSharedSyncStart();
   musicForceSyncStart();
   sfxLibSyncStart();
@@ -7087,20 +7163,49 @@ var MAP_SHARED_FIELDS = ['floorplans', 'imgs', 'customRooms', 'customLinks', 'po
 var _mapSharedFirstCallback = { floorplans: true, imgs: true, customRooms: true, customLinks: true, posOverrides: true, labFlags: true, labItems: true, labScp: true, labDclass: true };
 
 // Chamado depois de qualquer edicao do Mestre num desses campos (alem de
-// saveMapState(), que so grava local).
+// saveMapState(), que so grava local). Cada mapa tem sua propria "pasta" no
+// Firebase (world/maps/<idDoMapa>/...), pra nao misturar dados entre mapas.
 function mapPushShared(field) {
   if (!mapState || typeof fbDB === 'undefined') return;
-  fbDB.ref('world/map_' + field).set(mapState[field]);
+  fbDB.ref('world/maps/' + MAP_ACTIVE_ID + '/map_' + field).set(mapState[field]);
+}
+
+// Desliga os listeners do Firebase do mapa ATUAL, antes de trocar para outro mapa —
+// senao os dados do mapa antigo continuariam chegando e sobrescrevendo o novo.
+function mapSharedSyncStop() {
+  for (var i = 0; i < _mapSharedFbRefs.length; i++) {
+    try { _mapSharedFbRefs[i].ref.off('value', _mapSharedFbRefs[i].cb); } catch (e) {}
+  }
+  _mapSharedFbRefs = [];
 }
 
 function mapSharedSyncStart() {
   if (typeof fbDB === 'undefined') return;
+  mapSharedSyncStop();
   MAP_SHARED_FIELDS.forEach(function(field) {
-    fbDB.ref('world/map_' + field).on('value', function(snap) {
+    _mapSharedFirstCallback[field] = true;
+    var fieldRef = fbDB.ref('world/maps/' + MAP_ACTIVE_ID + '/map_' + field);
+    var cb = function(snap) {
       var v = snap.val();
       // Na primeira leitura, se o Firebase ainda estiver vazio, mantem os dados
       // locais/padrao como estao (o primeiro save do Mestre semeia o mundo).
-      if (_mapSharedFirstCallback[field]) { _mapSharedFirstCallback[field] = false; if (v === null) return; }
+      if (_mapSharedFirstCallback[field]) {
+        _mapSharedFirstCallback[field] = false;
+        if (v === null) {
+          // MIGRACAO (uma vez so): antes de existirem varios mapas, os dados do
+          // Site-11 ficavam direto em world/map_<campo> (sem pasta por mapa). Se
+          // o caminho novo ainda estiver vazio e este for o Site-11, busca no
+          // caminho antigo e, se achar algo, copia pro caminho novo — o proprio
+          // listener abaixo recebe essa copia e completa a migracao sozinho.
+          if (MAP_ACTIVE_ID === 'site-11') {
+            fbDB.ref('world/map_' + field).once('value').then(function(oldSnap) {
+              var oldV = oldSnap.val();
+              if (oldV !== null) fbDB.ref('world/maps/site-11/map_' + field).set(oldV);
+            }).catch(function() {});
+          }
+          return;
+        }
+      }
       // A PARTIR DAQUI, v === null NAO significa "sem dados ainda" — o Firebase apaga
       // sozinho qualquer objeto/array que fique vazio (ex.: o Mestre retirou a ultima
       // carta atribuida a uma area, e essa era a unica area com algo atribuido naquele
@@ -7126,8 +7231,208 @@ function mapSharedSyncStart() {
       saveMapState();
       mapInvalidateCache();
       mapRefreshLiveViews();
-    });
+    };
+    fieldRef.on('value', cb);
+    _mapSharedFbRefs.push({ ref: fieldRef, cb: cb });
   });
+}
+
+// ============== REGISTRO DE MAPAS + MAPA ATIVO (sincronizados via Firebase) ==============
+// Diferente das plantas/salas (que ficam dentro da pasta de CADA mapa), a LISTA de
+// mapas que existem e QUAL deles esta ativo agora sao dados "de nivel mundo" — por
+// isso ficam em world/mapRegistry e world/activeMapId, fora da pasta de qualquer mapa
+// especifico, e todo aparelho escuta os dois desde o login.
+function mapRegistryPush() { if (typeof fbDB !== 'undefined') fbDB.ref('world/mapRegistry').set(MAP_REGISTRY); }
+function mapActiveIdPush() { if (typeof fbDB !== 'undefined') fbDB.ref('world/activeMapId').set(MAP_ACTIVE_ID); }
+
+function mapRegistrySyncStart() {
+  if (typeof fbDB === 'undefined') return;
+  fbDB.ref('world/mapRegistry').on('value', function(snap) {
+    var v = snap.val();
+    if (_mapRegistryFirstCb) {
+      _mapRegistryFirstCb = false;
+      // Firebase ainda vazio: este aparelho semeia o mundo com o registro local (so o Site-11).
+      if (v === null) { mapRegistryPush(); return; }
+    }
+    if (v === null) { MAP_REGISTRY = [{ id: 'site-11', name: 'SITE-11', builtin: true }]; }
+    else {
+      // Firebase transforma array com "buracos" num objeto com chaves string — normaliza de volta pra array.
+      if (!Array.isArray(v) && typeof v === 'object') { var arr = []; for (var k in v) if (v.hasOwnProperty(k)) arr.push(v[k]); v = arr; }
+      MAP_REGISTRY = v;
+    }
+    saveMapRegistryLocal();
+    // Se a tela de "GERENCIAR MAPAS" estiver aberta em algum aparelho quando outro
+    // Mestre criar/apagar um mapa em paralelo, redesenha ela na hora.
+    var mtEl = document.getElementById('mt');
+    if (mtEl && mtEl.textContent === 'GERENCIAR MAPAS' && document.getElementById('md').classList.contains('on')) mapOpenMapManager();
+  });
+  fbDB.ref('world/activeMapId').on('value', function(snap) {
+    var v = snap.val();
+    if (_mapActiveFirstCb) {
+      _mapActiveFirstCb = false;
+      if (!v) { mapActiveIdPush(); return; }
+    }
+    if (v && v !== MAP_ACTIVE_ID) mapApplyActiveMapChange(v);
+  });
+}
+
+// Efetivamente troca qual mapa esta "ativo" neste aparelho: recarrega o mapState do
+// novo mapa, reposiciona o jogador na area inicial dele, e reassina os listeners de
+// planta/salas para a pasta do novo mapa. Chamada tanto localmente (pelo Mestre, em
+// mapSetActiveMap) quanto remotamente (quando outro aparelho troca, via listener acima).
+function mapApplyActiveMapChange(newId) {
+  MAP_ACTIVE_ID = newId;
+  saveMapActiveLocal();
+  mapState = null;
+  loadMapState();
+  var home = mapHomeRoomId();
+  mapState.current = home;
+  mapState.visited = home ? (function() { var v = {}; v[home] = true; return v; })() : {};
+  saveMapState();
+  mapInvalidateCache();
+  mapSharedSyncStart(); // reassina os campos compartilhados (plantas, salas, imagens...) para a pasta do novo mapa
+  refreshLabNavLabel();
+  var c = document.getElementById('tcnt');
+  if (nav === 'map' && c) renderMap(c);
+}
+
+// Chamada pelo Mestre (Nivel 6) na tela GERENCIAR MAPAS para tornar outro mapa o ativo.
+function mapSetActiveMap(id) {
+  if (lvl < 6) { alert('APENAS O MESTRE (NIVEL 6) PODE TROCAR O MAPA ATIVO.'); return; }
+  if (id === MAP_ACTIVE_ID) return;
+  var m = null;
+  for (var i = 0; i < MAP_REGISTRY.length; i++) if (MAP_REGISTRY[i].id === id) m = MAP_REGISTRY[i];
+  if (!m) return;
+  if (!confirm('DEFINIR "' + m.name + '" COMO O MAPA ATIVO?\nTODOS OS JOGADORES CONECTADOS SERAO LEVADOS PARA A AREA INICIAL DESTE MAPA AGORA. CONTINUAR?')) return;
+  mapApplyActiveMapChange(id);
+  mapActiveIdPush();
+  alert('MAPA ATIVO ALTERADO PARA "' + m.name + '".');
+  mapOpenMapManager();
+}
+
+// Cria um slug unico de ID para um novo mapa, a partir do nome digitado.
+function mapSlugifyMapId(name) {
+  var s = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  if (!s) s = 'mapa';
+  var base = s, n = 2;
+  var existing = {};
+  for (var i = 0; i < MAP_REGISTRY.length; i++) existing[MAP_REGISTRY[i].id] = true;
+  while (existing[s]) { s = base + '-' + n; n++; }
+  return s;
+}
+
+// Cria um novo mapa: vazio (o Mestre desenha as areas do zero, com o mesmo editor que
+// ja existe) ou duplicado a partir de outro mapa (copia salas, plantas, imagens etc.).
+function mapCreateNew() {
+  if (lvl < 6) { alert('ACESSO NEGADO.'); return; }
+  var nameInput = document.getElementById('mmNewName');
+  var name = nameInput ? nameInput.value.trim() : '';
+  if (!name) { alert('DE UM NOME PARA O NOVO MAPA.'); return; }
+  var dupSel = document.getElementById('mmDupFrom');
+  var dupFromId = dupSel ? dupSel.value : '';
+  var id = mapSlugifyMapId(name);
+
+  var seedState;
+  if (dupFromId) {
+    var srcState = null;
+    if (dupFromId === MAP_ACTIVE_ID && mapState) {
+      srcState = mapState; // mapa de origem e' o ativo agora: usa a copia em memoria (sempre atualizada)
+    } else {
+      try {
+        var raw = localStorage.getItem('scpMAP_v1_' + dupFromId);
+        if (!raw && dupFromId === 'site-11') raw = localStorage.getItem('scpMAP_v1');
+        srcState = raw ? JSON.parse(raw) : null;
+      } catch (e) { srcState = null; }
+    }
+    if (srcState) {
+      seedState = JSON.parse(JSON.stringify(srcState));
+      // As salas fixas do Site-11 (MAP_ROOMS/MAP_LINKS) nao existem fora dele — ao
+      // duplicar A PARTIR do Site-11, "achata" essas salas fixas dentro de
+      // customRooms/customLinks do novo mapa, pra elas nao sumirem na copia.
+      if (dupFromId === 'site-11') {
+        seedState.customRooms = MAP_ROOMS.concat(seedState.customRooms || []);
+        seedState.customLinks = MAP_LINKS.concat(seedState.customLinks || []);
+      }
+    } else {
+      seedState = mapBlankState();
+      alert('AVISO: nao foi possivel encontrar os dados do mapa de origem neste aparelho — o novo mapa comecou vazio.');
+    }
+  } else {
+    seedState = mapBlankState();
+  }
+
+  MAP_REGISTRY.push({ id: id, name: name, builtin: false });
+  saveMapRegistryLocal();
+  mapRegistryPush();
+
+  try { localStorage.setItem('scpMAP_v1_' + id, JSON.stringify(seedState)); } catch (e) {}
+  // Semeia a pasta do novo mapa no Firebase, pra que QUALQUER aparelho (nao so' o
+  // deste Mestre) ja receba os dados certos assim que o mapa for ativado.
+  if (typeof fbDB !== 'undefined') {
+    MAP_SHARED_FIELDS.forEach(function(field) {
+      var val = seedState[field];
+      if (val === undefined || val === null) val = (field === 'customRooms' || field === 'customLinks') ? [] : {};
+      fbDB.ref('world/maps/' + id + '/map_' + field).set(val);
+    });
+  }
+
+  alert('MAPA "' + name + '" CRIADO' + (dupFromId ? ' (copiado)' : ' vazio') + '. Use "DEFINIR COMO ATIVO" para levar os jogadores para ele.');
+  mapOpenMapManager();
+}
+
+// Apaga um mapa inteiro (nao o Site-11, que e' o mapa padrao do sistema, e nao o mapa
+// que estiver ativo no momento — troque de mapa ativo primeiro).
+function mapDeleteMapEntry(id) {
+  if (lvl < 6) { alert('ACESSO NEGADO.'); return; }
+  var m = null, idx = -1;
+  for (var i = 0; i < MAP_REGISTRY.length; i++) if (MAP_REGISTRY[i].id === id) { m = MAP_REGISTRY[i]; idx = i; }
+  if (!m) return;
+  if (m.builtin) { alert('O MAPA "' + m.name + '" E O MAPA PADRAO DO SISTEMA E NAO PODE SER APAGADO.'); return; }
+  if (id === MAP_ACTIVE_ID) { alert('ESTE MAPA ESTA ATIVO NO MOMENTO. DEFINA OUTRO MAPA COMO ATIVO ANTES DE APAGA-LO.'); return; }
+  if (!confirm('APAGAR PERMANENTEMENTE O MAPA "' + m.name + '" (todas as areas, plantas, imagens e itens dele)?\nNAO HA COMO DESFAZER.')) return;
+
+  MAP_REGISTRY.splice(idx, 1);
+  saveMapRegistryLocal();
+  mapRegistryPush();
+  try { localStorage.removeItem('scpMAP_v1_' + id); } catch (e) {}
+  if (typeof fbDB !== 'undefined') { try { fbDB.ref('world/maps/' + id).remove(); } catch (e) {} }
+  alert('MAPA APAGADO.');
+  mapOpenMapManager();
+}
+
+// Tela do Mestre (Nivel 6) para ver todos os mapas existentes, trocar qual esta ativo,
+// criar um mapa novo (vazio ou duplicado de outro) e apagar mapas que nao usa mais.
+function mapOpenMapManager() {
+  if (lvl < 6) { alert('APENAS O MESTRE (NIVEL 6) PODE GERENCIAR MAPAS.'); return; }
+  var h = '<div class="dv"><div class="dh"><h1>Gerenciar Mapas</h1></div>';
+  h += '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Cada mapa tem seu proprio conjunto de areas, plantas e imagens. So' + ' UM mapa fica ativo por vez — e' + ' o unico que os jogadores conseguem ver e percorrer. Trocar o mapa ativo leva TODOS de volta a area inicial do novo mapa na hora.</div>';
+  h += '<div style="display:flex; flex-direction:column; gap:8px; margin-bottom:20px;">';
+  for (var i = 0; i < MAP_REGISTRY.length; i++) {
+    var m = MAP_REGISTRY[i];
+    var isActive = m.id === MAP_ACTIVE_ID;
+    h += '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; border:1px solid ' + (isActive ? 'var(--g)' : 'var(--bd)') + '; padding:10px 14px; ' + (isActive ? 'background:rgba(0,255,65,0.06);' : '') + '">' +
+      '<div><span style="color:' + (isActive ? 'var(--g)' : 'var(--fg)') + '; font-weight:bold;">' + fpFurnEsc(m.name) + '</span>' +
+      (isActive ? ' <span style="color:var(--g); font-size:0.7em;">[ATIVO AGORA]</span>' : '') +
+      (m.builtin ? ' <span style="color:var(--td); font-size:0.7em;">[padrao do sistema]</span>' : '') + '</div>' +
+      '<div style="display:flex; gap:6px; flex-wrap:wrap;">' +
+      (!isActive ? '<button class="btn btn-s" onclick="mapSetActiveMap(\'' + m.id + '\')">DEFINIR COMO ATIVO</button>' : '') +
+      (!m.builtin ? '<button class="btn btn-s" style="border-color:var(--r); color:var(--r);" onclick="mapDeleteMapEntry(\'' + m.id + '\')">APAGAR</button>' : '') +
+      '</div></div>';
+  }
+  h += '</div>';
+  var opts = '';
+  for (var j = 0; j < MAP_REGISTRY.length; j++) opts += '<option value="' + MAP_REGISTRY[j].id + '">' + fpFurnEsc(MAP_REGISTRY[j].name) + '</option>';
+  h += '<div style="border-top:1px solid var(--bd); padding-top:16px;">' +
+    '<h3 style="color:var(--gd); font-size:0.8em; margin-bottom:10px; letter-spacing:1px;">&gt; CRIAR NOVO MAPA</h3>' +
+    '<div class="fg"><label>Nome do novo mapa</label><input type="text" id="mmNewName" placeholder="Ex: Site-19, Zona Externa..."></div>' +
+    '<div class="fg"><label>Comecar a partir de</label><select id="mmDupFrom"><option value="">Vazio (desenhar as areas do zero)</option>' + opts + '</select></div>' +
+    '<button class="btn" onclick="mapCreateNew()">CRIAR MAPA</button>' +
+    '</div>' +
+    '<div style="margin-top:16px;"><button class="btn btn-s" onclick="xmd()">FECHAR</button></div>' +
+    '</div>';
+  document.getElementById('mt').textContent = 'GERENCIAR MAPAS';
+  document.getElementById('mb').innerHTML = h;
+  document.getElementById('md').classList.add('on');
 }
 
 // Redesenha a tela do mapa/planta atual sem mexer na navegacao, quando dados
@@ -8971,7 +9276,7 @@ function fpCancel() {
 function mapResetPosition() {
 
   if (!mapState) loadMapState();
-  mapState.current = 'checkpoint-alfa';
+  mapState.current = mapHomeRoomId();
   saveMapState();
   renderMap(document.getElementById('tcnt'));
 }
@@ -8980,8 +9285,9 @@ function mapResetPosition() {
 // a um jogador de nivel mais baixo, para nao revelar por onde outro personagem passou).
 function mapResetExploration() {
   if (!confirm('ISTO VAI APAGAR TODO O HISTORICO DE AREAS VISITADAS E VOLTAR AO CHECKPOINT. CONTINUAR?')) return;
-  mapState.visited = { 'checkpoint-alfa': true };
-  mapState.current = 'checkpoint-alfa';
+  var home = mapHomeRoomId();
+  mapState.visited = home ? (function() { var v = {}; v[home] = true; return v; })() : {};
+  mapState.current = home;
   saveMapState();
   renderMap(document.getElementById('tcnt'));
   alert('HISTORICO DE EXPLORACAO APAGADO.');
@@ -9207,7 +9513,7 @@ function mapDeleteRoom(id) {
   if (mapState.floorplans) delete mapState.floorplans[id];
   if (mapState.imgs) delete mapState.imgs[id];
   if (mapState.visited) delete mapState.visited[id];
-  if (mapState.current === id) mapState.current = 'checkpoint-alfa';
+  if (mapState.current === id) mapState.current = mapHomeRoomId();
 
   saveMapState();
   mapPushShared('customRooms');
