@@ -6008,6 +6008,10 @@ function mapActiveMapName() {
   for (var i = 0; i < MAP_REGISTRY.length; i++) if (MAP_REGISTRY[i].id === MAP_ACTIVE_ID) return MAP_REGISTRY[i].name;
   return MAP_ACTIVE_ID;
 }
+// Categoria "publico" nao exige nenhum nivel de acesso (lvl 0): estas duas funcoes
+// centralizam como esse "nivel nenhum" e mostrado nos varios lugares da interface.
+function mapLvlLabel(v) { return v > 0 ? ('NIVEL DE ACESSO ' + v) : 'PUBLICO (SEM RESTRICAO DE NIVEL)'; }
+function mapLvlShort(v) { return v > 0 ? ('Nv' + v) : 'Pub'; }
 // Salas/ligacoes FIXAS de codigo: so existem no Site-11 (MAP_ROOMS/MAP_LINKS). Qualquer
 // outro mapa comeca 100% vazio e cresce so' com customRooms/customLinks — exatamente o
 // mesmo mecanismo que ja' existia pra adicionar localizacoes extras ao Site-11.
@@ -6474,7 +6478,7 @@ function renderMap(c) {
   h += '<div style="border:1px solid var(--gd); padding:14px 18px; margin-bottom:18px; background:rgba(0,255,65,0.04); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">' +
     '<div><span style="color:var(--td); font-size:0.72em; letter-spacing:2px;">VOCE ESTA EM:</span> ' +
     '<span style="color:var(--g); font-size:1.05em; font-weight:bold; letter-spacing:1px;">' + MAP_ICONS[cur.cat] + ' ' + cur.name + '</span> ' +
-    '<span style="color:var(--y); font-size:0.72em;">[NV ' + cur.lvl + ']</span></div>' +
+    '<span style="color:var(--y); font-size:0.72em;">[' + mapLvlShort(cur.lvl) + ']</span></div>' +
     '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
     '<button class="btn btn-s" onclick="mapShowRoom(\'' + cur.id + '\')">VER DESCRICAO</button>' +
     '<button class="btn btn-s" onclick="mapResetPosition()">VOLTAR AO CHECKPOINT</button>' +
@@ -6869,7 +6873,7 @@ function mapOpenRoomPicker() {
   if (lvl < 6) { alert('APENAS O MESTRE (NIVEL 6) PODE ABRIR QUALQUER AREA DIRETAMENTE.'); return; }
   var rooms = mapAllRooms();
   var opts = '';
-  for (var i = 0; i < rooms.length; i++) opts += '<option value="' + rooms[i].id + '">' + rooms[i].name + ' [Nv' + rooms[i].lvl + ']</option>';
+  for (var i = 0; i < rooms.length; i++) opts += '<option value="' + rooms[i].id + '">' + rooms[i].name + ' [' + mapLvlShort(rooms[i].lvl) + ']</option>';
   var h = '<div class="dv"><div class="dh"><h1>Acesso Direto (Mestre)</h1></div>' +
     '<div class="fg"><label>Escolha uma area</label><select id="mrpick">' + opts + '</select></div>' +
     '<div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">' +
@@ -6911,7 +6915,7 @@ function mapShowRoom(id) {
   var img = (mapState.imgs && mapState.imgs[id]) ? mapState.imgs[id] : '';
   var h = '<div class="dv">' +
     '<div class="dh"><h1>' + MAP_ICONS[r.cat] + ' ' + r.name + '</h1>' +
-    '<span class="dc" style="color:var(--y); border-color:var(--y);">NIVEL DE ACESSO ' + r.lvl + '</span></div>';
+    '<span class="dc" style="color:var(--y); border-color:var(--y);">' + mapLvlLabel(r.lvl) + '</span></div>';
 
   if (img) {
     h += '<div style="margin:18px 0; text-align:center; background:rgba(0,10,0,0.5); padding:18px; border:1px solid var(--bd);">' +
@@ -6927,7 +6931,7 @@ function mapShowRoom(id) {
 
   var adjList = mapAdj()[r.id] || [];
   var connNames = [];
-  for (var i = 0; i < adjList.length; i++) { var rr = mapRoomById(adjList[i]); if (rr) connNames.push(rr.name + ' (Nv' + rr.lvl + ')'); }
+  for (var i = 0; i < adjList.length; i++) { var rr = mapRoomById(adjList[i]); if (rr) connNames.push(rr.name + ' (' + mapLvlShort(rr.lvl) + ')'); }
   h += '<div class="ds"><h3>&gt; Areas Conectadas</h3><p>' + (connNames.length ? connNames.join(', ') : 'Nenhuma') + '</p></div>';
 
   if (lvl >= 6) {
@@ -9113,7 +9117,7 @@ function fpOpenPortalForm(c, r) {
   for (var i = 0; i < rooms.length; i++) {
     if (rooms[i].id === _fpEdit.roomId) continue; // uma seta nao pode apontar para a propria area
     var sel = existing && existing.targetRoomId === rooms[i].id ? ' selected' : '';
-    opts += '<option value="' + rooms[i].id + '"' + sel + '>' + rooms[i].name + ' [Nv' + rooms[i].lvl + ']</option>';
+    opts += '<option value="' + rooms[i].id + '"' + sel + '>' + rooms[i].name + ' [' + mapLvlShort(rooms[i].lvl) + ']</option>';
   }
   var dirs = [['e', 'Leste (direita) &#9654;'], ['w', 'Oeste (esquerda) &#9664;'], ['n', 'Norte (cima) &#9650;'], ['s', 'Sul (baixo) &#9660;']];
   var dirOpts = '';
@@ -9302,7 +9306,10 @@ function mapClearLog() {
 }
 
 // ============== ADICIONAR LOCALIZACAO (APENAS NIVEL 6 — O ADMINISTRADOR) ==============
-var MAP_CAT_LABELS = { seg:'Seguranca', adm:'Administrativo', desc:'Descanso / Social', lab:'Laboratorio', cnt:'Contencao', med:'Medico', tec:'Tecnico / Infraestrutura', res:'Restrito', com:'Comunicacoes', keter:'Keter (Alto Risco)' };
+var MAP_CAT_LABELS = { seg:'Seguranca', adm:'Administrativo', desc:'Descanso / Social', lab:'Laboratorio', cnt:'Contencao', med:'Medico', tec:'Tecnico / Infraestrutura', res:'Restrito', com:'Comunicacoes', keter:'Keter (Alto Risco)', publico:'Publico' };
+// Categorias marcadas aqui nao exigem nenhum nivel de acesso: o campo de nivel some
+// do formulario e a area fica salva com lvl 0 (acessivel a qualquer jogador).
+var MAP_CAT_NO_LVL = { publico: true };
 
 function mapSlugify(name) {
   var s = name.toLowerCase()
@@ -9318,24 +9325,33 @@ function mapSlugify(name) {
   return s;
 }
 
+// Esconde/mostra o campo de Nivel de Acesso conforme a categoria escolhida — a
+// categoria "Publico" nao tem nivel nenhum, entao o campo nem precisa aparecer.
+function mapToggleLvlField(catId, wrapId) {
+  var catEl = document.getElementById(catId);
+  var wrap = document.getElementById(wrapId);
+  if (!catEl || !wrap) return;
+  wrap.style.display = MAP_CAT_NO_LVL[catEl.value] ? 'none' : '';
+}
+
 function mapOpenAddRoomForm() {
   if (lvl < 6) { alert('ACESSO NEGADO: SOMENTE O ADMINISTRADOR (NIVEL 6) PODE ADICIONAR LOCALIZACOES.'); return; }
   if (!mapState) loadMapState();
   var rooms = mapAllRooms();
 
   var roomOpts = '';
-  for (var i = 0; i < rooms.length; i++) roomOpts += '<option value="' + rooms[i].id + '">' + rooms[i].name + ' [Nv' + rooms[i].lvl + ']</option>';
+  for (var i = 0; i < rooms.length; i++) roomOpts += '<option value="' + rooms[i].id + '">' + rooms[i].name + ' [' + mapLvlShort(rooms[i].lvl) + ']</option>';
 
   var catOpts = '';
   for (var key in MAP_CAT_LABELS) catOpts += '<option value="' + key + '">' + MAP_CAT_LABELS[key] + '</option>';
 
   var h = '<div style="max-width:650px;">' +
     '<div style="color:#b967ff; font-size:0.75em; letter-spacing:3px; margin-bottom:6px;">&gt; ACESSO DE ADMINISTRADOR (NIVEL 6)</div>' +
-    '<div style="color:var(--gd); font-size:0.9em; letter-spacing:2px; margin-bottom:18px;">NOVA LOCALIZACAO NO SITE-11</div>' +
+    '<div style="color:var(--gd); font-size:0.9em; letter-spacing:2px; margin-bottom:18px;">NOVA LOCALIZACAO EM ' + fpFurnEsc(mapActiveMapName()).toUpperCase() + '</div>' +
     '<form onsubmit="mapSaveNewRoom(event)">' +
     '<div class="fg"><label>Nome da Area</label><input type="text" id="mrname" required placeholder="Ex: Camara de Ressonancia Anomala"></div>' +
-    '<div class="fr"><div class="fg"><label>Categoria</label><select id="mrcat">' + catOpts + '</select></div>' +
-    '<div class="fg"><label>Nivel de Acesso Exigido</label><select id="mrlvl">' +
+    '<div class="fr"><div class="fg"><label>Categoria</label><select id="mrcat" onchange="mapToggleLvlField(\'mrcat\',\'mrlvlWrap\')">' + catOpts + '</select></div>' +
+    '<div class="fg" id="mrlvlWrap"><label>Nivel de Acesso Exigido</label><select id="mrlvl">' +
     '<option value="1">Nivel 1</option><option value="2">Nivel 2</option><option value="3">Nivel 3</option>' +
     '<option value="4">Nivel 4</option><option value="5" selected>Nivel 5</option><option value="6">Nivel 6</option>' +
     '</select></div></div>' +
@@ -9363,11 +9379,12 @@ function mapSaveNewRoom(e) {
   if (lvl < 6) { alert('ACESSO NEGADO.'); return; }
   var name = document.getElementById('mrname').value.trim();
   if (!name) return;
+  var mrcatVal = document.getElementById('mrcat').value;
   var newRoom = {
     id: mapSlugify(name),
     name: name,
-    lvl: parseInt(document.getElementById('mrlvl').value, 10) || 1,
-    cat: document.getElementById('mrcat').value,
+    lvl: MAP_CAT_NO_LVL[mrcatVal] ? 0 : (parseInt(document.getElementById('mrlvl').value, 10) || 1),
+    cat: mrcatVal,
     size: document.getElementById('mrsize').value,
     desc: document.getElementById('mrdesc').value.trim()
   };
@@ -9402,15 +9419,15 @@ function mapOpenManageRoomsForm() {
   var custom = mapState.customRooms || [];
   var h = '<div style="max-width:650px;">' +
     '<div style="color:#b967ff; font-size:0.75em; letter-spacing:3px; margin-bottom:6px;">&gt; ACESSO DE ADMINISTRADOR (NIVEL 6)</div>' +
-    '<div style="color:var(--gd); font-size:0.9em; letter-spacing:2px; margin-bottom:18px;">GERENCIAR LOCALIZACOES CRIADAS</div>' +
-    '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:16px;">So localizacoes adicionadas por aqui (nao as areas originais do Site-11) podem ser editadas, movidas ou apagadas.</div>';
+    '<div style="color:var(--gd); font-size:0.9em; letter-spacing:2px; margin-bottom:18px;">GERENCIAR LOCALIZACOES CRIADAS — ' + fpFurnEsc(mapActiveMapName()).toUpperCase() + '</div>' +
+    '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:16px;">So localizacoes adicionadas por aqui' + (MAP_ACTIVE_ID === 'site-11' ? ' (nao as areas originais do Site-11)' : '') + ' podem ser editadas, movidas ou apagadas.</div>';
   if (!custom.length) {
     h += '<div style="text-align:center; padding:30px 20px; color:var(--td); border:1px dashed var(--bd);">Nenhuma localizacao personalizada foi criada ainda.</div>';
   } else {
     for (var i = 0; i < custom.length; i++) {
       var rm = custom[i];
       h += '<div style="border:1px solid var(--bd); padding:12px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">' +
-        '<div><div style="color:var(--t);">' + rm.name + '</div><div style="color:var(--td); font-size:0.72em;">Nivel ' + rm.lvl + ' &nbsp;&#183;&nbsp; ' + (MAP_CAT_LABELS[rm.cat] || rm.cat) + '</div></div>' +
+        '<div><div style="color:var(--t);">' + rm.name + '</div><div style="color:var(--td); font-size:0.72em;">' + mapLvlLabel(rm.lvl) + ' &nbsp;&#183;&nbsp; ' + (MAP_CAT_LABELS[rm.cat] || rm.cat) + '</div></div>' +
         '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
         '<button class="btn btn-s" onclick="mapOpenEditRoomForm(\'' + rm.id + '\')">EDITAR / MOVER</button>' +
         '<button class="btn btn-s btn-r" onclick="mapDeleteRoom(\'' + rm.id + '\')">APAGAR</button>' +
@@ -9435,7 +9452,7 @@ function mapOpenEditRoomForm(id) {
   var roomOpts = '';
   for (var i = 0; i < rooms.length; i++) {
     if (rooms[i].id === id) continue; // nao pode ancorar em si mesma
-    roomOpts += '<option value="' + rooms[i].id + '"' + ((rm.manualPos && rm.manualPos.anchor === rooms[i].id) ? ' selected' : '') + '>' + rooms[i].name + ' [Nv' + rooms[i].lvl + ']</option>';
+    roomOpts += '<option value="' + rooms[i].id + '"' + ((rm.manualPos && rm.manualPos.anchor === rooms[i].id) ? ' selected' : '') + '>' + rooms[i].name + ' [' + mapLvlShort(rooms[i].lvl) + ']</option>';
   }
   var catOpts = '';
   for (var key in MAP_CAT_LABELS) catOpts += '<option value="' + key + '"' + (rm.cat === key ? ' selected' : '') + '>' + MAP_CAT_LABELS[key] + '</option>';
@@ -9451,8 +9468,8 @@ function mapOpenEditRoomForm(id) {
     '<div style="color:var(--gd); font-size:0.9em; letter-spacing:2px; margin-bottom:18px;">EDITAR LOCALIZACAO — ' + rm.name + '</div>' +
     '<form onsubmit="mapSaveEditRoom(event,\'' + id + '\')">' +
     '<div class="fg"><label>Nome da Area</label><input type="text" id="mename" required value="' + escAttr(rm.name) + '"></div>' +
-    '<div class="fr"><div class="fg"><label>Categoria</label><select id="mecat">' + catOpts + '</select></div>' +
-    '<div class="fg"><label>Nivel de Acesso Exigido</label><select id="melvl">' + lvlOpts + '</select></div></div>' +
+    '<div class="fr"><div class="fg"><label>Categoria</label><select id="mecat" onchange="mapToggleLvlField(\'mecat\',\'melvlWrap\')">' + catOpts + '</select></div>' +
+    '<div class="fg" id="melvlWrap" style="display:' + (MAP_CAT_NO_LVL[rm.cat] ? 'none' : '') + ';"><label>Nivel de Acesso Exigido</label><select id="melvl">' + lvlOpts + '</select></div></div>' +
     '<div class="fg"><label>Tamanho (uso visual)</label><select id="mesize">' + sizeOpts + '</select></div>' +
     '<div class="fg"><label>Descricao</label><textarea id="medesc" required>' + (rm.desc || '') + '</textarea></div>' +
     '<div class="help-text" style="color:var(--td); font-size:0.72em; margin:10px 0;">Mover a localizacao no mapa: escolha uma area de ancora e uma direcao — a posicao dela no mapa geral e recalculada a partir dai. "Automatica" devolve o posicionamento ao calculo padrao do sistema.</div>' +
@@ -9482,7 +9499,7 @@ function mapSaveEditRoom(e, id) {
   if (!name) return;
   rm.name = name;
   rm.cat = document.getElementById('mecat').value;
-  rm.lvl = parseInt(document.getElementById('melvl').value, 10) || rm.lvl;
+  rm.lvl = MAP_CAT_NO_LVL[rm.cat] ? 0 : (parseInt(document.getElementById('melvl').value, 10) || rm.lvl);
   rm.size = document.getElementById('mesize').value;
   rm.desc = document.getElementById('medesc').value.trim();
   var anchor = document.getElementById('meanchor').value;
@@ -9537,7 +9554,7 @@ function mapOpenLinkManagerForm() {
   if (!mapState) loadMapState();
   var rooms = mapAllRooms();
   var roomOpts = '';
-  for (var i = 0; i < rooms.length; i++) roomOpts += '<option value="' + rooms[i].id + '">' + rooms[i].name + ' [Nv' + rooms[i].lvl + ']</option>';
+  for (var i = 0; i < rooms.length; i++) roomOpts += '<option value="' + rooms[i].id + '">' + rooms[i].name + ' [' + mapLvlShort(rooms[i].lvl) + ']</option>';
   var custom = mapState.customLinks || [];
 
   var h = '<div style="max-width:650px;">' +
