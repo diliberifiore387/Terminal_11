@@ -2441,6 +2441,10 @@ function receiveEntry(entry) {
         addInventoryCardFromCatalogItem(fpFindCatalogItem(entry.refId));
         return 'inventory';
     }
+    if (entry.kind === 'invitem') {
+        addInventoryCardFromTransfer(entry);
+        return 'inventory';
+    }
     notesAddPaper(entry);
     return 'papers';
 }
@@ -2484,6 +2488,25 @@ function addInventoryCardFromLabCard(card) {
     } else {
         list.push({ id: 'inv-' + Date.now() + '-' + Math.floor(Math.random() * 10000), name: '(carta removida do laboratorio)', type: 'Objeto SCP', desc: '', effect: '', usosMax: 1, uses: 1, usosIlimitados: true, clr: 1, imgs: [], dt: new Date().toISOString() });
     }
+    saveInventoryList(list);
+}
+
+// Recebe um item TRANSFERIDO por outro jogador (nao do catalogo/Mestre) — ver
+// handDeliverInvItemCore. Guarda uma copia completa (nome, tipo, descricao,
+// efeito, usos, imagens) igual o item era no inventario de quem entregou.
+function addInventoryCardFromTransfer(data) {
+    var list = loadInventory();
+    list.push({
+        id: 'inv-' + Date.now() + '-' + Math.floor(Math.random() * 10000),
+        name: data.name || '(item)', type: data.itype || 'Item', desc: data.desc || '',
+        effect: data.effect || '',
+        usosMax: data.usosMax || 1,
+        uses: typeof data.uses === 'number' ? data.uses : (data.usosMax || 1),
+        usosIlimitados: !!data.usosIlimitados,
+        clr: data.clr || 1,
+        imgs: data.imgs ? data.imgs.slice() : [],
+        dt: new Date().toISOString()
+    });
     saveInventoryList(list);
 }
 
@@ -2634,6 +2657,7 @@ function handStart() {
 function handResolveLabel(g) {
     if (g.kind === 'labcard') { var c = fpFindLabCard(g.refId); return c ? (c.num + ' — ' + c.title) : 'uma carta de laboratorio'; }
     if (g.kind === 'item') { var it = fpFindCatalogItem(g.refId); return it ? it.name : 'um item'; }
+    if (g.kind === 'invitem') { return g.name || 'um item'; }
     if (g.kind === 'dclass') { var d = fpFindDClass(g.refId); return d ? (d.code + ' — ' + d.name) : 'um dossie'; }
     return g.name || 'um papel avulso';
 }
@@ -2748,6 +2772,45 @@ function handDeliverAsNpc() {
     if (!_npcControl) return;
     var sel = document.getElementById('handTargetSelect');
     if (handDeliverCore(sel ? sel.value : '', _npcControl.name)) fpRenderView();
+}
+
+// ============== DAR NA MAO [JOGADOR PARA JOGADOR] ==============
+// Qualquer jogador (Nivel 1-5) pode entregar um item do PROPRIO inventario
+// pessoal direto na mao de outro jogador que esteja fisicamente ao lado dele
+// no mapa (ver fpNearPlayer — mesma regra de 1 bloco de distancia usada pra
+// mexer em mobilia). Diferente da entrega do Mestre (que cria o item do
+// catalogo do zero), aqui o item SAI do inventario de quem entrega e vai pro
+// de quem recebe — nao e' copiado, e' transferido de verdade.
+function handDeliverInvItemCore(target, itemId) {
+    if (!target) { alert('JOGADOR INVALIDO.'); return false; }
+    var list = loadInventory();
+    var it = null, idx = -1;
+    for (var i = 0; i < list.length; i++) if (list[i].id === itemId) { it = list[i]; idx = i; break; }
+    if (!it) { alert('ITEM NAO ENCONTRADO NO SEU INVENTARIO.'); return false; }
+    if (typeof fbDB === 'undefined') { alert('SEM CONEXAO COM O BANCO DE DADOS.'); return false; }
+    var entry = {
+        kind: 'invitem', by: (user && user.nm) || userKey, ts: Date.now(),
+        name: it.name, itype: it.type || 'Item', desc: it.desc || '', effect: it.effect || '',
+        usosMax: it.usosMax || 1,
+        uses: it.usosIlimitados ? (it.usosMax || 1) : (typeof it.uses === 'number' ? it.uses : (it.usosMax || 1)),
+        usosIlimitados: !!it.usosIlimitados, clr: it.clr || 1,
+        imgs: it.imgs ? it.imgs.slice() : []
+    };
+    fbDB.ref('hand/gifts/' + target).push(entry);
+    list.splice(idx, 1);
+    saveInventoryList(list);
+    alert('ENTREGUE NA MAO DE ' + ((PASS[target] && PASS[target].nm) || target) + '.');
+    return true;
+}
+
+// Usada ao clicar direto no token de um jogador vizinho no mapa (le o item
+// escolhido no <select id="handInvSelect"> do dialogo aberto por
+// fpOpenGiveForPlayer).
+function handDeliverInvItemTo(target) {
+    var sel = document.getElementById('handInvSelect');
+    var itemId = sel ? sel.value : '';
+    if (!itemId) { alert('ESCOLHA UM ITEM PARA ENTREGAR.'); return; }
+    if (handDeliverInvItemCore(target, itemId)) fpRenderView();
 }
 
 // ============== BANCO DE DADOS SCP ==============
@@ -4795,9 +4858,10 @@ function renderAdmin(c) {
         h += '<div style="margin-bottom:25px;">' +
             '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:12px;">&gt; EFEITOS DE MESA [MESTRE]</div>' +
             '<div style="background:rgba(0,20,0,0.3); border:1px solid var(--bd); padding:18px;">' +
-            '<div class="help-text" style="color:var(--td); font-size:0.75em; margin-bottom:12px;">Dispara um efeito visual na tela de TODOS os jogadores conectados, na hora.</div>' +
-            '<button class="btn btn-s" style="border-color:var(--r); color:var(--r);" onclick="triggerGlitch()">&#9889; DISPARAR GLITCH</button>' +
-            '</div></div>';
+            '<div class="help-text" style="color:var(--td); font-size:0.75em; margin-bottom:12px;">Dispara um efeito visual na tela de TODOS os jogadores conectados, na hora. Do mais fraco (1) ao mais pesado (10).</div>' +
+            '<div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px;">' +
+            renderGlitchButtons() +
+            '</div></div></div>';
         h += renderMusicAdminSection();
         h += renderSoundpadAdminSection();
         h += renderHandGiveSection();
@@ -7737,40 +7801,142 @@ function refreshCurrentPage() {
 }
 
 // ============== GLITCH (efeito visual disparado pelo Mestre para todos) ==============
+// 10 niveis de intensidade, do mais fraco (1) ao mais pesado (10).
+// Nota de seguranca: nenhum efeito usa flashes brancos nem pisca acima de ~3x/seg,
+// para evitar desconforto/fotosensibilidade. Todos os overlays sao pointer-events:none.
 var _glitchLastTs = 0, _glitchFirstCallback = true;
+
+var GLITCH_LEVELS = {
+  1:  { label: 'Interferencia Leve',    amp: 2,  shakes: 1, dur: 380,  static: 0.05, rgb: 0,    blocks: 0, flashes: 0, text: '' },
+  2:  { label: 'Tremor Sutil',          amp: 3,  shakes: 2, dur: 450,  static: 0.08, rgb: 0,    blocks: 0, flashes: 0, text: '' },
+  3:  { label: 'Falha de Sinal',        amp: 4,  shakes: 2, dur: 550,  static: 0.12, rgb: 1,    blocks: 0, flashes: 0, text: '' },
+  4:  { label: 'Ruido de Linha',        amp: 5,  shakes: 3, dur: 650,  static: 0.16, rgb: 1,    blocks: 1, flashes: 0, text: '' },
+  5:  { label: 'Distorcao',             amp: 6,  shakes: 3, dur: 750,  static: 0.20, rgb: 2,    blocks: 2, flashes: 0, text: '' },
+  6:  { label: 'Interferencia Pesada',  amp: 8,  shakes: 4, dur: 900,  static: 0.26, rgb: 2,    blocks: 3, flashes: 1, text: '' },
+  7:  { label: 'Corrupcao de Dados',    amp: 10, shakes: 5, dur: 1050, static: 0.32, rgb: 3,    blocks: 4, flashes: 1, text: '' },
+  8:  { label: 'Falha Critica',         amp: 13, shakes: 6, dur: 1250, static: 0.40, rgb: 3,    blocks: 5, flashes: 2, text: 'ERRO_DE_SISTEMA' },
+  9:  { label: 'Colapso de Sistema',    amp: 16, shakes: 7, dur: 1500, static: 0.48, rgb: 4,    blocks: 6, flashes: 2, text: 'CONEXAO INSTAVEL' },
+  10: { label: 'Falha Catastrofica',   amp: 20, shakes: 8, dur: 1850, static: 0.56, rgb: 5,    blocks: 8, flashes: 3, text: 'SINAL PERDIDO // REINICIANDO' }
+};
+
+function renderGlitchButtons() {
+  var h = '';
+  var colors = ['--g','--g','--g','--y','--y','--y','--y','--r','--r','--r'];
+  for (var n = 1; n <= 10; n++) {
+    var cfg = GLITCH_LEVELS[n];
+    var c = colors[n - 1];
+    h += '<button class="btn btn-s" style="border-color:var(' + c + '); color:var(' + c + '); text-align:left;" onclick="triggerGlitch(' + n + ')" title="' + cfg.label + '">' +
+      '&#9889; NVL ' + n + ' — ' + cfg.label + '</button>';
+  }
+  return h;
+}
 
 function glitchSyncStart() {
   if (typeof fbDB === 'undefined') return;
   fbDB.ref('events/glitch').on('value', function(snap) {
     var v = snap.val();
     if (_glitchFirstCallback) { _glitchFirstCallback = false; if (v) _glitchLastTs = v.ts || 0; return; }
-    if (v && v.ts && v.ts !== _glitchLastTs) { _glitchLastTs = v.ts; playGlitchEffect(); }
+    if (v && v.ts && v.ts !== _glitchLastTs) { _glitchLastTs = v.ts; playGlitchEffect(v.lvl || 1); }
   });
 }
 
-function triggerGlitch() {
+function triggerGlitch(level) {
   if (lvl < 6) { alert('APENAS O MESTRE (NIVEL 6) PODE DISPARAR O GLITCH.'); return; }
   if (typeof fbDB === 'undefined') return;
-  fbDB.ref('events/glitch').set({ ts: Date.now(), by: (user && user.nm) || userKey });
+  var n = parseInt(level, 10) || 1;
+  if (n < 1) n = 1; if (n > 10) n = 10;
+  fbDB.ref('events/glitch').set({ ts: Date.now(), lvl: n, by: (user && user.nm) || userKey });
 }
 
-function playGlitchEffect() {
-  var st = document.getElementById('glitchKeyframes');
-  if (!st) {
-    st = document.createElement('style');
-    st.id = 'glitchKeyframes';
-    st.textContent = '@keyframes glitchFlicker{0%{opacity:1;transform:translateX(0);}20%{opacity:0.25;transform:translateX(-6px);}40%{opacity:1;transform:translateX(4px);}60%{opacity:0.2;transform:translateX(-3px);}80%{opacity:1;transform:translateX(2px);}100%{opacity:0;transform:translateX(0);}}' +
-      '@keyframes glitchShake{0%{transform:translate(0,0);}20%{transform:translate(-2px,1px);}40%{transform:translate(2px,-1px);}60%{transform:translate(-1px,2px);}80%{transform:translate(1px,-2px);}100%{transform:translate(0,0);}}';
-    document.head.appendChild(st);
+function _glitchEnsureKeyframes() {
+  if (document.getElementById('glitchKeyframes')) return;
+  var st = document.createElement('style');
+  st.id = 'glitchKeyframes';
+  st.textContent =
+    '@keyframes glitchFlicker{0%{opacity:1;}25%{opacity:0.3;}50%{opacity:1;}75%{opacity:0.25;}100%{opacity:0;}}' +
+    '@keyframes glitchStatic{0%{background-position:0 0;}100%{background-position:120px 60px;}}' +
+    '@keyframes glitchRGB{0%{clip-path:inset(0 0 92% 0); transform:translate(0,0);}20%{clip-path:inset(15% 0 60% 0); transform:translate(-3px,0);}40%{clip-path:inset(45% 0 30% 0); transform:translate(3px,0);}60%{clip-path:inset(70% 0 10% 0); transform:translate(-2px,0);}80%{clip-path:inset(30% 0 55% 0); transform:translate(2px,0);}100%{clip-path:inset(85% 0 5% 0); transform:translate(0,0);}}' +
+    '@keyframes glitchBlockShift{0%,100%{transform:translateX(0); opacity:0;}10%{opacity:1;}45%{transform:translateX(var(--gbx,10px)); opacity:1;}55%{transform:translateX(calc(var(--gbx,10px) * -1)); opacity:1;}90%{opacity:1;}}' +
+    '@keyframes glitchFlash{0%,100%{opacity:0;}50%{opacity:var(--gfo,0.35);}}' +
+    '@keyframes glitchTextJit{0%,100%{opacity:0; transform:translate(0,0) skewX(0deg);}10%{opacity:1;}30%{transform:translate(-2px,1px) skewX(-2deg);}50%{transform:translate(2px,-1px) skewX(2deg); opacity:0.6;}70%{transform:translate(-1px,1px) skewX(-1deg); opacity:1;}90%{opacity:0.3;}}';
+  document.head.appendChild(st);
+}
+
+function playGlitchEffect(level) {
+  var cfg = GLITCH_LEVELS[level] || GLITCH_LEVELS[1];
+  _glitchEnsureKeyframes();
+
+  var wrap = document.createElement('div');
+  wrap.style.cssText = 'position:fixed; inset:0; z-index:99999; pointer-events:none; overflow:hidden;';
+  document.body.appendChild(wrap);
+
+  // Camada 1: scanlines com flicker (todos os niveis)
+  var scan = document.createElement('div');
+  scan.style.cssText = 'position:absolute; inset:0; background:repeating-linear-gradient(0deg, rgba(0,255,65,0.10) 0px, rgba(0,255,65,0.10) 2px, transparent 2px, transparent 4px); mix-blend-mode:screen; animation: glitchFlicker ' + (cfg.dur * 0.4) + 'ms steps(2) ' + cfg.shakes + ';';
+  wrap.appendChild(scan);
+
+  // Camada 2: ruido/estatica (proporcional ao nivel)
+  if (cfg.static > 0) {
+    var noise = document.createElement('div');
+    noise.style.cssText = 'position:absolute; inset:-20px; opacity:' + cfg.static + '; mix-blend-mode:overlay; ' +
+      'background-image:repeating-conic-gradient(rgba(0,255,65,0.9) 0% 25%, rgba(0,0,0,0.9) 0% 50%); background-size:3px 3px; ' +
+      'animation: glitchStatic ' + Math.max(60, 90 - cfg.static * 60) + 'ms steps(1) infinite;';
+    wrap.appendChild(noise);
   }
-  var ov = document.createElement('div');
-  ov.style.cssText = 'position:fixed; inset:0; z-index:99999; pointer-events:none; background:repeating-linear-gradient(0deg, rgba(0,255,65,0.10) 0px, rgba(0,255,65,0.10) 2px, transparent 2px, transparent 4px); mix-blend-mode:screen; animation: glitchFlicker 0.6s steps(2) 3;';
-  document.body.appendChild(ov);
-  document.body.style.animation = 'glitchShake 0.6s linear 3';
+
+  // Camada 3: separacao de canal RGB (chromatic aberration), niveis 3+
+  for (var i = 0; i < cfg.rgb; i++) {
+    var rgb = document.createElement('div');
+    var hue = (i % 2 === 0) ? 'rgba(255,0,60,0.18)' : 'rgba(0,191,255,0.18)';
+    rgb.style.cssText = 'position:absolute; inset:0; background:' + hue + '; mix-blend-mode:screen; animation: glitchRGB ' + (280 + i * 60) + 'ms steps(3) ' + (1 + Math.floor(cfg.shakes / 3)) + '; animation-delay:' + (i * 45) + 'ms;';
+    wrap.appendChild(rgb);
+  }
+
+  // Camada 4: blocos de imagem deslocados (block shift), niveis 4+
+  for (var b = 0; b < cfg.blocks; b++) {
+    var blk = document.createElement('div');
+    var topPct = Math.random() * 90;
+    var hPct = 3 + Math.random() * 8;
+    var dir = (Math.random() > 0.5 ? 1 : -1) * (cfg.amp);
+    blk.style.cssText = 'position:absolute; left:0; right:0; top:' + topPct + '%; height:' + hPct + '%; ' +
+      'background:linear-gradient(90deg, rgba(0,255,65,0.12), rgba(0,255,65,0.03)); ' +
+      '--gbx:' + dir + 'px; animation: glitchBlockShift ' + (220 + Math.random() * 200) + 'ms steps(4) 1; animation-delay:' + (Math.random() * cfg.dur * 0.5) + 'ms;';
+    wrap.appendChild(blk);
+  }
+
+  // Camada 5: flashes de alerta (vermelho escuro, poucos e espacados) niveis 6+
+  for (var f = 0; f < cfg.flashes; f++) {
+    var fl = document.createElement('div');
+    fl.style.cssText = 'position:absolute; inset:0; background:rgba(139,0,0,0.5); --gfo:0.4; animation: glitchFlash 260ms ease-in-out 1; animation-delay:' + (f * (cfg.dur / (cfg.flashes + 1))) + 'ms; opacity:0;';
+    wrap.appendChild(fl);
+  }
+
+  // Camada 6: texto corrompido central, niveis 8+
+  if (cfg.text) {
+    var txt = document.createElement('div');
+    txt.style.cssText = 'position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); ' +
+      'color:var(--r); font-family:"Share Tech Mono",monospace; font-size:clamp(1em,4vw,2.4em); letter-spacing:4px; ' +
+      'text-shadow:2px 0 var(--b), -2px 0 var(--r), 0 0 20px rgba(255,0,60,0.8); white-space:nowrap; ' +
+      'animation: glitchTextJit ' + Math.min(cfg.dur, 900) + 'ms steps(6) 1;';
+    txt.textContent = cfg.text;
+    wrap.appendChild(txt);
+  }
+
+  // Camera/corpo: tremor geral, amplitude conforme o nivel
+  var amp = cfg.amp;
+  var shakeName = 'glitchShakeL' + level;
+  if (!document.getElementById(shakeName)) {
+    var sst = document.createElement('style');
+    sst.id = shakeName;
+    sst.textContent = '@keyframes ' + shakeName + '{0%{transform:translate(0,0);}20%{transform:translate(' + (-amp) + 'px,' + (amp * 0.4) + 'px);}40%{transform:translate(' + amp + 'px,' + (-amp * 0.4) + 'px);}60%{transform:translate(' + (-amp * 0.6) + 'px,' + amp + 'px);}80%{transform:translate(' + (amp * 0.6) + 'px,' + (-amp) + 'px);}100%{transform:translate(0,0);}}';
+    document.head.appendChild(sst);
+  }
+  document.body.style.animation = shakeName + ' ' + Math.round(cfg.dur / cfg.shakes) + 'ms linear ' + cfg.shakes;
+
   setTimeout(function() {
-    if (ov.parentNode) ov.parentNode.removeChild(ov);
+    if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
     document.body.style.animation = '';
-  }, 1850);
+  }, cfg.dur + 150);
 }
 
 // ============== VISIBILIDADE DO MESTRE NA PLANTA ==============
@@ -7819,8 +7985,11 @@ function fpRenderPlayerTokens(roomId, floorIdx) {
     var tokSize = sitting ? 12 : 16;
     var sitLab = sitting ? (p.sit === 'bed' ? ' (deitado)' : ' (sentado)') : '';
     // O Mestre (Nivel 6) pode clicar no token de QUALQUER jogador pra entregar
-    // algo direto na mao dele ali mesmo, sem passar pelo painel admin.
-    var clickable = (lvl >= 6 && !isMe);
+    // algo direto na mao dele ali mesmo, sem passar pelo painel admin. Um
+    // jogador comum (Nivel 1-5) tambem pode clicar no token de outro jogador
+    // pra entregar algo do PROPRIO inventario, mas so' se estiver a no maximo
+    // 1 bloco de distancia dele (fpNearPlayer) — igual a regra de mobilia.
+    var clickable = !isMe && (lvl >= 6 || fpNearPlayer(k));
     var evt = clickable ? (' onclick="fpOpenGiveForPlayer(\'' + k + '\')"') : '';
     h += '<div title="' + (p.nm || k) + sitLab + (clickable ? ' — clique para DAR NA MAO' : '') + '"' + evt + ' style="position:absolute; left:' + (p.x * FP_CELL) + 'px; top:' + (p.y * FP_CELL) + 'px; width:' + FP_CELL + 'px; height:' + FP_CELL + 'px; display:flex; align-items:center; justify-content:center; transition:left 0.15s linear, top 0.15s linear; pointer-events:' + (clickable ? 'auto' : 'none') + '; cursor:' + (clickable ? 'pointer' : 'default') + ';">' +
       '<div style="width:' + tokSize + 'px; height:' + tokSize + 'px; border-radius:50%; background:' + tokHex + '; border:2px solid #000; box-shadow:' + ring + '; font-size:0.6em; display:flex; align-items:center; justify-content:center; font-weight:bold; color:#000; opacity:' + (sitting ? '0.85' : '1') + ';">' + label + '</div></div>';
@@ -8061,17 +8230,39 @@ function fpHandModeButtons() {
 // Clique direto no token de um jogador no mapa: abre a entrega ja com o alvo
 // escolhido, sem precisar ir ao painel admin.
 function fpOpenGiveForPlayer(key) {
-  if (lvl < 6) return;
   var p = fbPlayers[key];
   var name = (p && p.nm) || key;
-  var h = '<div class="dv"><div class="dh"><h1>DAR PARA ' + fpFurnEsc(name) + '</h1></div>';
-  h += fpHandModeButtons();
-  h += '<div id="handModeBody">' + handRenderModeBody() + '</div>';
-  h += '<div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">' +
-    '<button class="btn" onclick="handDeliverTo(\'' + key + '\')">ENTREGAR NA MAO</button>' +
+  if (lvl >= 6) {
+    var h = '<div class="dv"><div class="dh"><h1>DAR PARA ' + fpFurnEsc(name) + '</h1></div>';
+    h += fpHandModeButtons();
+    h += '<div id="handModeBody">' + handRenderModeBody() + '</div>';
+    h += '<div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">' +
+      '<button class="btn" onclick="handDeliverTo(\'' + key + '\')">ENTREGAR NA MAO</button>' +
+      '<button class="btn btn-s" onclick="fpRenderView()">VOLTAR A PLANTA</button></div></div>';
+    document.getElementById('mt').textContent = 'DAR NA MAO: ' + name;
+    document.getElementById('mb').innerHTML = h;
+    document.getElementById('md').classList.add('on');
+    return;
+  }
+  // Jogador comum: so' pode entregar se estiver ao lado (fpNearPlayer ja' foi
+  // checado antes de tornar o token clicavel, mas confere de novo aqui por
+  // seguranca, caso a posicao tenha mudado entre um redesenho e outro).
+  if (!fpNearPlayer(key)) { alert('VOCE PRECISA ESTAR AO LADO DE ' + name.toUpperCase() + ' PARA ENTREGAR ALGO NA MAO.'); return; }
+  var list = loadInventory();
+  var gh = '<div class="dv"><div class="dh"><h1>DAR PARA ' + fpFurnEsc(name) + '</h1></div>';
+  if (!list.length) {
+    gh += '<div style="text-align:center; padding:20px; color:var(--td); border:1px dashed var(--bd); margin-bottom:14px;">SEUS BOLSOS ESTAO VAZIOS — voce nao tem nenhum item no INVENTARIO PESSOAL pra entregar.</div>';
+  } else {
+    gh += '<div class="help-text" style="color:var(--td); font-size:0.75em; margin-bottom:12px;">Escolha um item do seu INVENTARIO PESSOAL para entregar direto na mao de ' + fpFurnEsc(name) + '. O item sai do seu inventario e vai para o dele.</div>';
+    gh += '<div class="fg"><label>Item</label><select id="handInvSelect" style="width:100%; background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:8px;">';
+    for (var i = 0; i < list.length; i++) gh += '<option value="' + list[i].id + '">' + fpFurnEsc(list[i].name) + ' (' + fpFurnEsc(list[i].type) + ')</option>';
+    gh += '</select></div>';
+  }
+  gh += '<div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">' +
+    (list.length ? ('<button class="btn" onclick="handDeliverInvItemTo(\'' + key + '\')">ENTREGAR NA MAO</button>') : '') +
     '<button class="btn btn-s" onclick="fpRenderView()">VOLTAR A PLANTA</button></div></div>';
   document.getElementById('mt').textContent = 'DAR NA MAO: ' + name;
-  document.getElementById('mb').innerHTML = h;
+  document.getElementById('mb').innerHTML = gh;
   document.getElementById('md').classList.add('on');
 }
 
@@ -8692,6 +8883,18 @@ function fpNearFurniture(roomId, floorIdx, c, r) {
   var me = fbPlayers && userKey && fbPlayers[userKey];
   if (!me || me.roomId !== roomId || me.floorIdx !== floorIdx) return false;
   return Math.abs(me.x - c) <= 1 && Math.abs(me.y - r) <= 1;
+}
+
+// Mesma regra de vizinhanca (1 bloco, com diagonais) usada em fpNearFurniture,
+// mas entre dois jogadores — usada pra saber se posso clicar no token de
+// targetKey e entregar algo na mao dele. O Mestre nao usa esta funcao (ele ja
+// pode clicar em qualquer jogador a qualquer distancia).
+function fpNearPlayer(targetKey) {
+  var me = fbPlayers && userKey && fbPlayers[userKey];
+  var them = fbPlayers && fbPlayers[targetKey];
+  if (!me || !them) return false;
+  if (me.roomId !== them.roomId || me.floorIdx !== them.floorIdx) return false;
+  return Math.abs(me.x - them.x) <= 1 && Math.abs(me.y - them.y) <= 1;
 }
 
 // Cartas de laboratorio (SCP/Thaumiel) que este jogador pode colocar numa mesa —
