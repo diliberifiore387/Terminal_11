@@ -1647,6 +1647,65 @@ function sfxError() { playTone(180, 0.2, 'sawtooth', 0.05); }
 function sfxNotify() { playTone(950, 0.06, 'sine', 0.045); setTimeout(function() { playTone(1350, 0.09, 'sine', 0.045); }, 70); }
 function sfxSend() { playTone(650, 0.05, 'triangle', 0.04); }
 
+// ============== SOM DO GLITCH (gerado na hora, sem arquivo externo) ==============
+// Um "ruido" (buffer de white noise) cortado em blocos + um bipe digital que
+// desce de tom, escalando com o nivel (1 a 10) igual ao efeito visual.
+function _glitchNoiseBuffer(ctx, seconds) {
+  var size = Math.max(1, Math.floor(ctx.sampleRate * seconds));
+  var buffer = ctx.createBuffer(1, size, ctx.sampleRate);
+  var data = buffer.getChannelData(0);
+  for (var i = 0; i < size; i++) data[i] = Math.random() * 2 - 1;
+  return buffer;
+}
+function playGlitchSound(level) {
+  if (!sfxEnabled) return;
+  var ctx = actx();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} }
+  var cfg = GLITCH_LEVELS[level] || GLITCH_LEVELS[1];
+  var now = ctx.currentTime;
+  var secs = Math.min(cfg.dur / 1000, 1.9);
+  var vol = 0.035 + (level / 10) * 0.08;
+
+  // Ruido/estatica de fundo, cortado em blocos (mais cortes = niveis mais altos)
+  var noise = ctx.createBufferSource();
+  noise.buffer = _glitchNoiseBuffer(ctx, secs);
+  var filt = ctx.createBiquadFilter();
+  filt.type = 'bandpass';
+  filt.frequency.value = 700 + level * 220;
+  filt.Q.value = 0.7;
+  var ng = ctx.createGain();
+  ng.gain.setValueAtTime(vol, now);
+  var cuts = Math.max(1, cfg.shakes);
+  for (var i = 0; i < cuts; i++) {
+    var t = now + (i / cuts) * secs;
+    ng.gain.setValueAtTime(i % 2 === 0 ? vol : vol * 0.12, t);
+  }
+  ng.gain.exponentialRampToValueAtTime(0.0001, now + secs);
+  noise.connect(filt); filt.connect(ng); ng.connect(ctx.destination);
+  noise.start(now); noise.stop(now + secs);
+
+  // Bipe digital descendente, a partir do nivel 3 ("falha de sinal")
+  if (level >= 3) {
+    var osc = ctx.createOscillator(), og = ctx.createGain();
+    osc.type = 'square';
+    var f0 = 280 + level * 45;
+    osc.frequency.setValueAtTime(f0, now);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(35, f0 * 0.28), now + secs * 0.6);
+    og.gain.setValueAtTime(vol * 0.55, now);
+    og.gain.exponentialRampToValueAtTime(0.0001, now + secs * 0.65);
+    osc.connect(og); og.connect(ctx.destination);
+    osc.start(now); osc.stop(now + secs * 0.65);
+  }
+
+  // Bipes de alerta grave, um por "flash" visual (niveis 6+)
+  if (cfg.flashes > 0) {
+    for (var f = 0; f < cfg.flashes; f++) {
+      (function(delay) { setTimeout(function() { playTone(170, 0.15, 'sawtooth', 0.05); }, delay); })((f + 1) * (cfg.dur / (cfg.flashes + 1)));
+    }
+  }
+}
+
 // Um unico listener cobre TODOS os cliques em botoes/itens de menu do terminal,
 // em vez de precisar editar centenas de onclick espalhados pelo arquivo.
 function setupSfxDelegation() {
@@ -7865,6 +7924,7 @@ function _glitchEnsureKeyframes() {
 function playGlitchEffect(level) {
   var cfg = GLITCH_LEVELS[level] || GLITCH_LEVELS[1];
   _glitchEnsureKeyframes();
+  playGlitchSound(level);
 
   var wrap = document.createElement('div');
   wrap.style.cssText = 'position:fixed; inset:0; z-index:99999; pointer-events:none; overflow:hidden;';
