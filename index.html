@@ -5369,6 +5369,28 @@ function loadRPState() {
     if (s) { rpState = JSON.parse(s); }
     else { rpState = defaultRPState(); saveRPState(); }
   } catch(e) { rpState = defaultRPState(); }
+  rpNormalizeState();
+}
+
+// O Firebase Realtime Database NAO salva chaves cujo valor e' um objeto vazio
+// (ex: perks:{} antes de qualquer pericia ser marcada). Assim que a ficha e'
+// salva pela primeira vez (saveRPState, disparado ao ajustar qualquer atributo),
+// a chave "perks" desaparece do documento remoto — e ao sincronizar de volta,
+// rpState.perks fica undefined, quebrando rpRenderPerks() silenciosamente (a
+// grade de pericias fica vazia pra todo mundo). Esta funcao garante que os
+// campos essenciais sempre existam como objeto, nunca undefined/null.
+function rpNormalizeState() {
+  if (!rpState || typeof rpState !== 'object') rpState = defaultRPState();
+  if (!rpState.perks || typeof rpState.perks !== 'object') rpState.perks = {};
+  if (!rpState.attrs || typeof rpState.attrs !== 'object') {
+    rpState.attrs = { raciocinio: RP_BASE_ATTR, observacao: RP_BASE_ATTR, insight: RP_BASE_ATTR, resiliencia: RP_BASE_ATTR, conhecimento: RP_BASE_ATTR };
+  }
+  for (var k in RP_ATTRIBUTES) if (typeof rpState.attrs[k] !== 'number') rpState.attrs[k] = RP_BASE_ATTR;
+  if (typeof rpState.sanidade !== 'number') rpState.sanidade = 100;
+  if (typeof rpState.sanidadeMax !== 'number') rpState.sanidadeMax = 100;
+  if (typeof rpState.exposicao !== 'number') rpState.exposicao = 0;
+  if (typeof rpState.exposicaoMax !== 'number') rpState.exposicaoMax = 100;
+  if (typeof rpState.cr !== 'number') rpState.cr = 0;
 }
 
 function saveRPState() {
@@ -5382,10 +5404,14 @@ function rpStateSyncStart() {
     var v = snap.val();
     if (v) {
       rpState = v;
-      try { localStorage.setItem('scpRP_D20_v1_' + userKey, JSON.stringify(v)); } catch(e) {}
     } else if (!rpState) {
       rpState = defaultRPState();
     }
+    // O Firebase omite chaves com objeto vazio (ex: perks:{} sem nenhuma
+    // pericia marcada ainda) — sem isto, rpState.perks chegaria undefined
+    // aqui e rpRenderPerks() quebraria silenciosamente pra todo mundo.
+    rpNormalizeState();
+    try { localStorage.setItem('scpRP_D20_v1_' + userKey, JSON.stringify(rpState)); } catch(e) {}
     if (nav === 'profile') { var c = document.getElementById('tcnt'); if (c) renderProfile(c); }
   });
 }
@@ -5403,6 +5429,8 @@ function defaultRPState() {
 function rpRenderAttrs() {
   var grid = document.getElementById('rpAttrGrid');
   if (!grid) return;
+  if (!rpState) loadRPState();
+  rpNormalizeState();
   var html = '';
   var hasZero = false;
   for (var key in RP_ATTRIBUTES) {
@@ -5436,6 +5464,8 @@ function rpRenderAttrs() {
 function rpRenderPerks() {
   var grid = document.getElementById('rpPerkGrid');
   if (!grid) return;
+  if (!rpState) loadRPState();
+  rpNormalizeState();
   var html = '';
   for (var i = 0; i < RP_PERKS.length; i++) {
     var perk = RP_PERKS[i];
