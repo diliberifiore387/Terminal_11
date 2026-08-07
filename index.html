@@ -2041,6 +2041,7 @@ function closeSidebar() {
 }
 
 function go(page) {
+    if (page !== 'lab') _dclassAreaBypass = false;
     nav = page;
     refreshLabNavLabel();
     var items = document.querySelectorAll('.tsi[data-nav]');
@@ -2192,9 +2193,15 @@ function openTestLogForm(logId) {
     var ed = null;
     if (logId) { for (var i = 0; i < testLogs.length; i++) if (testLogs[i].id === logId) { ed = testLogs[i]; break; } }
     var scpOpts = '<option value="">— nao especificado —</option>';
-    for (var i = 0; i < db.length; i++) {
-        var s = db[i];
+    var accessibleDb = db.filter(dbAccessible);
+    for (var i = 0; i < accessibleDb.length; i++) {
+        var s = accessibleDb[i];
         scpOpts += '<option value="' + fpFurnEsc(s.num) + '"' + (ed && ed.scpNum === s.num ? ' selected' : '') + '>' + fpFurnEsc(s.num) + ' — ' + fpFurnEsc(s.tit) + '</option>';
+    }
+    if (ed && ed.scpNum) {
+        var foundTl = false;
+        for (var i = 0; i < accessibleDb.length; i++) if (accessibleDb[i].num === ed.scpNum) { foundTl = true; break; }
+        if (!foundTl) scpOpts += '<option value="' + fpFurnEsc(ed.scpNum) + '" selected>' + fpFurnEsc(ed.scpNum) + ' (sem acesso atualmente)</option>';
     }
     var resultOpts = ['', 'sucesso', 'inconclusivo', 'falha', 'fatal'];
     var resultH = '';
@@ -2281,9 +2288,9 @@ function openInterviewLogForm(logId) {
     var ed = null;
     if (logId) { for (var i = 0; i < interviewLogs.length; i++) if (interviewLogs[i].id === logId) { ed = interviewLogs[i]; break; } }
     var interviewable = [];
-    for (var i = 0; i < db.length; i++) if (db[i].interv) interviewable.push(db[i]);
+    for (var i = 0; i < db.length; i++) if (db[i].interv && dbAccessible(db[i])) interviewable.push(db[i]);
     if (!interviewable.length && !(ed && ed.scpNum)) {
-        alert('NENHUM SCP MARCADO COMO "PODE SER ENTREVISTADO" NO BANCO DE DADOS.\nO Mestre pode habilitar isso ao editar um documento SCP.');
+        alert('NENHUM SCP MARCADO COMO "PODE SER ENTREVISTADO" ESTA ACESSIVEL A VOCE NO BANCO DE DADOS.\nO Mestre pode habilitar isso ao editar um documento SCP, ou liberar seu acesso em GERENCIAR ACESSO.');
         return;
     }
     var scpOpts = '<option value="">— nao especificado —</option>';
@@ -2297,7 +2304,7 @@ function openInterviewLogForm(logId) {
         if (!found) scpOpts += '<option value="' + fpFurnEsc(ed.scpNum) + '" selected>' + fpFurnEsc(ed.scpNum) + ' (nao entrevistavel atualmente)</option>';
     }
     var h = '<div class="dv"><div class="dh"><h1>' + (ed ? 'EDITAR' : 'NOVO') + ' LOG DE ENTREVISTA</h1></div>' +
-        '<div class="ds"><p style="color:var(--td); font-size:0.8em;">So' + ' SCPs marcados como "pode ser entrevistado" aparecem na lista.</p></div>' +
+        '<div class="ds"><p style="color:var(--td); font-size:0.8em;">So' + ' SCPs marcados como "pode ser entrevistado" E acessiveis a voce no Banco de Dados aparecem na lista.</p></div>' +
         '<form onsubmit="sInterviewLog(event, \'' + (ed ? ed.id : '') + '\')">' +
         '<div class="fr"><div class="fg"><label>SCP entrevistado</label><select id="ilScp">' + scpOpts + '</select></div>' +
         '<div class="fg"><label>Data (in-game)</label><input type="text" id="ilData" value="' + (ed ? fpFurnEsc(ed.data || '') : '') + '" placeholder="ex: 14/03/2024"></div></div>' +
@@ -2504,6 +2511,12 @@ function receiveEntry(entry) {
         addInventoryCardFromTransfer(entry);
         return 'inventory';
     }
+    if (entry.kind === 'dclass') {
+        // Dossie de Classe-D nao vira papel avulso no Bloco de Notas — ele ja'
+        // existe no catalogo global, entao so' precisa abrir a aba CLASSE-D do
+        // Laboratorio (ver openDClassTab), mesmo fora de area laboral.
+        return 'dclass';
+    }
     notesAddPaper(entry);
     return 'papers';
 }
@@ -2694,6 +2707,28 @@ var _handStarted = false;
 var _handKeysSeen = {};
 var _handMode = 'labcard'; // 'labcard' | 'item' | 'dclass' | 'custom'
 
+// Liga temporariamente quando um dossie de Classe-D e' entregue na mao ou
+// retirado de uma mobilia — permite abrir a aba CLASSE-D do Laboratorio mesmo
+// fora de uma area laboral, so' pra essa visualizacao (ver renderLab). Desliga
+// sozinho ao trocar de aba do Laboratorio ou sair da secao Laboratorio.
+var _dclassAreaBypass = false;
+
+// Forca a navegacao para LABORATORIO > CLASSE-D e abre o dossie recebido —
+// usado ao receber um dossie de Classe-D na mao, para nao cair mais nas Notas.
+function openDClassTab(refId) {
+    _dclassAreaBypass = true;
+    nav = 'lab';
+    labTab = 'dclass';
+    var navItems = document.querySelectorAll('.tsi[data-nav]');
+    for (var i = 0; i < navItems.length; i++) navItems[i].classList.remove('on');
+    var navA = document.querySelector('.tsi[data-nav="lab"]');
+    if (navA) navA.classList.add('on');
+    refreshLabNavLabel();
+    renderLab(document.getElementById('tcnt'));
+    closeSidebar();
+    if (refId) viewDClass(refId);
+}
+
 function handStart() {
     if (_handStarted || !userKey || typeof fbDB === 'undefined') return;
     _handStarted = true;
@@ -2708,6 +2743,7 @@ function handStart() {
             handShowToast(g, dest);
             if (dest === 'papers' && nav === 'notes') renderNotes(document.getElementById('tcnt'));
             if (dest === 'inventory' && nav === 'lab') renderLab(document.getElementById('tcnt'));
+            if (dest === 'dclass') openDClassTab(g.refId);
         }
         fbDB.ref('hand/gifts/' + userKey + '/' + key).remove();
     });
@@ -2723,10 +2759,12 @@ function handResolveLabel(g) {
 
 function handShowToast(g, dest) {
     var toInv = dest === 'inventory';
+    var toDclass = dest === 'dclass';
     var el = document.createElement('div');
-    el.textContent = '\u2709 VOCE RECEBEU DE ' + (g.by || 'ALGUEM') + ': ' + handResolveLabel(g) + (toInv ? ' — veja no INVENTARIO' : ' — veja em NOTAS > QUADRO');
+    var destLabel = toInv ? ' — veja no INVENTARIO' : toDclass ? ' — veja em LABORATORIO > CLASSE-D' : ' — veja em NOTAS > QUADRO';
+    el.textContent = '\u2709 VOCE RECEBEU DE ' + (g.by || 'ALGUEM') + ': ' + handResolveLabel(g) + destLabel;
     el.style.cssText = 'position:fixed; top:16px; right:16px; left:16px; max-width:320px; margin-left:auto; z-index:99999; background:rgba(0,20,0,0.96); border:1px solid var(--g); color:var(--g); padding:12px 16px; font-size:0.78em; line-height:1.4; box-shadow:0 0 14px rgba(0,255,65,0.35); font-family:inherit; cursor:pointer;';
-    el.onclick = function() { if (toInv) { go('lab'); } else { go('notes'); notesSwitchTab('board'); } el.remove(); };
+    el.onclick = function() { if (toInv) { go('lab'); } else if (toDclass) { openDClassTab(g.refId); } else { go('notes'); notesSwitchTab('board'); } el.remove(); };
     document.body.appendChild(el);
     setTimeout(function() {
         el.style.transition = 'opacity 0.5s';
@@ -2743,10 +2781,15 @@ function handSetMode(m) {
 
 function handRenderModeBody() {
     if (_handMode === 'labcard') {
-        if (!labCards.length) return '<div style="color:var(--td); font-size:0.8em; margin-bottom:14px;">Nenhuma carta de laboratorio cadastrada ainda.</div>';
+        // Entrega direta na mao so' vale pra SCPs PEGAVEIS (algo que faz sentido
+        // caber fisicamente na mao de alguem) e nunca para Apollyon — mesmo o
+        // Mestre nao entrega um Apollyon assim, por conceito (SCPs dessa classe
+        // nao sao objetos portateis, sao ameacas de escala global).
+        var handSendable = labCards.filter(function(c) { return c.cls !== 'Apollyon' && c.pegavel !== false; });
+        if (!handSendable.length) return '<div style="color:var(--td); font-size:0.8em; margin-bottom:14px;">Nenhuma carta pegavel dispon\u00edvel para entrega na mao no momento (Apollyon e cartas marcadas como N\u00c3O PEGAVEL n\u00e3o podem ser entregues assim).</div>';
         var opts = '';
-        for (var i = 0; i < labCards.length; i++) opts += '<option value="' + labCards[i].id + '">' + fpFurnEsc(labCards[i].num) + ' — ' + fpFurnEsc(labCards[i].title) + ' [' + labCards[i].cls + ']</option>';
-        return '<div class="fg"><label>Carta (qualquer classe)</label><select id="handRefSelect" style="width:100%; background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:8px;">' + opts + '</select></div>';
+        for (var i = 0; i < handSendable.length; i++) opts += '<option value="' + handSendable[i].id + '">' + fpFurnEsc(handSendable[i].num) + ' — ' + fpFurnEsc(handSendable[i].title) + ' [' + handSendable[i].cls + ']</option>';
+        return '<div class="fg"><label>Carta (Safe/Euclid/Keter/Thaumiel pegaveis)</label><select id="handRefSelect" style="width:100%; background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:8px;">' + opts + '</select></div>';
     } else if (_handMode === 'item') {
         if (!items.length) return '<div style="color:var(--td); font-size:0.8em; margin-bottom:14px;">Nenhum item no catalogo de recursos.</div>';
         var opts2 = '';
@@ -2767,7 +2810,7 @@ function renderHandGiveSection() {
     var h = '<div style="margin-bottom:25px;">' +
         '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:12px;">&gt; DAR NA MAO [MESTRE]</div>' +
         '<div style="background:rgba(0,20,0,0.3); border:1px solid var(--bd); padding:18px;">' +
-        '<div class="help-text" style="color:var(--td); font-size:0.75em; margin-bottom:12px;">Entrega algo direto na mao de um jogador — cai na aba PAPEIS do bloco de notas dele na hora, sem precisar estar perto de nenhuma mobilia na planta. Funciona com cartas de laboratorio de qualquer classe (Safe, Euclid, Keter, Thaumiel, Apollyon), itens do catalogo, dossies de Classe-D ou um papel avulso escrito na hora. Tambem da pra clicar direto no token de um jogador no mapa, ou entregar como um NPC que voce esteja controlando.</div>';
+        '<div class="help-text" style="color:var(--td); font-size:0.75em; margin-bottom:12px;">Entrega algo direto na mao de um jogador — cai na aba PAPEIS do bloco de notas dele na hora, sem precisar estar perto de nenhuma mobilia na planta. Funciona com cartas de laboratorio PEGAVEIS de qualquer classe (Safe, Euclid, Keter, Thaumiel) — Apollyon nunca pode ser entregue assim, por conceito — alem de itens do catalogo, dossies de Classe-D ou um papel avulso escrito na hora. Tambem da pra clicar direto no token de um jogador no mapa, ou entregar como um NPC que voce esteja controlando.</div>';
     h += '<div class="fg"><label>Jogador</label><select id="handTargetSelect" style="width:100%; background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:8px;">';
     for (var i = 0; i < keys.length; i++) {
         if (keys[i] === userKey) continue;
@@ -2806,6 +2849,12 @@ function handDeliverCore(target, byName) {
         var refEl = document.getElementById('handRefSelect');
         if (!refEl || !refEl.value) { alert('ESCOLHA UM ITEM PARA ENTREGAR.'); return false; }
         entry.refId = refEl.value;
+        if (_handMode === 'labcard') {
+            var checkCard = fpFindLabCard(entry.refId);
+            if (!checkCard) { alert('CARTA NAO ENCONTRADA.'); return false; }
+            if (checkCard.cls === 'Apollyon') { alert('APOLLYON NAO PODE SER ENTREGUE NA MAO — nao e\' um objeto portatil.'); return false; }
+            if (checkCard.pegavel === false) { alert('ESTA CARTA ESTA MARCADA COMO NAO PEGAVEL E NAO PODE SER ENTREGUE NA MAO.'); return false; }
+        }
     }
     if (typeof fbDB === 'undefined') { alert('SEM CONEXAO COM O BANCO DE DADOS.'); return false; }
     fbDB.ref('hand/gifts/' + target).push(entry);
@@ -3235,8 +3284,11 @@ function dItem(id) {
 function renderLab(c) {
     // O Mestre (Nivel 6) pode abrir o CATALOGO GLOBAL de qualquer lugar, mesmo
     // fora de uma area laboral — todos os outros casos continuam caindo no
-    // INVENTARIO pessoal fora de areas marcadas.
-    if (!currentAreaIsLab() && !(lvl >= 6 && labTab === 'global')) { renderInventory(c); return; }
+    // INVENTARIO pessoal fora de areas marcadas. Excecao: quando um dossie de
+    // Classe-D acaba de ser entregue na mao/retirado de uma mobilia, a aba
+    // CLASSE-D abre normalmente mesmo fora de area laboral (ver
+    // _dclassAreaBypass, ligado so' nesse momento especifico).
+    if (!currentAreaIsLab() && !(lvl >= 6 && labTab === 'global') && !(_dclassAreaBypass && labTab === 'dclass')) { renderInventory(c); return; }
     var h = '<div style="margin-bottom:18px;">' +
         '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap; margin-bottom:12px;">' +
         '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px;">&gt; LABORATORIO DE PESQUISA // CARTAS DE ANALISE</div>' +
@@ -3627,6 +3679,7 @@ function sInvItemForm(e, editItemId) {
 }
 
 function switchLabTab(tab) {
+    if (tab !== 'dclass') _dclassAreaBypass = false;
     labTab = tab;
     renderLab(document.getElementById('tcnt'));
 }
@@ -9308,13 +9361,15 @@ function fpFurnitureTake(idx) {
     else fbDB.ref('world/furniture_items/' + _fpFurnitureModalKey).remove();
   }
   // O item pego passa a existir pro jogador: cartas (SCP/catalogo) vao pro
-  // INVENTARIO como objetos de verdade; dossies/papeis avulsos continuam
-  // indo pro quadro de PAPEIS do Bloco de Notas (ver receiveEntry acima).
+  // INVENTARIO como objetos de verdade; dossies de Classe-D ficam disponiveis
+  // na aba CLASSE-D do Laboratorio (mesmo fora de area laboral); papeis avulsos
+  // continuam indo pro quadro de PAPEIS do Bloco de Notas (ver receiveEntry acima).
   var takenDest = null;
   if (taken) takenDest = receiveEntry(taken);
   fpFurnitureRenderModal();
   fpUpdateFurnitureBadges();
   if (takenDest === 'inventory') alert('GUARDADO NO SEU INVENTARIO.');
+  else if (takenDest === 'dclass') { _dclassAreaBypass = true; alert('DOSSIE DISPONIVEL EM LABORATORIO > CLASSE-D.'); }
 }
 
 // ============== SETA DE SAIDA (PORTAL PARA OUTRA AREA) ==============
