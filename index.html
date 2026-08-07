@@ -1772,6 +1772,13 @@ function doLogin() {
         return;
     }
     user = a; userKey = u; lvl = a.lv;
+    // Zera o mapState em memoria: sem isso, se outro jogador tivesse acabado de jogar
+    // nesta mesma aba, este login novo continuaria enxergando a localizacao/historico
+    // dele (em memoria) ate' alguma acao forcar um reload — mesmo com o cache local
+    // agora separado por login (mapStorageKey). Zerando aqui, o proximo loadMapState()
+    // (ou a sincronizacao do Firebase em mapExplorerSyncStart) parte limpo, amarrado
+    // so' a este login.
+    mapState = null;
     sfxLogin();
     loadResearcherProfile();
     profileSyncStart();
@@ -1842,6 +1849,7 @@ function logout() {
     }
     mapExplorerSyncStop(); // para de escutar o historico pessoal do login que esta saindo
     user = null; lvl = 0; userKey = null;
+    mapState = null; // idem: nao deixa a posicao/historico deste login "vazar" pro proximo, na mesma aba
     researcherProfile = null; rpState = null;
     document.getElementById('term').classList.remove('on'); 
     document.getElementById('o5fab').style.display = 'none';
@@ -6323,13 +6331,21 @@ function mapSessionPin(dateStr, level) {
   return String(1000 + (hash % 9000));
 }
 
+// Chave de cache LOCAL do mapa, amarrada ao LOGIN (userKey) alem do mapa ativo — nao
+// so' ao aparelho/aba. Antes essa chave era so' 'scpMAP_v1_'+MAP_ACTIVE_ID, igual pra
+// QUALQUER jogador que usasse o mesmo aparelho/aba: como current/visited/log (posicao
+// e historico pessoal) vivem dentro do mesmo objeto mapState que e' cacheado aqui, um
+// jogador que fizesse login numa aba onde outro jogador tinha acabado de jogar herdava
+// a localizacao dele ate' a sincronizacao do Firebase (explorers/<login>) chegar — e podia
+// ate' EMPURRAR essa localizacao errada pra nuvem por baixo do proprio login novo (via
+// mapSharedSyncStart -> saveMapState -> mapExplorerPush), sobrescrevendo o progresso real
+// dele. Agora cada login tem sua propria fatia do cache local, entao um login novo nunca
+// comeca lendo a posicao de quem jogou antes na mesma aba.
+function mapStorageKey(id) { return 'scpMAP_v1_' + (userKey || 'guest') + '_' + id; }
+
 function loadMapState() {
   try {
-    var s = localStorage.getItem('scpMAP_v1_' + MAP_ACTIVE_ID);
-    // MIGRACAO: antes de existirem multiplos mapas, o Site-11 salvava direto na chave
-    // 'scpMAP_v1' (sem sufixo de mapa). Se ainda nao existir a chave nova pro Site-11,
-    // aproveita o save antigo em vez de comecar do zero.
-    if (!s && MAP_ACTIVE_ID === 'site-11') { try { s = localStorage.getItem('scpMAP_v1'); } catch (e) {} }
+    var s = localStorage.getItem(mapStorageKey(MAP_ACTIVE_ID));
     if (s) mapState = JSON.parse(s);
     else { mapState = defaultMapState(); saveMapState(); }
   } catch(e) { mapState = defaultMapState(); }
@@ -6354,7 +6370,7 @@ function loadMapState() {
 }
 
 function saveMapState() {
-  try { localStorage.setItem('scpMAP_v1_' + MAP_ACTIVE_ID, JSON.stringify(mapState)); } catch(e) {}
+  try { localStorage.setItem(mapStorageKey(MAP_ACTIVE_ID), JSON.stringify(mapState)); } catch(e) {}
   mapExplorerPush();
 }
 
@@ -6402,7 +6418,7 @@ function mapExplorerSyncStart() {
     mapState.current = (v && v.current) ? v.current : mapState.current;
     mapState.visited = (v && v.visited) ? v.visited : (mapState.visited || {});
     mapState.log = (v && v.log) ? v.log : (mapState.log || []);
-    try { localStorage.setItem('scpMAP_v1_' + MAP_ACTIVE_ID, JSON.stringify(mapState)); } catch (e) {}
+    try { localStorage.setItem(mapStorageKey(MAP_ACTIVE_ID), JSON.stringify(mapState)); } catch (e) {}
     mapInvalidateCache();
     if (nav === 'map') renderMap(document.getElementById('tcnt'));
   };
