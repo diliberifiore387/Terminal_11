@@ -2519,12 +2519,11 @@ function receiveEntry(entry) {
         addInventoryCardFromTransfer(entry);
         return 'inventory';
     }
-    if (entry.kind === 'dclass') {
-        // Dossie de Classe-D nao vira papel avulso no Bloco de Notas — ele ja'
-        // existe no catalogo global, entao so' precisa abrir a aba CLASSE-D do
-        // Laboratorio (ver openDClassTab), mesmo fora de area laboral.
-        return 'dclass';
-    }
+    // Dossie de Classe-D: pedido do Mestre, agora vira um PAPEL de verdade no
+    // quadro de NOTAS — igual um papel avulso — em vez de abrir a aba CLASSE-D
+    // inteira do Laboratorio (que, fora de area laboral, mostra TODOS os dossies
+    // cadastrados no jogo, nao so' o que foi entregue). Cai como papel arrastavel;
+    // ao abrir mostra a ficha completa daquele sujeito especifico (viewDClass).
     notesAddPaper(entry);
     return 'papers';
 }
@@ -2551,23 +2550,21 @@ function addInventoryCardFromCatalogItem(itemRef) {
     saveInventoryList(list);
 }
 
-// Converte uma carta de laboratorio (o SCP em si, como objeto) numa copia
-// independente no Inventario Pessoal do jogador — o SCP passa a existir
-// fisicamente com ele, fora do Laboratorio.
+// Converte uma carta de laboratorio (o SCP em si, como objeto) numa entrada do
+// Inventario Pessoal do jogador. Diferente de um item do catalogo, isto NAO vira
+// um cartao generico com "usos" — guarda so' uma REFERENCIA (refId) pra carta
+// original, exatamente como um papel de laboratorio ja fazia (ver notesAddPaper),
+// entao o jogador ve a MESMA carta de pesquisa completa (imagem, classe,
+// estatisticas, status) que existe no Laboratorio — nao um item achatado e
+// generico com "usos ilimitados" que perdia toda a identidade do SCP.
 function addInventoryCardFromLabCard(card) {
     var list = loadInventory();
-    if (card) {
-        list.push({
-            id: 'inv-' + Date.now() + '-' + Math.floor(Math.random() * 10000),
-            name: card.num + ' — ' + card.title,
-            type: 'Objeto SCP (' + card.cls + ')',
-            desc: 'Carta de pesquisa retirada do Laboratorio. Classe: ' + card.cls + '.',
-            effect: '', usosMax: 1, uses: 1, usosIlimitados: true, clr: 1,
-            imgs: [], dt: new Date().toISOString()
-        });
-    } else {
-        list.push({ id: 'inv-' + Date.now() + '-' + Math.floor(Math.random() * 10000), name: '(carta removida do laboratorio)', type: 'Objeto SCP', desc: '', effect: '', usosMax: 1, uses: 1, usosIlimitados: true, clr: 1, imgs: [], dt: new Date().toISOString() });
-    }
+    list.push({
+        id: 'inv-' + Date.now() + '-' + Math.floor(Math.random() * 10000),
+        kind: 'scpcard',
+        refId: card ? card.id : null,
+        dt: new Date().toISOString()
+    });
     saveInventoryList(list);
 }
 
@@ -2751,7 +2748,6 @@ function handStart() {
             handShowToast(g, dest);
             if (dest === 'papers' && nav === 'notes') renderNotes(document.getElementById('tcnt'));
             if (dest === 'inventory' && nav === 'lab') renderLab(document.getElementById('tcnt'));
-            if (dest === 'dclass') openDClassTab(g.refId);
         }
         fbDB.ref('hand/gifts/' + userKey + '/' + key).remove();
     });
@@ -2767,12 +2763,11 @@ function handResolveLabel(g) {
 
 function handShowToast(g, dest) {
     var toInv = dest === 'inventory';
-    var toDclass = dest === 'dclass';
     var el = document.createElement('div');
-    var destLabel = toInv ? ' — veja no INVENTARIO' : toDclass ? ' — veja em LABORATORIO > CLASSE-D' : ' — veja em NOTAS > QUADRO';
+    var destLabel = toInv ? ' — veja no INVENTARIO' : ' — veja em NOTAS > QUADRO';
     el.textContent = '\u2709 VOCE RECEBEU DE ' + (g.by || 'ALGUEM') + ': ' + handResolveLabel(g) + destLabel;
     el.style.cssText = 'position:fixed; top:16px; right:16px; left:16px; max-width:320px; margin-left:auto; z-index:99999; background:rgba(0,20,0,0.96); border:1px solid var(--g); color:var(--g); padding:12px 16px; font-size:0.78em; line-height:1.4; box-shadow:0 0 14px rgba(0,255,65,0.35); font-family:inherit; cursor:pointer;';
-    el.onclick = function() { if (toInv) { go('lab'); } else if (toDclass) { openDClassTab(g.refId); } else { go('notes'); notesSwitchTab('board'); } el.remove(); };
+    el.onclick = function() { if (toInv) { go('lab'); } else { go('notes'); notesSwitchTab('board'); } el.remove(); };
     document.body.appendChild(el);
     setTimeout(function() {
         el.style.transition = 'opacity 0.5s';
@@ -2787,13 +2782,23 @@ function handSetMode(m) {
     if (el) el.innerHTML = handRenderModeBody();
 }
 
+// Cartas de SCP "pegaveis" (podem sair fisicamente do Laboratorio) — usado tanto
+// na entrega direta na mao [MESTRE] quanto na opcao de "deixar" numa mobilia de
+// armazenamento pra qualquer jogador pegar depois. Apollyon nunca entra (nao e'
+// um objeto portatil, por conceito) e cartas marcadas manualmente como NAO
+// PEGAVEL tambem ficam de fora — assim nunca da pra colocar um SCP em algum
+// lugar que depois barra a retirada dele (ver fpFurnitureTake).
+function fpPortableLabCards() {
+    return labCards.filter(function(c) { return c.cls !== 'Apollyon' && c.pegavel !== false; });
+}
+
 function handRenderModeBody() {
     if (_handMode === 'labcard') {
         // Entrega direta na mao so' vale pra SCPs PEGAVEIS (algo que faz sentido
         // caber fisicamente na mao de alguem) e nunca para Apollyon — mesmo o
         // Mestre nao entrega um Apollyon assim, por conceito (SCPs dessa classe
         // nao sao objetos portateis, sao ameacas de escala global).
-        var handSendable = labCards.filter(function(c) { return c.cls !== 'Apollyon' && c.pegavel !== false; });
+        var handSendable = fpPortableLabCards();
         if (!handSendable.length) return '<div style="color:var(--td); font-size:0.8em; margin-bottom:14px;">Nenhuma carta pegavel dispon\u00edvel para entrega na mao no momento (Apollyon e cartas marcadas como N\u00c3O PEGAVEL n\u00e3o podem ser entregues assim).</div>';
         var opts = '';
         for (var i = 0; i < handSendable.length; i++) opts += '<option value="' + handSendable[i].id + '">' + fpFurnEsc(handSendable[i].num) + ' — ' + fpFurnEsc(handSendable[i].title) + ' [' + handSendable[i].cls + ']</option>';
@@ -2904,19 +2909,38 @@ function handDeliverInvItemCore(target, itemId) {
     for (var i = 0; i < list.length; i++) if (list[i].id === itemId) { it = list[i]; idx = i; break; }
     if (!it) { alert('ITEM NAO ENCONTRADO NO SEU INVENTARIO.'); return false; }
     if (typeof fbDB === 'undefined') { alert('SEM CONEXAO COM O BANCO DE DADOS.'); return false; }
-    var entry = {
-        kind: 'invitem', by: (user && user.nm) || userKey, ts: Date.now(),
-        name: it.name, itype: it.type || 'Item', desc: it.desc || '', effect: it.effect || '',
-        usosMax: it.usosMax || 1,
-        uses: it.usosIlimitados ? (it.usosMax || 1) : (typeof it.uses === 'number' ? it.uses : (it.usosMax || 1)),
-        usosIlimitados: !!it.usosIlimitados, clr: it.clr || 1,
-        imgs: it.imgs ? it.imgs.slice() : []
-    };
+    var entry;
+    if (it.kind === 'scpcard') {
+        // Objeto SCP: reaproveita o MESMO caminho da entrega do Mestre (kind
+        // 'labcard' + refId) — assim quem recebe ganha a carta de verdade,
+        // ligada ao Laboratorio, e nao um clone achatado sem identidade.
+        entry = { kind: 'labcard', refId: it.refId, by: (user && user.nm) || userKey, ts: Date.now() };
+    } else {
+        entry = {
+            kind: 'invitem', by: (user && user.nm) || userKey, ts: Date.now(),
+            name: it.name, itype: it.type || 'Item', desc: it.desc || '', effect: it.effect || '',
+            usosMax: it.usosMax || 1,
+            uses: it.usosIlimitados ? (it.usosMax || 1) : (typeof it.uses === 'number' ? it.uses : (it.usosMax || 1)),
+            usosIlimitados: !!it.usosIlimitados, clr: it.clr || 1,
+            imgs: it.imgs ? it.imgs.slice() : []
+        };
+    }
     fbDB.ref('hand/gifts/' + target).push(entry);
     list.splice(idx, 1);
     saveInventoryList(list);
     alert('ENTREGUE NA MAO DE ' + ((PASS[target] && PASS[target].nm) || target) + '.');
     return true;
+}
+
+// Rotulo de uma entrada do Inventario Pessoal pra listas simples (<option>) —
+// cobre tanto os cartoes antigos (nome/tipo) quanto o Objeto SCP (kind 'scpcard',
+// que nao tem name/type proprios, so' uma referencia pra carta original).
+function fpInvEntryLabel(it) {
+    if (it.kind === 'scpcard') {
+        var c = it.refId ? fpFindLabCard(it.refId) : null;
+        return c ? (c.num + ' — ' + c.title + ' [' + c.cls + ']') : '(carta SCP removida do laboratorio)';
+    }
+    return (it.name || '(item)') + ' (' + (it.type || 'Item') + ')';
 }
 
 // Usada ao clicar direto no token de um jogador vizinho no mapa (le o item
@@ -3424,6 +3448,7 @@ function renderInvGrid(itemList) {
     var h = '';
     for (var i = 0; i < itemList.length; i++) {
         var it = itemList[i];
+        if (it.kind === 'scpcard') { h += renderInvScpCard(it); continue; }
 
         h += '<div class="item-card" id="invcard-' + it.id + '" onclick="viewInvItem(\'' + it.id + '\')">';
 
@@ -3468,6 +3493,52 @@ function renderInvGrid(itemList) {
         h += '</div>';
     }
     return h;
+}
+
+// Cartao do OBJETO SCP no Inventario Pessoal — visual proprio (borda na cor da
+// classe, imagem da carta original) em vez do cartao generico de item, e SEM a
+// caixa de "usos" (nao faz sentido controlar usos de um objeto/sujeito fisico).
+// Clicar abre a MESMA ficha completa do Laboratorio (viewLabCard) — e' a carta
+// de verdade, so' que agora na mao do jogador. O X descarta so' a POSSE (tira do
+// Inventario Pessoal); a carta em si continua existindo no Laboratorio.
+function renderInvScpCard(it) {
+    var card = it.refId ? fpFindLabCard(it.refId) : null;
+    var clsColor = 'var(--g)';
+    if (card) {
+        if (card.cls === 'Euclid') clsColor = 'var(--y)';
+        if (card.cls === 'Keter' || card.cls === 'Apollyon') clsColor = 'var(--r)';
+        if (card.cls === 'Thaumiel') clsColor = 'var(--b)';
+    }
+    var h = '<div class="item-card" id="invcard-' + it.id + '" style="border-color:' + clsColor + ';" onclick="' + (card ? 'viewLabCard(\'' + card.id + '\')' : '') + '">' +
+        '<button onclick="event.stopPropagation(); discardInvScpCard(\'' + it.id + '\')" title="Descartar (tirar do inventario)" style="position:absolute; top:6px; right:6px; z-index:3; background:rgba(0,0,0,0.5); border:none; color:var(--r); font-size:1.1em; width:22px; height:22px; border-radius:50%; cursor:pointer;">&times;</button>';
+
+    h += '<div class="item-header">' +
+        '<div class="item-type" style="color:' + clsColor + ';">OBJETO SCP' + (card ? ' — ' + card.cls : '') + '</div>' +
+        '<div class="item-name">' + (card ? fpFurnEsc(card.num + ' — ' + card.title) : '<span style="color:var(--td);">(carta removida do laboratorio)</span>') + '</div>' +
+        '</div>';
+
+    h += '<div class="item-img-wrap">';
+    if (card && card.img) h += '<img src="' + card.img + '" alt="' + fpFurnEsc(card.num) + '">';
+    else h += '<div class="item-img-placeholder">?</div>';
+    h += '</div>';
+
+    h += '<div class="item-body"><div class="item-desc" style="color:' + clsColor + ';">CARTA DE PESQUISA — retirada fisicamente do Laboratorio.' + (card ? '' : ' Esta carta nao existe mais no catalogo.') + '</div></div>';
+
+    h += '<div class="item-footer">' +
+        '<span style="font-size:0.7em; color:var(--td); letter-spacing:1px;">OBJETO FISICO</span>' +
+        (card ? '<span class="item-uses" style="color:' + clsColor + ';">' + card.cls.toUpperCase() + '</span>' : '') +
+        '</div>';
+
+    h += '</div>';
+    return h;
+}
+
+function discardInvScpCard(itemId) {
+    if (!confirm('DESCARTAR ESTE OBJETO DO SEU INVENTARIO? (a carta continua existindo no Laboratorio, voce so\' deixa de carregar ela)')) return;
+    var list = loadInventory().filter(function(x) { return x.id !== itemId; });
+    saveInventoryList(list);
+    if (currentAreaIsLab()) showInventoryModal();
+    else renderInventory(document.getElementById('tcnt'));
 }
 
 function viewInvItem(itemId) {
@@ -8399,7 +8470,7 @@ function fpOpenGiveForPlayer(key) {
   } else {
     gh += '<div class="help-text" style="color:var(--td); font-size:0.75em; margin-bottom:12px;">Escolha um item do seu INVENTARIO PESSOAL para entregar direto na mao de ' + fpFurnEsc(name) + '. O item sai do seu inventario e vai para o dele.</div>';
     gh += '<div class="fg"><label>Item</label><select id="handInvSelect" style="width:100%; background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:8px;">';
-    for (var i = 0; i < list.length; i++) gh += '<option value="' + list[i].id + '">' + fpFurnEsc(list[i].name) + ' (' + fpFurnEsc(list[i].type) + ')</option>';
+    for (var i = 0; i < list.length; i++) gh += '<option value="' + list[i].id + '">' + fpFurnEsc(fpInvEntryLabel(list[i])) + '</option>';
     gh += '</select></div>';
   }
   gh += '<div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">' +
@@ -9279,9 +9350,9 @@ function fpFurnitureRenderModal() {
       modeBtn('labcard', 'CARTA DO LABORATORIO') + modeBtn('item', 'ITEM DO CATALOGO') + modeBtn('dclass', 'DOSSIE CLASSE-D') + modeBtn('custom', 'PAPEL AVULSO') + '</div>';
 
     if (mode === 'labcard') {
-      var accessible = labCards.filter(fpLabCardAccessible);
+      var accessible = fpPortableLabCards().filter(fpLabCardAccessible);
       if (!accessible.length) {
-        h += '<div style="color:var(--td); font-size:0.8em; margin-bottom:14px;">Nenhuma carta de laboratorio acessivel ao seu nivel no momento.</div>';
+        h += '<div style="color:var(--td); font-size:0.8em; margin-bottom:14px;">Nenhuma carta de laboratorio pegavel e acessivel ao seu nivel no momento (Apollyon e cartas marcadas como NAO PEGAVEL nao podem ser deixadas aqui).</div>';
       } else {
         var opts1 = '';
         for (var li = 0; li < accessible.length; li++) opts1 += '<option value="' + accessible[li].id + '">' + accessible[li].num + ' — ' + accessible[li].title + '</option>';
@@ -9400,7 +9471,6 @@ function fpFurnitureTake(idx) {
   fpFurnitureRenderModal();
   fpUpdateFurnitureBadges();
   if (takenDest === 'inventory') alert('GUARDADO NO SEU INVENTARIO.');
-  else if (takenDest === 'dclass') { _dclassAreaBypass = true; alert('DOSSIE DISPONIVEL EM LABORATORIO > CLASSE-D.'); }
 }
 
 // ============== SETA DE SAIDA (PORTAL PARA OUTRA AREA) ==============
