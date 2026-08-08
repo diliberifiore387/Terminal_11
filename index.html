@@ -8829,7 +8829,7 @@ function fpRenderGrid(roomId, floorIdx, floor, editable) {
       if (isSpawn) {
         inner += '<div style="position:absolute; left:1px; top:1px; font-size:0.55em; color:var(--g); pointer-events:none;" title="Ponto de entrada">&#9873;</div>';
       }
-      if (editable) onclick = ' onclick="fpCellClick(' + c + ',' + r + ')"';
+      if (editable) onclick = ' onmousedown="fpCellDown(event,' + c + ',' + r + ')" ontouchstart="fpCellDown(event,' + c + ',' + r + ')" data-fpc="' + c + '" data-fpr="' + r + '"';
       else if (npc && !_npcHasToken) onclick = ' onclick="fpNpcInfo(' + c + ',' + r + ')"';
       else if (cell && cell.t === 'm') { onclick = ' onclick="fpFurnitureInteract(' + c + ',' + r + ')"'; cursor = 'pointer'; }
       h += '<div' + onclick + ' style="position:absolute; left:' + (c * FP_CELL) + 'px; top:' + (r * FP_CELL) + 'px; width:' + FP_CELL + 'px; height:' + FP_CELL + 'px; box-sizing:border-box; border:1px solid ' + (isSpawn ? 'var(--g)' : 'rgba(255,255,255,0.06)') + '; cursor:' + cursor + ';">' + inner + '</div>';
@@ -9627,6 +9627,61 @@ function fpUpdateEditGrid() {
   wrap.innerHTML = fpRenderGrid(_fpEdit.roomId, _fpEdit.floorIdx, fpCurFloor(), true);
   wrap.scrollLeft = prevScroll.left;
   wrap.scrollTop = prevScroll.top;
+}
+
+// ============== ARRASTAR PARA DESENHAR (paredes, quadrados, mobilia, borracha) ==============
+// Ferramentas que NAO abrem formulario/prompt podem ser "pintadas" arrastando o
+// mouse/dedo por varias celulas seguidas, em vez de precisar clicar uma por uma —
+// pedido explicitamente pra parede, que era a mais repetitiva de desenhar. Porta,
+// escada, seta de saida e NPC continuam so' no clique unico (abrem prompt/form, entao
+// arrastar por cima delas nao faria sentido e ficaria pedindo confirmacao a cada celula).
+var FP_DRAG_TOOLS = { w: 1, q: 1, m: 1, e: 1 };
+var _fpPaintActive = false, _fpPaintLastKey = null;
+
+function fpCellDown(e, c, r) {
+  if (!_fpEdit) return;
+  if (!FP_DRAG_TOOLS[_fpEdit.tool]) { fpCellClick(c, r); return; } // ferramentas com prompt: comportamento antigo, so' clique
+  if (e) e.preventDefault();
+  _fpPaintActive = true;
+  _fpPaintLastKey = c + '_' + r;
+  fpCellClick(c, r);
+  document.addEventListener('mousemove', fpPaintMouseMove);
+  document.addEventListener('mouseup', fpPaintEnd);
+  document.addEventListener('touchmove', fpPaintTouchMove, { passive: false });
+  document.addEventListener('touchend', fpPaintEnd);
+}
+
+function fpPaintMouseMove(e) {
+  if (!_fpPaintActive) return;
+  fpPaintFromPoint(e.clientX, e.clientY);
+}
+
+function fpPaintTouchMove(e) {
+  if (!_fpPaintActive) return;
+  e.preventDefault(); // impede a tela de rolar enquanto se arrasta o dedo pintando celulas
+  var t = e.touches && e.touches[0];
+  if (!t) return;
+  fpPaintFromPoint(t.clientX, t.clientY);
+}
+
+function fpPaintFromPoint(x, y) {
+  var el = document.elementFromPoint(x, y);
+  if (!el) return;
+  var c = el.getAttribute('data-fpc'), r = el.getAttribute('data-fpr');
+  if (c === null || r === null) return;
+  var key = c + '_' + r;
+  if (key === _fpPaintLastKey) return; // ja pintada nesta passada — evita reprocessar a mesma celula a cada pixel de movimento
+  _fpPaintLastKey = key;
+  fpCellClick(parseInt(c, 10), parseInt(r, 10));
+}
+
+function fpPaintEnd() {
+  _fpPaintActive = false;
+  _fpPaintLastKey = null;
+  document.removeEventListener('mousemove', fpPaintMouseMove);
+  document.removeEventListener('mouseup', fpPaintEnd);
+  document.removeEventListener('touchmove', fpPaintTouchMove);
+  document.removeEventListener('touchend', fpPaintEnd);
 }
 
 function fpCellClick(c, r) {
