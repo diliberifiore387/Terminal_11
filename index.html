@@ -430,6 +430,78 @@ body { background:var(--bg); color:var(--g); font-family:'Share Tech Mono',monos
 .dclass-sent { font-size: 0.65em; letter-spacing: 2px; color: var(--td); }
 .dclass-sent span { color: var(--y); }
 
+/* Documentos (catalogo do Mestre) */
+.doc-card {
+    background: linear-gradient(145deg, rgba(10,15,10,0.6) 0%, rgba(5,8,5,0.85) 100%);
+    border: 2px solid var(--bd); border-radius: 10px; padding: 14px; cursor: pointer;
+    transition: all 0.3s ease; position: relative; overflow: hidden;
+}
+.doc-card::before { content:""; position:absolute; top:0; left:0; right:0; height:3px; background:var(--b); }
+.doc-card:hover { transform: translateY(-4px); border-color: var(--b); box-shadow: 0 10px 30px rgba(0,191,255,0.12); }
+.doc-card-tag { font-size:0.65em; letter-spacing:2px; color:var(--b); margin-bottom:6px; }
+.doc-card-title { font-size:0.95em; color:var(--t); font-weight:bold; margin-bottom:8px; }
+.doc-card-prev { font-size:0.75em; color:var(--td); line-height:1.5; }
+
+/* ===== QUADRO (mural): papeis com formato/estilo variado ===== */
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@600&family=Special+Elite&display=swap');
+
+/* NOTA — papel pequeno e "casual", varios estilos possiveis (ver NOTE_VARIANTS) */
+.board-note {
+    position:absolute; width:150px; min-height:100px; padding:10px;
+    box-shadow:2px 3px 8px rgba(0,0,0,0.5); cursor:grab; user-select:none; pointer-events:auto;
+    font-family:'Courier New', monospace;
+}
+.board-note .bn-tag { font-size:0.6em; letter-spacing:1px; margin-bottom:4px; opacity:0.75; }
+.board-note .bn-title { font-size:0.8em; font-weight:bold; line-height:1.3; }
+.board-note .bn-x { position:absolute; top:2px; right:4px; background:none; border:none; font-size:0.9em; cursor:pointer; padding:2px; opacity:0.7; }
+.board-note .bn-deco { position:absolute; pointer-events:none; }
+.board-note.bn-torn { clip-path: polygon(0% 2%,4% 0%,9% 3%,15% 1%,21% 4%,27% 0%,33% 2%,39% 0%,45% 3%,51% 1%,57% 4%,63% 0%,69% 2%,75% 0%,81% 3%,87% 1%,93% 4%,100% 1%,100% 100%,0% 100%); }
+.board-note.bn-hand .bn-title { font-family:'Caveat', cursive; font-size:1.15em; }
+.board-note.bn-type .bn-title { font-family:'Special Elite', 'Courier New', monospace; }
+
+/* FOLHA — documento grande, estilo dossie/relatorio (visual "SCP: Containment Breach") */
+.board-sheet {
+    position:absolute; width:180px; min-height:230px; background:#ece7d8; color:#1a1a12;
+    box-shadow:3px 4px 14px rgba(0,0,0,0.6); cursor:grab; user-select:none; pointer-events:auto;
+    font-family:'Courier New', monospace; border:1px solid #bcb593;
+    background-image:
+        repeating-linear-gradient(rgba(0,0,0,0.05) 0px, rgba(0,0,0,0.05) 1px, transparent 1px, transparent 22px);
+}
+.board-sheet .bs-hdr { background:#1a1a1a; color:#e8e2c9; padding:6px 8px; display:flex; justify-content:space-between; align-items:center; }
+.board-sheet .bs-hdr span:first-child { font-size:0.55em; letter-spacing:2px; }
+.board-sheet .bs-hdr span:last-child { font-size:0.55em; letter-spacing:1px; color:#ff6b6b; border:1px solid #ff6b6b; padding:1px 4px; }
+.board-sheet .bs-body { padding:10px 10px 8px; }
+.board-sheet .bs-code { font-size:0.62em; letter-spacing:1px; color:#7a2f2f; margin-bottom:4px; }
+.board-sheet .bs-title { font-size:0.82em; font-weight:bold; line-height:1.3; margin-bottom:8px; }
+.board-sheet .bs-redacted { height:8px; background:#1a1a1a; margin:5px 0; border-radius:1px; }
+.board-sheet .bs-redacted.w70 { width:70%; } .board-sheet .bs-redacted.w90 { width:90%; } .board-sheet .bs-redacted.w50 { width:50%; }
+.board-sheet .bs-x { position:absolute; top:2px; right:4px; background:none; border:none; color:#e8e2c9; font-size:0.9em; cursor:pointer; padding:2px; z-index:2; }
+.board-sheet .bs-stamp { position:absolute; bottom:8px; right:8px; border:2px solid #7a2f2f; color:#7a2f2f; font-size:0.55em; letter-spacing:1px; padding:2px 6px; transform:rotate(-8deg); opacity:0.8; border-radius:3px; }
+
+/* Visor de foco/zoom — abre em cima do papel/documento clicado no quadro */
+#docFocus { position:fixed; inset:0; background:rgba(0,0,0,0.88); z-index:6000; display:none; align-items:center; justify-content:center; padding:24px; }
+#docFocus.on { display:flex; animation:dfFade 0.2s ease; }
+@keyframes dfFade { from{opacity:0;} to{opacity:1;} }
+.df-wrap { max-width:560px; width:100%; max-height:90vh; overflow:auto; animation:dfZoom 0.28s cubic-bezier(0.2,0.8,0.3,1); }
+@keyframes dfZoom { from{ transform:scale(0.82); opacity:0;} to{ transform:scale(1); opacity:1;} }
+.df-close { position:fixed; top:18px; right:22px; background:none; border:1px solid var(--td); color:var(--t); font-size:1.4em; width:38px; height:38px; border-radius:50%; cursor:pointer; z-index:6001; }
+.df-sheet { background:#ece7d8; color:#1a1a12; padding:0; box-shadow:0 20px 60px rgba(0,0,0,0.7); font-family:'Courier New', monospace;
+    background-image: repeating-linear-gradient(rgba(0,0,0,0.045) 0px, rgba(0,0,0,0.045) 1px, transparent 1px, transparent 26px); }
+.df-sheet .df-hdr { background:#1a1a1a; color:#e8e2c9; padding:14px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+.df-sheet .df-hdr .df-org { font-size:0.7em; letter-spacing:3px; }
+.df-sheet .df-hdr .df-cls { font-size:0.68em; letter-spacing:2px; color:#ff6b6b; border:1px solid #ff6b6b; padding:2px 8px; border-radius:2px; }
+.df-sheet .df-body { padding:22px 24px 26px; }
+.df-sheet .df-code { font-size:0.7em; letter-spacing:2px; color:#7a2f2f; margin-bottom:6px; }
+.df-sheet .df-title { font-size:1.25em; font-weight:bold; margin-bottom:14px; border-bottom:1px solid #bcb593; padding-bottom:10px; }
+.df-sheet .df-text { font-size:0.9em; line-height:1.8; white-space:pre-wrap; text-align:justify; }
+.df-sheet .df-img { max-width:100%; margin:12px 0; border:1px solid #bcb593; filter:contrast(1.05) sepia(0.15); }
+.df-sheet .df-foot { display:flex; justify-content:space-between; align-items:center; margin-top:18px; padding-top:12px; border-top:1px dashed #bcb593; font-size:0.65em; color:#5a5540; letter-spacing:1px; }
+.df-sheet .df-stamp { border:2px solid #7a2f2f; color:#7a2f2f; padding:3px 10px; transform:rotate(-6deg); border-radius:4px; }
+.df-note { background:#e8e2c9; color:#1a1a12; padding:26px 24px; box-shadow:0 20px 60px rgba(0,0,0,0.7); font-family:'Courier New', monospace; max-width:420px; }
+.df-note .df-title { font-size:1.1em; font-weight:bold; margin-bottom:12px; }
+.df-note .df-text { font-size:0.95em; line-height:1.7; white-space:pre-wrap; }
+.df-note .df-foot { margin-top:16px; font-size:0.68em; color:#5a5540; letter-spacing:1px; }
+
 .lab-filters { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
 .lab-filter-btn {
     padding: 6px 14px;
@@ -1283,6 +1355,11 @@ body.simple-mode .help-text{display:none !important;}
     </div>
 </div>
 
+<div id="docFocus" onclick="closeDocFocus()">
+    <button class="df-close" onclick="closeDocFocus()" title="Fechar">&times;</button>
+    <div class="df-wrap" id="docFocusWrap" onclick="event.stopPropagation()"></div>
+</div>
+
 <button class="o5-float-btn" id="o5fab" style="display:none;" onclick="openLabEditor()" title="Criar no Laboratorio">+</button>
 
 <!-- ============== FIREBASE (posicoes dos jogadores no mapa, em tempo real) ============== -->
@@ -1331,7 +1408,7 @@ function toggleSimpleMode() {
 }
 
 // ============== ESTADO ==============
-var db = [], labCards = [], items = [], dclass = [];
+var db = [], labCards = [], items = [], dclass = [], documents = [];
 var testLogs = [], interviewLogs = [];
 var user = null, userKey = null, lvl = 0, nav = 'db', editId = null, imgs = [];
 var researcherProfile = null;
@@ -1346,6 +1423,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadLabCards();
     loadItems();
     loadDClass();
+    loadDocuments();
     loadTestLogs();
     loadInterviewLogs();
     startSplash();
@@ -1955,6 +2033,19 @@ function loadDClass() {
     } catch(e) { dclass = defaultDClass(); }
 }
 function saveDClass() { try { localStorage.setItem('scpDCLASS_v1', JSON.stringify(dclass)); } catch(e) {} worldPush('dclass', dclass); }
+
+// Catalogo de DOCUMENTOS avulsos do Mestre — sem ligacao com o mapa/mobilia
+// (diferente de SCP/Item/Classe-D), so' pra criar rapido um papel/dossie pra
+// entregar depois via "DAR NA MAO". Ver renderDocsTab / renderDocumentForm.
+function loadDocuments() {
+    try {
+        var s = localStorage.getItem('scpDOCS_v1');
+        if (s) documents = JSON.parse(s);
+        else documents = [];
+    } catch(e) { documents = []; }
+}
+function saveDocuments() { try { localStorage.setItem('scpDOCS_v1', JSON.stringify(documents)); } catch(e) {} worldPush('documents', documents); }
+function fpFindDocument(id) { for (var i = 0; i < documents.length; i++) if (documents[i].id === id) return documents[i]; return null; }
 
 function defaultDClass() {
     return [
@@ -2594,13 +2685,34 @@ function addInventoryCardFromTransfer(data) {
 function notesAddPaper(entry) {
     var papers = notesLoadPapers();
     var n = papers.length;
+    // Formato do papel no mural: quem entregou escolheu (ver handRenderFormatBar);
+    // sem escolha explicita (papel pego de uma mobilia na planta, por exemplo),
+    // cai no padrao — FOLHA pra dossies/documentos "oficiais", NOTA pro resto.
+    var fmt = entry.format || ((entry.kind === 'dclass' || entry.kind === 'document') ? 'sheet' : 'note');
     papers.push({
         id: 'p_' + Date.now() + '_' + Math.floor(Math.random() * 10000),
         kind: entry.kind, refId: entry.refId, name: entry.name, desc: entry.desc,
+        format: fmt,
         by: entry.by, ts: entry.ts, takenAt: Date.now(),
         x: 16 + (n * 47) % 420, y: 16 + (n * 71) % 260
     });
     notesSavePapers(papers);
+}
+
+// Variantes visuais de NOTA — cada papel avulso pega uma aleatoriamente (fixa
+// pro mesmo papel, calculada a partir do id) pra o mural nao ficar com tudo
+// identico, igual um quadro de verdade cheio de bilhetes diferentes.
+var NOTE_VARIANTS = [
+    { bg: '#e8e2c9', fg: '#1a1a12', tag: '#6b5c2f', cls: '' },
+    { bg: '#fff6d5', fg: '#33301c', tag: '#a68b2c', cls: 'bn-hand' },
+    { bg: '#f0ece2', fg: '#2a2a2a', tag: '#7a2f2f', cls: 'bn-torn' },
+    { bg: '#232323', fg: '#e8e2c9', tag: '#00ff41', cls: 'bn-type' },
+    { bg: '#f5e6c8', fg: '#3a2a12', tag: '#8b5a2b', cls: 'bn-hand' }
+];
+function fpHashStr(s) {
+    s = s + ''; var h = 0;
+    for (var i = 0; i < s.length; i++) { h = ((h << 5) - h + s.charCodeAt(i)) | 0; }
+    return Math.abs(h);
 }
 
 function notesRenderPapersOverlay(papers) {
@@ -2617,15 +2729,35 @@ function notesRenderPapersOverlay(papers) {
         } else if (p.kind === 'dclass') {
             var dRef = fpFindDClass(p.refId);
             label = dRef ? dRef.name : '(dossie removido)'; sub = dRef ? dRef.code : 'DOSSIE CLASSE-D';
+        } else if (p.kind === 'document') {
+            var docRef = fpFindDocument(p.refId);
+            label = docRef ? docRef.title : '(documento removido)'; sub = docRef ? (docRef.tag || 'DOCUMENTO') : 'DOCUMENTO';
         } else {
             label = p.name || 'PAPEL AVULSO'; sub = 'ANOTACAO';
         }
-        h += '<div id="paper_' + p.id + '" onmousedown="notesPaperDragStart(event,\'' + p.id + '\')" ontouchstart="notesPaperDragStart(event,\'' + p.id + '\')" ' +
-            'style="position:absolute; left:' + p.x + 'px; top:' + p.y + 'px; width:150px; min-height:100px; background:#e8e2c9; color:#1a1a12; padding:10px; box-shadow:2px 3px 8px rgba(0,0,0,0.5); transform:rotate(' + (((j * 37) % 7) - 3) + 'deg); cursor:grab; font-family:\'Courier New\', monospace; user-select:none; pointer-events:auto;">' +
-            '<div style="font-size:0.62em; letter-spacing:1px; color:#6b5c2f; margin-bottom:4px;">' + fpFurnEsc(sub) + '</div>' +
-            '<div style="font-size:0.8em; font-weight:bold; line-height:1.3;">' + fpFurnEsc(label) + '</div>' +
-            '<button onclick="event.stopPropagation(); notesDiscardPaper(\'' + p.id + '\')" title="Descartar" style="position:absolute; top:2px; right:4px; background:none; border:none; color:#7a2f2f; font-size:0.9em; cursor:pointer; padding:2px;">&times;</button>' +
-            '</div>';
+        var rot = ((j * 37) % 7) - 3;
+        var closeBtn = function(cls) { return '<button class="' + cls + '" onclick="event.stopPropagation(); notesDiscardPaper(\'' + p.id + '\')" title="Descartar">&times;</button>'; };
+        if (p.format === 'sheet') {
+            h += '<div id="paper_' + p.id + '" onmousedown="notesPaperDragStart(event,\'' + p.id + '\')" ontouchstart="notesPaperDragStart(event,\'' + p.id + '\')" ' +
+                'class="board-sheet" style="left:' + p.x + 'px; top:' + p.y + 'px; transform:rotate(' + rot + 'deg);">' +
+                '<div class="bs-hdr"><span>&#9670; FUNDACAO SCP</span><span>' + fpFurnEsc(sub) + '</span></div>' +
+                '<div class="bs-body">' +
+                '<div class="bs-title">' + fpFurnEsc(label) + '</div>' +
+                '<div class="bs-redacted w90"></div><div class="bs-redacted w70"></div><div class="bs-redacted w50"></div>' +
+                '<div class="bs-redacted w90"></div><div class="bs-redacted w70"></div>' +
+                '</div>' +
+                '<div class="bs-stamp">' + (p.kind === 'dclass' || p.kind === 'document' ? 'OFICIAL' : 'ARQUIVO') + '</div>' +
+                closeBtn('bs-x') +
+                '</div>';
+        } else {
+            var nv = NOTE_VARIANTS[fpHashStr(p.id) % NOTE_VARIANTS.length];
+            h += '<div id="paper_' + p.id + '" onmousedown="notesPaperDragStart(event,\'' + p.id + '\')" ontouchstart="notesPaperDragStart(event,\'' + p.id + '\')" ' +
+                'class="board-note ' + nv.cls + '" style="left:' + p.x + 'px; top:' + p.y + 'px; background:' + nv.bg + '; color:' + nv.fg + '; transform:rotate(' + rot + 'deg);">' +
+                '<div class="bn-tag" style="color:' + nv.tag + ';">' + fpFurnEsc(sub) + '</div>' +
+                '<div class="bn-title">' + fpFurnEsc(label) + '</div>' +
+                closeBtn('bn-x') +
+                '</div>';
+        }
     }
     return h;
 }
@@ -2683,15 +2815,44 @@ function notesPaperDragEnd() {
         notesPaperOpen(st.id);
     }
 }
+// Abre o papel clicado no QUADRO — cartas/itens/dossies com referencia viva
+// mandam pro visualizador cheio de sempre (viewLabCard/viewItem/viewDClass);
+// documentos do catalogo e papeis avulsos abrem no visor de foco/zoom
+// (openDocFocus), estilizado de acordo com o FORMATO escolhido na entrega
+// (folha grande tipo dossie ou nota pequena).
 function notesPaperOpen(id) {
     var papers = notesLoadPapers();
     var p = null;
     for (var i = 0; i < papers.length; i++) if (papers[i].id === id) { p = papers[i]; break; }
     if (!p) return;
-    if (p.kind === 'labcard' && fpFindLabCard(p.refId)) viewLabCard(p.refId);
-    else if (p.kind === 'item' && fpFindCatalogItem(p.refId)) viewItem(p.refId);
-    else if (p.kind === 'dclass' && fpFindDClass(p.refId)) viewDClass(p.refId);
-    else alert((p.name || 'PAPEL AVULSO') + (p.desc ? '\n\n' + p.desc : '\n\n(sem descricao)'));
+    if (p.kind === 'labcard' && fpFindLabCard(p.refId)) { viewLabCard(p.refId); return; }
+    if (p.kind === 'item' && fpFindCatalogItem(p.refId)) { viewItem(p.refId); return; }
+    if (p.kind === 'dclass' && fpFindDClass(p.refId)) { viewDClass(p.refId); return; }
+    if (p.kind === 'document' && fpFindDocument(p.refId)) { viewDocument(p.refId); return; }
+    notesOpenCustomPaper(p);
+}
+
+// Papel avulso escrito na hora (kind 'custom', ou referencia removida do
+// catalogo) — sem ficha propria, entao monta um visor simples de foco/zoom
+// no estilo escolhido (folha grande ou nota).
+function notesOpenCustomPaper(p) {
+    var title = p.name || 'PAPEL AVULSO';
+    var text = p.desc || '(sem conteudo)';
+    var who = p.by ? ('De: ' + p.by) : '';
+    var when = p.ts ? new Date(p.ts).toLocaleString('pt-BR') : '';
+    var body;
+    if (p.format === 'sheet') {
+        body = '<div class="df-sheet"><div class="df-hdr"><span class="df-org">&#9670; FUNDACAO SCP</span><span class="df-cls">DOCUMENTO</span></div>' +
+            '<div class="df-body"><div class="df-title">' + fpFurnEsc(title) + '</div>' +
+            '<div class="df-text">' + fpFurnEsc(text) + '</div>' +
+            '<div class="df-foot"><span>' + fpFurnEsc(who) + (who && when ? ' — ' : '') + fpFurnEsc(when) + '</span><span class="df-stamp">ARQUIVADO</span></div>' +
+            '</div></div>';
+    } else {
+        body = '<div class="df-note"><div class="df-title">' + fpFurnEsc(title) + '</div>' +
+            '<div class="df-text">' + fpFurnEsc(text) + '</div>' +
+            '<div class="df-foot">' + fpFurnEsc(who) + (who && when ? ' — ' : '') + fpFurnEsc(when) + '</div></div>';
+    }
+    openDocFocus(body);
 }
 function notesDiscardPaper(id) {
     if (!confirm('DESCARTAR ESTE PAPEL?')) return;
@@ -2710,7 +2871,8 @@ function notesDiscardPaper(id) {
 // e' removida da fila (ja' foi entregue).
 var _handStarted = false;
 var _handKeysSeen = {};
-var _handMode = 'labcard'; // 'labcard' | 'item' | 'dclass' | 'custom'
+var _handMode = 'labcard'; // 'labcard' | 'item' | 'dclass' | 'document' | 'custom'
+var _handFormat = 'note'; // 'sheet' | 'note' — formato do papel/documento entregue (ver handRenderFormatBar)
 
 // Liga temporariamente quando um dossie de Classe-D e' entregue na mao ou
 // retirado de uma mobilia — permite abrir a aba CLASSE-D do Laboratorio mesmo
@@ -2758,6 +2920,7 @@ function handResolveLabel(g) {
     if (g.kind === 'item') { var it = fpFindCatalogItem(g.refId); return it ? it.name : 'um item'; }
     if (g.kind === 'invitem') { return g.name || 'um item'; }
     if (g.kind === 'dclass') { var d = fpFindDClass(g.refId); return d ? (d.code + ' — ' + d.name) : 'um dossie'; }
+    if (g.kind === 'document') { var doc = fpFindDocument(g.refId); return doc ? doc.title : 'um documento'; }
     return g.name || 'um papel avulso';
 }
 
@@ -2780,6 +2943,8 @@ function handSetMode(m) {
     _handMode = m;
     var el = document.getElementById('handModeBody');
     if (el) el.innerHTML = handRenderModeBody();
+    var fb = document.getElementById('handFormatBar');
+    if (fb) fb.outerHTML = handRenderFormatBar();
 }
 
 // Cartas de SCP "pegaveis" (podem sair fisicamente do Laboratorio) — usado tanto
@@ -2813,9 +2978,36 @@ function handRenderModeBody() {
         var opts3 = '';
         for (var k = 0; k < dclass.length; k++) opts3 += '<option value="' + dclass[k].id + '">' + fpFurnEsc(dclass[k].code) + ' — ' + fpFurnEsc(dclass[k].name) + '</option>';
         return '<div class="fg"><label>Dossie Classe-D</label><select id="handRefSelect" style="width:100%; background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:8px;">' + opts3 + '</select></div>';
+    } else if (_handMode === 'document') {
+        if (!documents.length) return '<div style="color:var(--td); font-size:0.8em; margin-bottom:14px;">Nenhum documento cadastrado ainda. Va em LABORATORIO &gt; DOCUMENTOS para criar um.</div>';
+        var opts4 = '';
+        for (var m = 0; m < documents.length; m++) opts4 += '<option value="' + documents[m].id + '">' + fpFurnEsc(documents[m].tag || 'DOCUMENTO') + ' — ' + fpFurnEsc(documents[m].title) + '</option>';
+        return '<div class="fg"><label>Documento do catalogo</label><select id="handRefSelect" style="width:100%; background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:8px;">' + opts4 + '</select></div>';
     }
     return '<div class="fg"><label>Titulo do papel</label><input type="text" id="handCustomName" placeholder="Ex: Bilhete rasgado"></div>' +
         '<div class="fg"><label>Conteudo</label><textarea id="handCustomDesc" placeholder="O que esta escrito no papel..." style="min-height:70px;"></textarea></div>';
+}
+
+// Barra de escolha de FORMATO — so' faz sentido pra entregas que viram papel de
+// verdade no QUADRO (dossie Classe-D, Documento do catalogo ou papel avulso).
+// Cartas de laboratorio e itens vao pro INVENTARIO como objeto fisico, entao
+// nao tem "formato de papel" pra escolher.
+function handRenderFormatBar() {
+    if (['dclass', 'document', 'custom'].indexOf(_handMode) === -1) return '<div id="handFormatBar"></div>';
+    function fmtBtn(f, lab, hint) {
+        var on = _handFormat === f;
+        return '<button type="button" class="btn btn-s" style="' + (on ? 'border-color:var(--b); color:var(--b);' : '') + '" onclick="handSetFormat(\'' + f + '\')" title="' + hint + '">' + lab + '</button>';
+    }
+    return '<div class="fg" id="handFormatBar"><label>Formato do documento</label>' +
+        '<div style="display:flex; gap:6px; flex-wrap:wrap;">' +
+        fmtBtn('sheet', '&#128196; FOLHA GRANDE', 'Documento oficial, estilo dossie/relatorio da Fundacao') +
+        fmtBtn('note', '&#128221; NOTA', 'Papel pequeno avulso, tipo bilhete') +
+        '</div></div>';
+}
+function handSetFormat(f) {
+    _handFormat = f;
+    var el = document.getElementById('handFormatBar');
+    if (el) el.outerHTML = handRenderFormatBar();
 }
 
 function renderHandGiveSection() {
@@ -2835,8 +3027,9 @@ function renderHandGiveSection() {
         return '<button class="btn btn-s" style="' + (on ? 'border-color:var(--y); color:var(--y);' : '') + '" onclick="handSetMode(\'' + m + '\')">' + lab + '</button>';
     }
     h += '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">' +
-        modeBtn('labcard', 'CARTA DO LABORATORIO') + modeBtn('item', 'ITEM DO CATALOGO') + modeBtn('dclass', 'DOSSIE CLASSE-D') + modeBtn('custom', 'PAPEL AVULSO') + '</div>';
+        modeBtn('labcard', 'CARTA DO LABORATORIO') + modeBtn('item', 'ITEM DO CATALOGO') + modeBtn('dclass', 'DOSSIE CLASSE-D') + modeBtn('document', 'DOCUMENTO') + modeBtn('custom', 'PAPEL AVULSO') + '</div>';
     h += '<div id="handModeBody">' + handRenderModeBody() + '</div>';
+    h += handRenderFormatBar();
     h += '<button class="btn" style="margin-top:8px;" onclick="handDeliver()">ENTREGAR NA MAO</button>';
     h += '</div></div>';
     return h;
@@ -2851,6 +3044,7 @@ function handDeliverCore(target, byName) {
     if (lvl < 6) return false;
     if (!target) { alert('ESCOLHA UM JOGADOR.'); return false; }
     var entry = { kind: _handMode, by: byName || (user && user.nm) || userKey, ts: Date.now() };
+    if (['dclass', 'document', 'custom'].indexOf(_handMode) !== -1) entry.format = _handFormat;
     if (_handMode === 'custom') {
         var nmEl = document.getElementById('handCustomName');
         var dsEl = document.getElementById('handCustomDesc');
@@ -3320,7 +3514,7 @@ function renderLab(c) {
     // Classe-D acaba de ser entregue na mao/retirado de uma mobilia, a aba
     // CLASSE-D abre normalmente mesmo fora de area laboral (ver
     // _dclassAreaBypass, ligado so' nesse momento especifico).
-    if (!currentAreaIsLab() && !(lvl >= 6 && labTab === 'global') && !(_dclassAreaBypass && labTab === 'dclass')) { renderInventory(c); return; }
+    if (!currentAreaIsLab() && !(lvl >= 6 && labTab === 'global') && !(_dclassAreaBypass && labTab === 'dclass') && labTab !== 'docs') { renderInventory(c); return; }
     var h = '<div style="margin-bottom:18px;">' +
         '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap; margin-bottom:12px;">' +
         '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px;">&gt; LABORATORIO DE PESQUISA // CARTAS DE ANALISE</div>' +
@@ -3333,6 +3527,7 @@ function renderLab(c) {
         '<button class="lab-tab' + (labTab==='scp' ? ' on' : '') + '" onclick="switchLabTab(\'scp\')">&gt; SCPs</button>' +
         '<button class="lab-tab' + (labTab==='item' ? ' on' : '') + '" onclick="switchLabTab(\'item\')">&gt; ITENS/RECURSOS</button>' +
         '<button class="lab-tab' + (labTab==='dclass' ? ' on' : '') + '" onclick="switchLabTab(\'dclass\')">&gt; CLASSE-D</button>' +
+        '<button class="lab-tab' + (labTab==='docs' ? ' on' : '') + '" style="' + (labTab==='docs' ? '' : 'border-color:var(--b); color:var(--b);') + '" onclick="switchLabTab(\'docs\')">&gt; DOCUMENTOS</button>' +
         (lvl >= 6 ? '<button class="lab-tab' + (labTab==='global' ? ' on' : '') + '" style="' + (labTab==='global' ? '' : 'border-color:var(--p,#b967ff); color:var(--p,#b967ff);') + '" onclick="switchLabTab(\'global\')">&gt; CATALOGO GLOBAL (MESTRE)</button>' : '') +
         '</div>';
 
@@ -3363,6 +3558,8 @@ function renderLab(c) {
             '<button class="lab-filter-btn" onclick="filterLabDClass(\'morto\',this)">MORTOS</button>' +
             '</div>';
         h += '<div class="lab-grid" id="dclassGrid">' + renderDClassGrid(_dclassPool) + '</div>';
+    } else if (labTab === 'docs') {
+        h += renderDocsTab();
     } else if (labTab === 'global') {
         h += renderLabGlobalCatalog();
     }
@@ -4384,6 +4581,152 @@ function deleteDClass(dId) {
     dclass = nd; saveDClass(); xmd(); go('lab'); updStats();
 }
 
+// ============== DOCUMENTOS (catalogo avulso do Mestre) ==============
+// Diferente de SCP/Item/Classe-D, um Documento nao vive em nenhuma mobilia
+// nem area laboral — e' so' um papel/dossie pronto pra guardar e entregar
+// depois via "DAR NA MAO". Ver renderHandGiveSection (_handMode === 'document')
+// e viewDocument (abre no mesmo visor de foco/zoom usado pelo QUADRO).
+var DOC_TAGS = ['DOCUMENTO', 'MEMORANDO', 'RELATORIO', 'AVISO', 'AUTORIZACAO', 'CONFIDENCIAL', 'ORDEM DIRETA'];
+var docImgs = [];
+
+function renderDocsTab() {
+    var h = '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Documentos avulsos prontos para entregar na mao — sem ligacao com areas ou mobilia. Crie quantos quiser aqui e escolha um deles na hora de entregar (DAR NA MAO [MESTRE] &gt; DOCUMENTO).</div>';
+    if (lvl >= 6) h += '<div style="margin-bottom:18px;"><button class="btn" style="border-color:var(--b); color:var(--b);" onclick="renderDocumentForm(document.getElementById(\'tcnt\'))">+ NOVO DOCUMENTO</button></div>';
+    h += '<div class="lab-grid" id="docGrid">' + renderDocGrid(documents) + '</div>';
+    return h;
+}
+
+function renderDocGrid(list) {
+    if (!list.length) return '<div style="text-align:center; padding:50px; color:var(--td);">NENHUM DOCUMENTO CADASTRADO AINDA.</div>';
+    var h = '';
+    for (var i = 0; i < list.length; i++) {
+        var d = list[i];
+        var prev = (d.body || '').substring(0, 90);
+        h += '<div class="doc-card" onclick="viewDocument(\'' + d.id + '\')">' +
+            '<div class="doc-card-tag">' + fpFurnEsc(d.tag || 'DOCUMENTO') + '</div>' +
+            '<div class="doc-card-title">' + fpFurnEsc(d.title || '(sem titulo)') + '</div>' +
+            '<div class="doc-card-prev">' + fpFurnEsc(prev) + (d.body && d.body.length > 90 ? '...' : '') + '</div>' +
+            '</div>';
+    }
+    return h;
+}
+
+function renderDocumentForm(c, docId) {
+    var d = docId ? fpFindDocument(docId) : null;
+    var isE = !!d;
+    docImgs = isE && d.imgs ? d.imgs.slice() : [];
+    var h = '<div style="max-width:650px;">' +
+        '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:18px;">&gt; ' + (isE ? 'EDITAR' : 'NOVO') + ' DOCUMENTO</div>' +
+        '<form onsubmit="sDocumentForm(event' + (isE ? ",'" + d.id + "'" : '') + ')">' +
+        '<div class="fr"><div class="fg"><label>Titulo</label><input type="text" id="fdtitle" value="' + (isE ? fpFurnEsc(d.title) : '') + '" required></div>' +
+        '<div class="fg"><label>Selo/Tipo</label><select id="fdtag">';
+    for (var i = 0; i < DOC_TAGS.length; i++) h += '<option' + (isE && d.tag === DOC_TAGS[i] ? ' selected' : '') + '>' + DOC_TAGS[i] + '</option>';
+    h += '</select></div></div>' +
+        '<div class="fg"><label>Codigo (opcional — ex: MEMO-014)</label><input type="text" id="fdcode" value="' + (isE && d.code ? fpFurnEsc(d.code) : '') + '"></div>' +
+        '<div class="fg"><label>Conteudo</label><textarea id="fdbody" style="min-height:160px;" required>' + (isE ? fpFurnEsc(d.body) : '') + '</textarea></div>' +
+        '<div class="fg"><label>Imagem (opcional)</label>' +
+        '<div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:10px;" id="fdim">' +
+        '<div style="height:110px; background:rgba(0,10,0,0.5); border:1px dashed var(--bd); display:flex; align-items:center; justify-content:center; color:var(--td); cursor:pointer; font-size:0.85em;" onclick="document.getElementById(\'fdii\').click()">+ ADICIONAR</div></div>' +
+        '<input type="file" id="fdii" accept="image/*" multiple style="display:none" onchange="hDocImg(event)">' +
+        '</div>' +
+        '<div style="display:flex; gap:10px; margin-top:18px;">' +
+        '<button type="submit" class="btn">SALVAR</button>' +
+        '<button type="button" class="btn btn-s" onclick="go(\'lab\'); labTab=\'docs\'; renderLab(document.getElementById(\'tcnt\'))">CANCELAR</button>' +
+        '</div></form></div>';
+    c.innerHTML = h;
+    rDocImgs();
+}
+
+function hDocImg(e) {
+    var files = e.target.files;
+    for (var i = 0; i < files.length; i++) {
+        (function(f) {
+            var r = new FileReader();
+            r.onload = function(ev) { docImgs.push(ev.target.result); rDocImgs(); };
+            r.readAsDataURL(f);
+        })(files[i]);
+    }
+}
+function rDocImgs() {
+    var b = document.getElementById('fdim');
+    if (!b) return;
+    var h = '<div style="height:110px; background:rgba(0,10,0,0.5); border:1px dashed var(--bd); display:flex; align-items:center; justify-content:center; color:var(--td); cursor:pointer; font-size:0.85em;" onclick="document.getElementById(\'fdii\').click()">+ ADICIONAR</div>';
+    for (var i = 0; i < docImgs.length; i++) {
+        h += '<div style="position:relative; height:110px; border:1px solid var(--bd);">' +
+            '<img src="' + docImgs[i] + '" style="width:100%; height:100%; object-fit:cover;">' +
+            '<button type="button" onclick="rmDocImg(' + i + ')" style="position:absolute; top:3px; right:3px; background:rgba(255,0,0,0.8); color:white; border:none; width:20px; height:20px; cursor:pointer; font-size:9px;">X</button></div>';
+    }
+    b.innerHTML = h;
+}
+function rmDocImg(i) { docImgs.splice(i, 1); rDocImgs(); }
+
+function sDocumentForm(e, docId) {
+    e.preventDefault();
+    var title = document.getElementById('fdtitle').value.trim();
+    var tag = document.getElementById('fdtag').value;
+    var code = document.getElementById('fdcode').value.trim();
+    var body = document.getElementById('fdbody').value.trim();
+    if (docId) {
+        var d = fpFindDocument(docId);
+        if (d) { d.title = title; d.tag = tag; d.code = code; d.body = body; d.imgs = docImgs.slice(); }
+    } else {
+        documents.push({ id: 'doc-' + Date.now() + '-' + Math.floor(Math.random() * 10000), title: title, tag: tag, code: code, body: body, imgs: docImgs.slice(), dt: new Date().toISOString() });
+    }
+    saveDocuments();
+    go('lab'); labTab = 'docs'; renderLab(document.getElementById('tcnt'));
+}
+
+function deleteDocument(docId) {
+    if (!confirm('CONFIRMA EXCLUSAO PERMANENTE DESTE DOCUMENTO?')) return;
+    var nd = [];
+    for (var i = 0; i < documents.length; i++) if (documents[i].id !== docId) nd.push(documents[i]);
+    documents = nd; saveDocuments();
+    closeDocFocus();
+    go('lab'); labTab = 'docs'; renderLab(document.getElementById('tcnt'));
+}
+
+function editDocument(docId) {
+    closeDocFocus();
+    go('lab');
+    renderDocumentForm(document.getElementById('tcnt'), docId);
+}
+
+// Abre um documento do catalogo no mesmo visor de foco/zoom usado pelo QUADRO
+// (ver openDocFocus) — assim a experiencia e' identica se o documento veio do
+// catalogo ou foi pego/entregue como papel no mural.
+function viewDocument(docId) {
+    var d = fpFindDocument(docId);
+    if (!d) { alert('DOCUMENTO NAO ENCONTRADO (removido do catalogo).'); return; }
+    var body = '<div class="df-sheet"><div class="df-hdr"><span class="df-org">&#9670; FUNDACAO SCP</span><span class="df-cls">' + fpFurnEsc(d.tag || 'DOCUMENTO') + '</span></div>' +
+        '<div class="df-body">' +
+        (d.code ? '<div class="df-code">' + fpFurnEsc(d.code) + '</div>' : '') +
+        '<div class="df-title">' + fpFurnEsc(d.title || '(sem titulo)') + '</div>';
+    if (d.imgs && d.imgs.length) {
+        for (var i = 0; i < d.imgs.length; i++) body += '<img class="df-img" src="' + d.imgs[i] + '">';
+    }
+    body += '<div class="df-text">' + fpFurnEsc(d.body || '') + '</div>' +
+        '<div class="df-foot"><span>ARQUIVO: ' + fpFurnEsc(d.id) + '</span><span class="df-stamp">ARQUIVADO</span></div>';
+    if (lvl >= 6) {
+        body += '<div style="display:flex; gap:8px; margin-top:16px;">' +
+            '<button class="btn btn-s" onclick="editDocument(\'' + d.id + '\')">EDITAR</button>' +
+            '<button class="btn btn-s btn-r" onclick="deleteDocument(\'' + d.id + '\')">EXCLUIR</button></div>';
+    }
+    body += '</div></div>';
+    openDocFocus(body);
+}
+
+// ============== VISOR DE FOCO/ZOOM (usado pelo QUADRO e pelo catalogo de Documentos) ==============
+function openDocFocus(html) {
+    var wrap = document.getElementById('docFocusWrap');
+    if (!wrap) return;
+    wrap.innerHTML = html;
+    document.getElementById('docFocus').classList.add('on');
+}
+function closeDocFocus() {
+    var el = document.getElementById('docFocus');
+    if (el) el.classList.remove('on');
+}
+
 // ============== FORMULARIO ITEM ==============
 function renderItemForm(c, itemId) {
     var it = null;
@@ -5125,7 +5468,7 @@ function renderAdmin(c) {
 
 // ============== IMPORT/EXPORT ==============
 function exportDB() {
-    var data = { scps: db, labCards: labCards, items: items, dclass: dclass, testLogs: testLogs, interviewLogs: interviewLogs };
+    var data = { scps: db, labCards: labCards, items: items, dclass: dclass, documents: documents, testLogs: testLogs, interviewLogs: interviewLogs };
     var s = JSON.stringify(data, null, 2);
     var b = new Blob([s], {type: 'application/json'});
     var u = URL.createObjectURL(b);
@@ -5171,6 +5514,10 @@ function importDB() {
                     dclass = d.dclass;
                     msg += d.dclass.length + ' Classe-D ';
                 }
+                if (d.documents && Array.isArray(d.documents)) {
+                    documents = d.documents;
+                    msg += d.documents.length + ' Documentos ';
+                }
                 if (d.testLogs && Array.isArray(d.testLogs)) {
                     testLogs = d.testLogs;
                     msg += d.testLogs.length + ' Logs-Teste ';
@@ -5189,7 +5536,7 @@ function importDB() {
                     }
                     msg = d.length + ' SCPs (formato legado)';
                 }
-                saveDB(); saveLabCards(); saveItems(); saveDClass(); saveTestLogs(); saveInterviewLogs();
+                saveDB(); saveLabCards(); saveItems(); saveDClass(); saveDocuments(); saveTestLogs(); saveInterviewLogs();
                 updStats(); alert('Importacao concluida! ' + msg);
                 go('db');
             } catch(err) { alert('Erro: ' + err.message); }
@@ -5202,11 +5549,12 @@ function importDB() {
 function clearDB() {
     if (!confirm('AVISO: Apagara TODOS os dados (SCPs, Itens, Classe-D, Cartas do Laboratorio, itens deixados em mobilia e NPCs sob controle no mapa) PARA TODOS OS JOGADORES CONECTADOS, nao so' + " este aparelho. Continuar?")) return;
     if (!confirm('CONFIRMACAO FINAL: Nao pode ser desfeita. Exporte antes se necessario.')) return;
-    db = []; labCards = []; items = []; dclass = [];
+    db = []; labCards = []; items = []; dclass = []; documents = [];
     localStorage.removeItem('scpDB_v2');
     localStorage.removeItem('scpLAB_v1');
     localStorage.removeItem('scpITEMS_v1');
     localStorage.removeItem('scpDCLASS_v1');
+    localStorage.removeItem('scpDOCS_v1');
     // Antes isto so' limpava o aparelho do Mestre — o Firebase mantinha a copia
     // "oficial" antiga e ela voltava (pros outros jogadores, e ate' pro proprio
     // Mestre num reload). Agora zera tambem do lado do servidor, pra ficar
@@ -5216,6 +5564,7 @@ function clearDB() {
         fbDB.ref('world/items').set([]);
         fbDB.ref('world/dclass').set([]);
         fbDB.ref('world/labCards').set([]);
+        fbDB.ref('world/documents').set([]);
         fbDB.ref('world/furniture_items').remove();
         fbDB.ref('npcTokens').remove();
     }
@@ -7966,7 +8315,7 @@ function mapRefreshLiveViews() {
 // Firebase em vez de uma copia por aparelho. O localStorage continua sendo escrito
 // (serve de cache local pra abrir rapido/offline), mas quem manda e' o Firebase:
 // qualquer edicao feita por alguem aparece pros outros na hora, sem recarregar.
-var WORLD_KEYS = { db: 'scpDB_v2', items: 'scpITEMS_v1', dclass: 'scpDCLASS_v1', labCards: 'scpLAB_v1', testLogs: 'scpTESTLOGS_v1', interviewLogs: 'scpINTERVIEWLOGS_v1' };
+var WORLD_KEYS = { db: 'scpDB_v2', items: 'scpITEMS_v1', dclass: 'scpDCLASS_v1', labCards: 'scpLAB_v1', documents: 'scpDOCS_v1', testLogs: 'scpTESTLOGS_v1', interviewLogs: 'scpINTERVIEWLOGS_v1' };
 var _worldFirstCallback = { db: true, items: true, dclass: true, labCards: true, testLogs: true, interviewLogs: true };
 
 // Chamado de dentro de cada saveX() depois de escrever no localStorage.
@@ -7977,7 +8326,7 @@ function worldPush(field, value) {
 
 function worldSyncStart() {
   if (typeof fbDB === 'undefined') return;
-  ['db', 'items', 'dclass', 'labCards', 'testLogs', 'interviewLogs'].forEach(function(field) {
+  ['db', 'items', 'dclass', 'labCards', 'documents', 'testLogs', 'interviewLogs'].forEach(function(field) {
     fbDB.ref('world/' + field).on('value', function(snap) {
       var v = snap.val();
       // Na primeira leitura, se o Firebase ainda estiver vazio, mantem os dados
@@ -7995,6 +8344,7 @@ function worldSyncStart() {
       else if (field === 'items') items = v;
       else if (field === 'dclass') dclass = v;
       else if (field === 'labCards') labCards = v;
+      else if (field === 'documents') documents = v;
       else if (field === 'testLogs') testLogs = v;
       else if (field === 'interviewLogs') interviewLogs = v;
       try { localStorage.setItem(WORLD_KEYS[field], JSON.stringify(v)); } catch(e) {}
@@ -8439,7 +8789,7 @@ function fpHandModeButtons() {
     return '<button class="btn btn-s" style="' + (on ? 'border-color:var(--y); color:var(--y);' : '') + '" onclick="handSetMode(\'' + m + '\')">' + lab + '</button>';
   }
   return '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">' +
-    modeBtn('labcard', 'CARTA DO LABORATORIO') + modeBtn('item', 'ITEM DO CATALOGO') + modeBtn('dclass', 'DOSSIE CLASSE-D') + modeBtn('custom', 'PAPEL AVULSO') + '</div>';
+    modeBtn('labcard', 'CARTA DO LABORATORIO') + modeBtn('item', 'ITEM DO CATALOGO') + modeBtn('dclass', 'DOSSIE CLASSE-D') + modeBtn('document', 'DOCUMENTO') + modeBtn('custom', 'PAPEL AVULSO') + '</div>';
 }
 
 // Clique direto no token de um jogador no mapa: abre a entrega ja com o alvo
@@ -8451,6 +8801,7 @@ function fpOpenGiveForPlayer(key) {
     var h = '<div class="dv"><div class="dh"><h1>DAR PARA ' + fpFurnEsc(name) + '</h1></div>';
     h += fpHandModeButtons();
     h += '<div id="handModeBody">' + handRenderModeBody() + '</div>';
+    h += handRenderFormatBar();
     h += '<div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">' +
       '<button class="btn" onclick="handDeliverTo(\'' + key + '\')">ENTREGAR NA MAO</button>' +
       '<button class="btn btn-s" onclick="fpRenderView()">VOLTAR A PLANTA</button></div></div>';
@@ -8495,6 +8846,7 @@ function fpOpenGiveAsNpc() {
   h += '</select></div>';
   h += fpHandModeButtons();
   h += '<div id="handModeBody">' + handRenderModeBody() + '</div>';
+  h += handRenderFormatBar();
   h += '<div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">' +
     '<button class="btn" onclick="handDeliverAsNpc()">ENTREGAR NA MAO</button>' +
     '<button class="btn btn-s" onclick="fpRenderView()">VOLTAR A PLANTA</button></div></div>';
