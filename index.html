@@ -7047,8 +7047,14 @@ function mapTryEnter(id) {
 function mapCenterViewport(x, y, smooth) {
   var vp = document.getElementById('mapViewport');
   if (!vp) return;
-  var left = Math.max(0, x - vp.clientWidth / 2);
-  var top = Math.max(0, y - vp.clientHeight / 2);
+  // x,y chegam nas coordenadas "cruas" (sem zoom) do #mapCanvas — a mesma unidade
+  // usada pra posicionar os elementos dentro dele. O zoom do mapa e' aplicado via
+  // CSS zoom SO' no #mapCanvas (nao no #mapViewport, que e' quem de fato rola);
+  // isso faz o tamanho/scroll REAL do canvas dentro do viewport ser o tamanho cru
+  // MULTIPLICADO pelo zoom. Sem esse ajuste, o scroll so' centralizava certo em
+  // 100% (zoom=1), que e' o unico nivel onde cru == real.
+  var left = Math.max(0, x * _mapZoom - vp.clientWidth / 2);
+  var top = Math.max(0, y * _mapZoom - vp.clientHeight / 2);
   if (smooth && vp.scrollTo) {
     try { vp.scrollTo({ left: left, top: top, behavior: 'smooth' }); return; } catch (e) {}
   }
@@ -7085,10 +7091,18 @@ function mapAnimateMove(fromId, toId, onDone) {
     }
   }
 
-  var fx = fromEl.offsetLeft + fromEl.offsetWidth / 2;
-  var fy = fromEl.offsetTop + fromEl.offsetHeight / 2;
-  var tx = toEl.offsetLeft + toEl.offsetWidth / 2;
-  var ty = toEl.offsetTop + toEl.offsetHeight / 2;
+  // Calcula fx/fy/tx/ty a partir das coordenadas "de dados" (mapComputeLayout +
+  // _mapOffX/_mapOffY), NAO lendo offsetLeft/offsetWidth do DOM. offsetLeft de um
+  // filho de um elemento com CSS zoom aplicado (o #mapCanvas) e' pouco confiavel
+  // entre navegadores/zooms — usar sempre a mesma fonte "crua" que renderMap usou
+  // pra desenhar as salas (mesma unidade de mapScrollToCurrent) garante que o
+  // boneco e a centralizacao da camera fiquem consistentes em qualquer zoom.
+  var _coords = mapComputeLayout();
+  var _cf = _coords[fromId], _ct = _coords[toId];
+  var fx = (_cf ? _cf.x : fromEl.offsetLeft) + _mapOffX;
+  var fy = (_cf ? _cf.y : fromEl.offsetTop) + _mapOffY;
+  var tx = (_ct ? _ct.x : toEl.offsetLeft) + _mapOffX;
+  var ty = (_ct ? _ct.y : toEl.offsetTop) + _mapOffY;
 
   // O corredor e desenhado como um "L" (mapElbowHTML) usando como ancora (x1,y1) a
   // PRIMEIRA sala do par exatamente como ela aparece no array de ligacoes (MAP_LINKS/
@@ -7113,9 +7127,10 @@ function mapAnimateMove(fromId, toId, onDone) {
   if (Math.abs(adx) >= Math.abs(ady)) { midX = bx; midY = ay; }
   else { midX = ax; midY = by; }
 
+  // Velocidade da travessia: 0.5x da original (dobramos as duracoes/atrasos abaixo).
   var walker = document.createElement('div');
   walker.textContent = '@';
-  walker.style.cssText = 'position:absolute; left:' + (fx - 8) + 'px; top:' + (fy - 11) + 'px; width:16px; height:22px; display:flex; align-items:center; justify-content:center; color:var(--g); font-weight:bold; font-size:1.15em; text-shadow:0 0 6px var(--g); transition:left 0.3s linear, top 0.3s linear; z-index:5; pointer-events:none;';
+  walker.style.cssText = 'position:absolute; left:' + (fx - 8) + 'px; top:' + (fy - 11) + 'px; width:16px; height:22px; display:flex; align-items:center; justify-content:center; color:var(--g); font-weight:bold; font-size:1.15em; text-shadow:0 0 6px var(--g); transition:left 0.6s linear, top 0.6s linear; z-index:5; pointer-events:none;';
   canvas.appendChild(walker);
 
   // Garante que o ponto de partida ja esta centralizado antes de comecar a andar.
@@ -7133,9 +7148,9 @@ function mapAnimateMove(fromId, toId, onDone) {
     walker.style.left = (tx - 8) + 'px';
     walker.style.top = (ty - 11) + 'px';
     mapCenterViewport(tx, ty, true);
-  }, 320);
+  }, 640);
 
-  setTimeout(finish, 650);
+  setTimeout(finish, 1300);
 }
 
 function mapLog(roomName, type) {
