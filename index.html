@@ -2184,6 +2184,14 @@ function renderNotes(c) {
 
 function notesSwitchTab(id) { _notesTab = id; renderNotes(document.getElementById('tcnt')); }
 
+// Cria um documento direto do QUADRO (Notas), sem precisar entrar no
+// Laboratorio — mesmo formulario de sempre (renderDocumentForm), so' que
+// volta pro QUADRO ao salvar/cancelar em vez de ir pro Laboratorio.
+function newDocumentFromNotes() {
+    _docFormReturnTo = 'notes';
+    renderDocumentForm(document.getElementById('tcnt'));
+}
+
 function notesRenderTextTab() {
     var saved = localStorage.getItem('scpNOTES_v1') || '';
     return '<div style="color:var(--td); font-size:0.8em; margin:14px 0 18px;">Espaco aberto para anotacoes livres. As notas sao salvas automaticamente no navegador.</div>' +
@@ -2456,6 +2464,7 @@ var NOTES_DRAW_COLORS = ['#00ff41', '#ffffff', '#ff3b3b', '#ffd23b', '#3ba0ff'];
 function notesRenderBoardTab() {
     var papers = notesLoadPapers();
     var h = '<div style="color:var(--td); font-size:0.8em; margin:14px 0 12px;">Quadro livre, tipo mural: rabisque com o mouse/dedo e arraste os papeis que voce pegou nas plantas — tudo no mesmo espaco. O desenho e a posicao de cada papel sao salvos automaticamente. Clique num papel (sem arrastar) pra examinar; arraste pra reorganizar.</div>';
+    if (lvl >= 6) h += '<div style="margin-bottom:12px;"><button class="btn" style="border-color:var(--p,#b967ff); color:var(--p,#b967ff);" onclick="newDocumentFromNotes()">+ CRIAR DOCUMENTO</button></div>';
     h += '<div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">';
     h += '<span style="color:var(--gd); font-size:0.75em; letter-spacing:1px;">COR:</span>';
     for (var i = 0; i < NOTES_DRAW_COLORS.length; i++) {
@@ -3514,7 +3523,7 @@ function renderLab(c) {
     // Classe-D acaba de ser entregue na mao/retirado de uma mobilia, a aba
     // CLASSE-D abre normalmente mesmo fora de area laboral (ver
     // _dclassAreaBypass, ligado so' nesse momento especifico).
-    if (!currentAreaIsLab() && !(lvl >= 6 && labTab === 'global') && !(_dclassAreaBypass && labTab === 'dclass') && labTab !== 'docs') { renderInventory(c); return; }
+    if (!currentAreaIsLab() && !(lvl >= 6 && labTab === 'global') && !(_dclassAreaBypass && labTab === 'dclass')) { renderInventory(c); return; }
     var h = '<div style="margin-bottom:18px;">' +
         '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap; margin-bottom:12px;">' +
         '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px;">&gt; LABORATORIO DE PESQUISA // CARTAS DE ANALISE</div>' +
@@ -4214,27 +4223,38 @@ function currentLabDClassPool() {
     var ids = (mapState.labDclass && mapState.labDclass[mapState.current]) || [];
     return dclass.filter(function(d) { return ids.indexOf(d.id) !== -1; });
 }
+// Mesmo esquema para Documentos — dentro de uma area laboral, so' aparecem os
+// documentos que o Mestre atribuiu aquele lugar (ver mapManageCardAreas/'document').
+function currentLabDocPool() {
+    if (!currentAreaIsLab()) return documents;
+    var ids = (mapState.labDocuments && mapState.labDocuments[mapState.current]) || [];
+    return documents.filter(function(d) { return ids.indexOf(d.id) !== -1; });
+}
 
 // Nome do campo em mapState que guarda a atribuicao por area para cada tipo
 // de carta do laboratorio.
 function labAssignMapFor(type) {
     if (type === 'scp') return 'labScp';
     if (type === 'item') return 'labItems';
+    if (type === 'document') return 'labDocuments';
     return 'labDclass';
 }
 function labPoolFor(type) {
     if (type === 'scp') return labCards;
     if (type === 'item') return items;
+    if (type === 'document') return documents;
     return dclass;
 }
 function labEntryLabel(type, x) {
     if (type === 'scp') return x.num + ' \u2014 ' + x.title;
     if (type === 'item') return x.name || x.id;
+    if (type === 'document') return (x.tag || 'DOCUMENTO') + ' \u2014 ' + x.title;
     return x.code + ' \u2014 ' + x.name;
 }
 function labTypeName(type) {
     if (type === 'scp') return 'SCPS';
     if (type === 'item') return 'ITENS';
+    if (type === 'document') return 'DOCUMENTOS';
     return 'CLASSE-D';
 }
 
@@ -4246,16 +4266,18 @@ function labTypeName(type) {
 // entrar area por area.
 function renderLabGlobalCatalog() {
     if (lvl < 6) return '<div style="color:var(--td); font-size:0.8em;">ACESSO RESTRITO AO MESTRE.</div>';
-    var h = '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Aqui estao TODAS as cartas do laboratorio cadastradas no sistema — SCPs, Itens e Classe-D, no mesmo patamar — independente de area. Escolha em quais areas laborais cada carta fica disponivel, ou crie novas cartas.</div>';
+    var h = '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Aqui estao TODAS as cartas do laboratorio cadastradas no sistema — SCPs, Itens, Classe-D e Documentos, no mesmo patamar — independente de area. Escolha em quais areas laborais cada uma fica disponivel, ou crie novas.</div>';
     h += '<div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:22px;">' +
         '<button class="btn" onclick="openCardEditor()">+ NOVA CARTA SCP</button>' +
         '<button class="btn" style="border-color:var(--b); color:var(--b);" onclick="renderItemForm(document.getElementById(\'tcnt\'))">+ NOVO ITEM</button>' +
         '<button class="btn" style="border-color:var(--y); color:var(--y);" onclick="renderDClassForm(document.getElementById(\'tcnt\'))">+ NOVO CLASSE-D</button>' +
+        '<button class="btn" style="border-color:var(--p,#b967ff); color:var(--p,#b967ff);" onclick="_docFormReturnTo=\'global\'; renderDocumentForm(document.getElementById(\'tcnt\'))">+ NOVO DOCUMENTO</button>' +
         '</div>';
 
     h += renderGlobalCatalogSection('SCPS', labCards, 'scp');
     h += renderGlobalCatalogSection('ITENS/RECURSOS', items, 'item');
     h += renderGlobalCatalogSection('CLASSE-D', dclass, 'dclass');
+    h += renderGlobalCatalogSection('DOCUMENTOS', documents, 'document');
     return h;
 }
 
@@ -4271,7 +4293,7 @@ function renderGlobalCatalogSection(title, list, type) {
             var x = list[i];
             var count = 0;
             for (var rid in mp) { if (mp[rid] && mp[rid].indexOf(x.id) !== -1) count++; }
-            var viewFn = type === 'scp' ? 'viewLabCard' : (type === 'item' ? 'viewItem' : 'viewDClass');
+            var viewFn = type === 'scp' ? 'viewLabCard' : (type === 'item' ? 'viewItem' : (type === 'document' ? 'viewDocument' : 'viewDClass'));
             h += '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 12px; background:rgba(0,20,0,0.3); border:1px solid var(--bd);">' +
                 '<span style="font-size:0.85em; cursor:pointer;" onclick="' + viewFn + '(\'' + x.id + '\')">' + fpFurnEsc(labEntryLabel(type, x)) + '</span>' +
                 '<span style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
@@ -4588,11 +4610,14 @@ function deleteDClass(dId) {
 // e viewDocument (abre no mesmo visor de foco/zoom usado pelo QUADRO).
 var DOC_TAGS = ['DOCUMENTO', 'MEMORANDO', 'RELATORIO', 'AVISO', 'AUTORIZACAO', 'CONFIDENCIAL', 'ORDEM DIRETA'];
 var docImgs = [];
+var _docFormReturnTo = 'lab'; // 'lab' | 'global' | 'notes' — onde renderDocumentForm volta apos salvar/cancelar
 
 function renderDocsTab() {
-    var h = '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Documentos avulsos prontos para entregar na mao — sem ligacao com areas ou mobilia. Crie quantos quiser aqui e escolha um deles na hora de entregar (DAR NA MAO [MESTRE] &gt; DOCUMENTO).</div>';
-    if (lvl >= 6) h += '<div style="margin-bottom:18px;"><button class="btn" style="border-color:var(--b); color:var(--b);" onclick="renderDocumentForm(document.getElementById(\'tcnt\'))">+ NOVO DOCUMENTO</button></div>';
-    h += '<div class="lab-grid" id="docGrid">' + renderDocGrid(documents) + '</div>';
+    var pool = currentLabDocPool();
+    var h = '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:14px;">' +
+        (currentAreaIsLab() ? 'Documentos atribuidos a esta area laboral. Para cadastrar novos ou atribuir a outras areas, use o CATALOGO GLOBAL (MESTRE).' : 'Todos os documentos do sistema. Dentro de uma area laboral, so\' aparecem os atribuidos aquele lugar.') + '</div>';
+    if (lvl >= 6) h += '<div style="margin-bottom:18px;"><button class="btn" style="border-color:var(--b); color:var(--b);" onclick="_docFormReturnTo=\'lab\'; renderDocumentForm(document.getElementById(\'tcnt\'))">+ NOVO DOCUMENTO</button></div>';
+    h += '<div class="lab-grid" id="docGrid">' + renderDocGrid(pool) + '</div>';
     return h;
 }
 
@@ -4631,7 +4656,7 @@ function renderDocumentForm(c, docId) {
         '</div>' +
         '<div style="display:flex; gap:10px; margin-top:18px;">' +
         '<button type="submit" class="btn">SALVAR</button>' +
-        '<button type="button" class="btn btn-s" onclick="go(\'lab\'); labTab=\'docs\'; renderLab(document.getElementById(\'tcnt\'))">CANCELAR</button>' +
+        '<button type="button" class="btn btn-s" onclick="docFormCancel()">CANCELAR</button>' +
         '</div></form></div>';
     c.innerHTML = h;
     rDocImgs();
@@ -4673,7 +4698,17 @@ function sDocumentForm(e, docId) {
         documents.push({ id: 'doc-' + Date.now() + '-' + Math.floor(Math.random() * 10000), title: title, tag: tag, code: code, body: body, imgs: docImgs.slice(), dt: new Date().toISOString() });
     }
     saveDocuments();
-    go('lab'); labTab = 'docs'; renderLab(document.getElementById('tcnt'));
+    docFormCancel();
+}
+
+// Volta pra onde o formulario foi aberto — Laboratorio > Documentos, Catalogo
+// Global (Mestre) ou direto das Notas/Inventario (ver newDocumentFromNotes),
+// que e' o outro jeito de criar um documento sem precisar entrar no Laboratorio.
+function docFormCancel() {
+    var c = document.getElementById('tcnt');
+    if (_docFormReturnTo === 'notes') { go('notes'); renderNotes(c); }
+    else if (_docFormReturnTo === 'global') { go('lab'); labTab = 'global'; renderLab(c); }
+    else { go('lab'); labTab = 'docs'; renderLab(c); }
 }
 
 function deleteDocument(docId) {
@@ -4682,12 +4717,15 @@ function deleteDocument(docId) {
     for (var i = 0; i < documents.length; i++) if (documents[i].id !== docId) nd.push(documents[i]);
     documents = nd; saveDocuments();
     closeDocFocus();
-    go('lab'); labTab = 'docs'; renderLab(document.getElementById('tcnt'));
+    var c = document.getElementById('tcnt');
+    if (nav === 'notes') renderNotes(c);
+    else { go('lab'); labTab = (labTab === 'global') ? 'global' : 'docs'; renderLab(c); }
 }
 
 function editDocument(docId) {
+    _docFormReturnTo = (nav === 'notes') ? 'notes' : (labTab === 'global' ? 'global' : 'lab');
     closeDocFocus();
-    go('lab');
+    if (_docFormReturnTo !== 'notes') go('lab');
     renderDocumentForm(document.getElementById('tcnt'), docId);
 }
 
@@ -7794,14 +7832,16 @@ function mapShowRoom(id) {
     var labItemCount = (mapState.labItems && mapState.labItems[id]) ? mapState.labItems[id].length : 0;
     var labScpCount = (mapState.labScp && mapState.labScp[id]) ? mapState.labScp[id].length : 0;
     var labDclassCount = (mapState.labDclass && mapState.labDclass[id]) ? mapState.labDclass[id].length : 0;
+    var labDocCount = (mapState.labDocuments && mapState.labDocuments[id]) ? mapState.labDocuments[id].length : 0;
     h += '<div class="ds"><h3>&gt; Zona do Mestre</h3>' +
-      '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:10px;">Marque esta area como LABORATORIO/AREA DE TESTES para que, quando um jogador estiver aqui, a aba lateral vire LABORATORIO com so' + ' as cartas (SCPs, Itens e Classe-D — todas no mesmo patamar) que voce escolher pra este lugar. Fora de areas marcadas, essa aba mostra o INVENTARIO pessoal de cada jogador. Voce tambem pode gerenciar tudo de uma vez pelo CATALOGO GLOBAL, na aba LABORATORIO.</div>' +
+      '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:10px;">Marque esta area como LABORATORIO/AREA DE TESTES para que, quando um jogador estiver aqui, a aba lateral vire LABORATORIO com so' + ' as cartas (SCPs, Itens, Classe-D e Documentos — todas no mesmo patamar) que voce escolher pra este lugar. Fora de areas marcadas, essa aba mostra o INVENTARIO pessoal de cada jogador. Voce tambem pode gerenciar tudo de uma vez pelo CATALOGO GLOBAL, na aba LABORATORIO.</div>' +
       '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
       '<button class="btn btn-s" style="' + (isLabArea ? 'border-color:var(--y); color:var(--y);' : '') + '" onclick="mapToggleLabArea(\'' + id + '\')">' + (isLabArea ? '&#10003; AREA LABORAL (ATIVA)' : 'MARCAR COMO AREA LABORAL') + '</button>';
     if (isLabArea) {
       h += '<button class="btn btn-s" onclick="mapEditLabPool(\'' + id + '\',\'item\')">ITENS DESTE LABORATORIO (' + labItemCount + ')</button>' +
         '<button class="btn btn-s" onclick="mapEditLabPool(\'' + id + '\',\'scp\')">SCPS DESTE LABORATORIO (' + labScpCount + ')</button>' +
-        '<button class="btn btn-s" onclick="mapEditLabPool(\'' + id + '\',\'dclass\')">CLASSE-D DESTE LABORATORIO (' + labDclassCount + ')</button>';
+        '<button class="btn btn-s" onclick="mapEditLabPool(\'' + id + '\',\'dclass\')">CLASSE-D DESTE LABORATORIO (' + labDclassCount + ')</button>' +
+        '<button class="btn btn-s" onclick="mapEditLabPool(\'' + id + '\',\'document\')">DOCUMENTOS DESTE LABORATORIO (' + labDocCount + ')</button>';
     }
     h += '</div></div>';
   }
@@ -9671,6 +9711,12 @@ function fpFurnitureRenderModal() {
             '<span style="cursor:pointer;" onclick="viewDClass(\'' + dRef.id + '\')"><b>' + fpFurnEsc(dRef.code) + '</b> — ' + fpFurnEsc(dRef.name) +
             '<br><span style="color:var(--y); font-size:0.75em;">DOSSIE CLASSE-D — clique para examinar</span></span>' :
             '<span style="color:var(--td);">(dossie removido do laboratorio)</span>';
+        } else if (it.kind === 'document') {
+          var docRef2 = fpFindDocument(it.refId);
+          rowInner = docRef2 ?
+            '<span style="cursor:pointer;" onclick="viewDocument(\'' + docRef2.id + '\')"><b>' + fpFurnEsc(docRef2.tag || 'DOCUMENTO') + '</b> — ' + fpFurnEsc(docRef2.title) +
+            '<br><span style="color:var(--y); font-size:0.75em;">DOCUMENTO — clique para examinar</span></span>' :
+            '<span style="color:var(--td);">(documento removido do catalogo)</span>';
         } else {
           rowInner = '<span><b>' + fpFurnEsc(it.name || it.txt || '') + '</b>' +
             (it.desc ? '<br><span style="color:var(--td); font-size:0.85em;">' + fpFurnEsc(it.desc) + '</span>' : '') + '</span>';
@@ -9699,7 +9745,7 @@ function fpFurnitureRenderModal() {
       return '<button class="btn btn-s" style="' + (on ? 'border-color:var(--y); color:var(--y);' : '') + '" onclick="fpSetFurnLeaveMode(\'' + m + '\')">' + lab + '</button>';
     }
     h += '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">' +
-      modeBtn('labcard', 'CARTA DO LABORATORIO') + modeBtn('item', 'ITEM DO CATALOGO') + modeBtn('dclass', 'DOSSIE CLASSE-D') + modeBtn('custom', 'PAPEL AVULSO') + '</div>';
+      modeBtn('labcard', 'CARTA DO LABORATORIO') + modeBtn('item', 'ITEM DO CATALOGO') + modeBtn('dclass', 'DOSSIE CLASSE-D') + modeBtn('document', 'DOCUMENTO') + modeBtn('custom', 'PAPEL AVULSO') + '</div>';
 
     if (mode === 'labcard') {
       var accessible = fpPortableLabCards().filter(fpLabCardAccessible);
@@ -9731,6 +9777,16 @@ function fpFurnitureRenderModal() {
         h += '<div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;">' +
           '<select id="fpFurnDClassSelect" style="flex:1; min-width:180px; background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:10px; font-family:inherit;">' + opts3 + '</select>' +
           '<button class="btn" onclick="fpFurnitureLeave()">DEIXAR DOSSIE</button></div>';
+      }
+    } else if (mode === 'document') {
+      if (!documents.length) {
+        h += '<div style="color:var(--td); font-size:0.8em; margin-bottom:14px;">Nenhum documento cadastrado ainda. Va' + ' em LABORATORIO &gt; DOCUMENTOS (ou pelo QUADRO das Notas) para criar um.</div>';
+      } else {
+        var opts4 = '';
+        for (var doi = 0; doi < documents.length; doi++) opts4 += '<option value="' + documents[doi].id + '">' + fpFurnEsc(documents[doi].tag || 'DOCUMENTO') + ' — ' + fpFurnEsc(documents[doi].title) + '</option>';
+        h += '<div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;">' +
+          '<select id="fpFurnDocSelect" style="flex:1; min-width:180px; background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:10px; font-family:inherit;">' + opts4 + '</select>' +
+          '<button class="btn" onclick="fpFurnitureLeave()">DEIXAR DOCUMENTO</button></div>';
       }
     } else {
       h += '<div style="display:flex; flex-direction:column; gap:8px; margin-bottom:14px;">' +
@@ -9779,6 +9835,12 @@ function fpFurnitureLeave() {
     var dRef = fpFindDClass(sel3.value);
     if (!dRef) return;
     entry = { kind: 'dclass', refId: dRef.id };
+  } else if (mode === 'document') {
+    var sel4 = document.getElementById('fpFurnDocSelect');
+    if (!sel4 || !sel4.value) return;
+    var docRef = fpFindDocument(sel4.value);
+    if (!docRef) return;
+    entry = { kind: 'document', refId: docRef.id };
   } else {
     var nameInput = document.getElementById('fpFurnItemName');
     var descInput = document.getElementById('fpFurnItemDesc');
