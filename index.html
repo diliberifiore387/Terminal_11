@@ -13,7 +13,7 @@
 <meta name="apple-mobile-web-app-title" content="TERMINAL_11">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
-:root { --bg:#050505; --bg2:#0a0a0a; --bg3:#111; --g:#00ff41; --gd:#008f11; --r:#ff003c; --rd:#8b0000; --y:#ffaa00; --b:#00bfff; --t:#c0c0c0; --td:#444; --bd:#1a1a1a; }
+:root { --bg:#050505; --bg2:#0a0a0a; --bg3:#111; --g:#00ff41; --gd:#008f11; --r:#ff003c; --rd:#8b0000; --y:#ffaa00; --b:#00bfff; --t:#c0c0c0; --td:#444; --bd:#1a1a1a; --brown:#c47a3d; --fg:#c0c0c0; }
 * { margin:0; padding:0; box-sizing:border-box; }
 body { background:var(--bg); color:var(--g); font-family:'Share Tech Mono',monospace; overflow:hidden; height:100vh; width:100vw; }
 #splash { position:fixed; top:0;left:0; width:100%;height:100%; background:#000; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:10000; transition:opacity 0.8s; }
@@ -9141,20 +9141,20 @@ var FP_FURNITURE_TYPES = [
   // no editor pra deixar do tamanho certo; ocupam varias celulas por cima,
   // sem travar passagem nas celulas vizinhas, so' na celula onde foram colocados
   // se marcados como solidos).
-  { id: 'car',            lab: 'Carro (sedan)',            blocks: false, cat: FP_CAT.VEIC, defaultScale: 400 },
-  { id: 'van',             lab: 'Van / utilitário',         blocks: false, cat: FP_CAT.VEIC, defaultScale: 600 },
-  { id: 'suptruck',        lab: 'Caminhão de suprimentos',  blocks: false, cat: FP_CAT.VEIC, defaultScale: 700 },
-  { id: 'trailer',         lab: 'Reboque / trailer de carga', blocks: false, cat: FP_CAT.VEIC, defaultScale: 500 },
-  { id: 'container',       lab: 'Contêiner de carga',       blocks: false, cat: FP_CAT.VEIC, defaultScale: 600 },
-  { id: 'trainwagon',      lab: 'Vagão de trem de carga',   blocks: false, cat: FP_CAT.VEIC, defaultScale: 800 },
-  { id: 'crane',           lab: 'Guindaste móvel',          blocks: false, cat: FP_CAT.VEIC, defaultScale: 500 },
-  { id: 'forklift',        lab: 'Empilhadeira',             blocks: false, cat: FP_CAT.VEIC, defaultScale: 200 },
-  { id: 'conveyor',        lab: 'Esteira transportadora',   blocks: false, cat: FP_CAT.VEIC, defaultScale: 800 },
+  { id: 'car',            lab: 'Carro (sedan)',            blocks: false, sit: true, cat: FP_CAT.VEIC, defaultScale: 400 },
+  { id: 'van',             lab: 'Van / utilitário',         blocks: false, sit: true, cat: FP_CAT.VEIC, defaultScale: 600 },
+  { id: 'suptruck',        lab: 'Caminhão de suprimentos',  blocks: false, sit: true, cat: FP_CAT.VEIC, defaultScale: 700 },
+  { id: 'trailer',         lab: 'Reboque / trailer de carga', blocks: true, cat: FP_CAT.VEIC, defaultScale: 500 },
+  { id: 'container',       lab: 'Contêiner de carga',       blocks: true, cat: FP_CAT.VEIC, defaultScale: 600 },
+  { id: 'trainwagon',      lab: 'Vagão de trem de carga',   blocks: false, sit: true, cat: FP_CAT.VEIC, defaultScale: 800 },
+  { id: 'crane',           lab: 'Guindaste móvel',          blocks: false, sit: true, cat: FP_CAT.VEIC, defaultScale: 500 },
+  { id: 'forklift',        lab: 'Empilhadeira',             blocks: false, sit: true, cat: FP_CAT.VEIC, defaultScale: 200 },
+  { id: 'conveyor',        lab: 'Esteira transportadora',   blocks: true, cat: FP_CAT.VEIC, defaultScale: 800 },
   { id: 'aquatank',        lab: 'Tanque de contenção aquática', blocks: true, cat: FP_CAT.VEIC, defaultScale: 500 },
   { id: 'silo',            lab: 'Silo de armazenamento',    blocks: true,  cat: FP_CAT.VEIC, defaultScale: 400 },
-  { id: 'genindustrial',   lab: 'Gerador diesel industrial', blocks: false, cat: FP_CAT.VEIC, defaultScale: 300 },
+  { id: 'genindustrial',   lab: 'Gerador diesel industrial', blocks: true, cat: FP_CAT.VEIC, defaultScale: 300 },
   { id: 'watchtower',      lab: 'Torre de vigia (guarita elevada)', blocks: true, cat: FP_CAT.VEIC, defaultScale: 300 },
-  { id: 'helicopter',      lab: 'Helicóptero',              blocks: false, cat: FP_CAT.VEIC, defaultScale: 900 }
+  { id: 'helicopter',      lab: 'Helicóptero',              blocks: false, sit: true, cat: FP_CAT.VEIC, defaultScale: 900 }
 ];
 function fpFurnDef(id) { for (var i = 0; i < FP_FURNITURE_TYPES.length; i++) if (FP_FURNITURE_TYPES[i].id === id) return FP_FURNITURE_TYPES[i]; return FP_FURNITURE_TYPES[0]; }
 var FP_DIR_DEG = { n: 0, e: 90, s: 180, w: 270 };
@@ -9357,18 +9357,18 @@ function fpFurnitureSVG(ft, dir, color, s) {
             '<circle cx="' + (cx + 5) + '" cy="' + (cy + 6) + '" r="2" fill="none" stroke="var(--t)" stroke-width="1"></circle>';
   } else if (ft === 'car') {
     inner = '<rect x="1" y="7" width="22" height="10" rx="2.2" fill="none" stroke="var(--t)" stroke-width="1.3"></rect>' +
-            '<rect x="8" y="8.5" width="8.5" height="4" rx="0.8" fill="var(--t)" opacity="0.14" stroke="var(--t)" stroke-width="0.6"></rect>' +
+            '<rect x="7.75" y="10" width="8.5" height="4" rx="0.8" fill="var(--t)" opacity="0.14" stroke="var(--t)" stroke-width="0.6"></rect>' +
             '<circle cx="6" cy="6.6" r="1" fill="var(--t)" opacity="0.55"></circle><circle cx="19" cy="6.6" r="1" fill="var(--t)" opacity="0.55"></circle>' +
             '<circle cx="6" cy="17.4" r="1" fill="var(--t)" opacity="0.55"></circle><circle cx="19" cy="17.4" r="1" fill="var(--t)" opacity="0.55"></circle>';
   } else if (ft === 'van') {
     inner = '<rect x="1" y="6" width="22" height="12" rx="1.6" fill="none" stroke="var(--y)" stroke-width="1.3"></rect>' +
-            '<rect x="2.5" y="7.3" width="5.5" height="4" rx="0.6" fill="var(--y)" opacity="0.14" stroke="var(--y)" stroke-width="0.6"></rect>' +
+            '<rect x="2.5" y="10" width="5.5" height="4" rx="0.6" fill="var(--y)" opacity="0.14" stroke="var(--y)" stroke-width="0.6"></rect>' +
             '<circle cx="5.5" cy="5.6" r="1" fill="var(--y)" opacity="0.55"></circle><circle cx="18.5" cy="5.6" r="1" fill="var(--y)" opacity="0.55"></circle>' +
             '<circle cx="5.5" cy="18.4" r="1" fill="var(--y)" opacity="0.55"></circle><circle cx="18.5" cy="18.4" r="1" fill="var(--y)" opacity="0.55"></circle>';
   } else if (ft === 'suptruck') {
-    inner = '<rect x="0.5" y="8" width="6.5" height="8.5" rx="1" fill="none" stroke="var(--y)" stroke-width="1.2"></rect>' +
-            '<rect x="1.8" y="9.4" width="3.5" height="2.6" rx="0.5" fill="var(--y)" opacity="0.14" stroke="var(--y)" stroke-width="0.5"></rect>' +
-            '<rect x="7.6" y="5.5" width="15.9" height="11" fill="none" stroke="var(--y)" stroke-width="1.2"></rect>' +
+    inner = '<rect x="0.5" y="7.75" width="6.5" height="8.5" rx="1" fill="none" stroke="var(--y)" stroke-width="1.2"></rect>' +
+            '<rect x="1.8" y="10.7" width="3.5" height="2.6" rx="0.5" fill="var(--y)" opacity="0.14" stroke="var(--y)" stroke-width="0.5"></rect>' +
+            '<rect x="7.6" y="6" width="15.9" height="12" fill="none" stroke="var(--y)" stroke-width="1.2"></rect>' +
             '<circle cx="4" cy="7" r="0.9" fill="var(--y)" opacity="0.5"></circle><circle cx="4" cy="17" r="0.9" fill="var(--y)" opacity="0.5"></circle>' +
             '<circle cx="14" cy="7" r="0.9" fill="var(--y)" opacity="0.5"></circle><circle cx="14" cy="17" r="0.9" fill="var(--y)" opacity="0.5"></circle>' +
             '<circle cx="22" cy="7" r="0.9" fill="var(--y)" opacity="0.5"></circle><circle cx="22" cy="17" r="0.9" fill="var(--y)" opacity="0.5"></circle>';
