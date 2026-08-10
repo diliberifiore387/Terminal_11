@@ -8087,7 +8087,7 @@ function fpUpdateFurnitureBadges() {
   if (!floor) return;
   for (var key in floor.cells) {
     var cell = floor.cells[key];
-    if (!cell || cell.t !== 'm' || !fpFurnDef(cell.ft).storage) continue;
+    if (!cell || cell.t !== 'm' || !fpCellStorageItem(cell)) continue;
     var el = document.getElementById('fpFurnBadge_' + key);
     if (!el) continue;
     var fkey = fpFurnitureKey(_fpViewRoomId, _fpViewFloor, key.split('_')[0], key.split('_')[1]);
@@ -8715,14 +8715,14 @@ function fpPlayerMove(dx, dy) {
   if (nx < 0 || ny < 0 || nx >= floor.cols || ny >= floor.rows) return;
   var key = nx + '_' + ny;
   var cell = floor.cells[key];
-  if (cell && (cell.t === 'w' || cell.t === 'q' || cell.t === 'f' || (cell.t === 'm' && fpFurnDef(cell.ft).blocks))) return; // parede, quadrado de cenario ou mobilia solida bloqueia
+  if (cell && (cell.t === 'w' || cell.t === 'q' || cell.t === 'f' || (cell.t === 'm' && fpCellBlocks(cell)))) return; // parede, quadrado de cenario ou mobilia solida bloqueia
 
   // Cadeira/sofa/cama nao bloqueiam: o jogador "entra" nelas e fica sentado/deitado
   // ate' o proximo passo (que sai da celula e desfaz o estado sozinho).
   var sitFt = null, sitDir = null;
   if (cell && cell.t === 'm') {
-    var fDefMv = fpFurnDef(cell.ft);
-    if (fDefMv.sit) { sitFt = cell.ft; sitDir = cell.dir; }
+    var sitItemMv = fpCellSitItem(cell);
+    if (sitItemMv) { sitFt = sitItemMv.ft; sitDir = sitItemMv.rot; }
   }
 
   if (cell && cell.t === 'd') {
@@ -8807,7 +8807,7 @@ function fpNpcMove(dx, dy) {
   var nx = t.x + dx, ny = t.y + dy;
   if (nx < 0 || ny < 0 || nx >= floor.cols || ny >= floor.rows) return;
   var cell = floor.cells[nx + '_' + ny];
-  if (cell && (cell.t === 'w' || cell.t === 'q' || cell.t === 'f' || (cell.t === 'm' && fpFurnDef(cell.ft).blocks))) return;
+  if (cell && (cell.t === 'w' || cell.t === 'q' || cell.t === 'f' || (cell.t === 'm' && fpCellBlocks(cell)))) return;
   t.x = nx; t.y = ny;
   fbNpcTokens[_npcControl.key] = t;
   if (typeof fbDB !== 'undefined') fbDB.ref('npcTokens/' + _npcControl.key).set(t);
@@ -9092,19 +9092,113 @@ function fpSquareBlockStyle(shape, dir) {
 // mobilia com inventario proprio (deixar/pegar itens), sincronizado por Firebase
 // em 'world/furniture_items' — independente da propria planta, para qualquer
 // jogador poder usar sem precisar ser o Mestre.
+// Catalogo reconstruido do zero (pedido do Mestre) — cada objeto agora pode ser
+// colocado varias vezes na mesma celula (os nao-solidos "partilham espaco"),
+// arrastado livremente dentro do quadrado e rodado em qualquer angulo — ver
+// FP_CAT (categorias, so' pra organizar a paleta) e a secao ITENS/CELULAS DE
+// MOBILIA MULTI-OBJETO logo abaixo do catalogo.
+var FP_CAT = { FUNC: 'Funcional (armazenamento/SCP)', MOB: 'Mobiliário', SEG: 'Segurança e infraestrutura', SUP: 'Suprimentos e armazenamento', EXT: 'Área externa' };
 var FP_FURNITURE_TYPES = [
-  { id: 'chair',   lab: 'Cadeira',    blocks: false, sit: true,  dir: true  },
-  { id: 'sofa',    lab: 'Sofá',       blocks: false, sit: true,  dir: true  },
-  { id: 'bed',     lab: 'Cama',       blocks: false, sit: true,  dir: true  },
-  { id: 'table',   lab: 'Mesa',       blocks: true,  storage: true, dir: false },
-  { id: 'shelf',   lab: 'Estante',    blocks: true,  storage: true, dir: true  },
-  { id: 'cabinet', lab: 'Armário',    blocks: true,  storage: true, dir: true  },
-  { id: 'plant',   lab: 'Vaso',       blocks: true,  dir: false },
-  { id: 'lamp',    lab: 'Luminária',  blocks: true,  dir: false },
-  { id: 'rug',     lab: 'Tapete',     blocks: false, decorative: true, dir: false, colorable: true },
-  { id: 'scpobj',  lab: 'Objeto SCP', blocks: true,  scpObj: true, dir: false }
+  // ---- Funcional (mantidos por serem base de mecanicas: inventario e SCP) ----
+  { id: 'table',   lab: 'Mesa',       blocks: true,  storage: true, cat: FP_CAT.FUNC },
+  { id: 'shelf',   lab: 'Estante',    blocks: true,  storage: true, cat: FP_CAT.FUNC },
+  { id: 'cabinet', lab: 'Armário',    blocks: true,  storage: true, cat: FP_CAT.FUNC },
+  { id: 'scpobj',  lab: 'Objeto SCP', blocks: true,  scpObj: true,  cat: FP_CAT.FUNC },
+  // ---- Mobiliário ----
+  { id: 'chair',     lab: 'Cadeira',        blocks: false, sit: true, cat: FP_CAT.MOB },
+  { id: 'sofa',      lab: 'Sofá',           blocks: false, sit: true, cat: FP_CAT.MOB },
+  { id: 'bed',       lab: 'Cama',           blocks: false, sit: true, cat: FP_CAT.MOB },
+  { id: 'plant',     lab: 'Vaso',           blocks: false, cat: FP_CAT.MOB },
+  { id: 'lamp',      lab: 'Luminária',      blocks: false, cat: FP_CAT.MOB },
+  { id: 'rug',       lab: 'Tapete',         blocks: false, colorable: true, cat: FP_CAT.MOB },
+  { id: 'trashbin',  lab: 'Lixeira',        blocks: false, cat: FP_CAT.MOB },
+  { id: 'locker',    lab: 'Cacifo',         blocks: true,  cat: FP_CAT.MOB },
+  { id: 'whiteboard',lab: 'Quadro branco',  blocks: false, cat: FP_CAT.MOB },
+  { id: 'gurney',    lab: 'Maca médica',    blocks: false, sit: true, cat: FP_CAT.MOB },
+  // ---- Segurança e infraestrutura ----
+  { id: 'camera',        lab: 'Câmera de segurança',  blocks: false, cat: FP_CAT.SEG },
+  { id: 'cone',           lab: 'Cone de sinalização', blocks: false, cat: FP_CAT.SEG },
+  { id: 'extinguisher',   lab: 'Extintor',            blocks: false, cat: FP_CAT.SEG },
+  { id: 'firstaid',       lab: 'Kit primeiros socorros', blocks: false, cat: FP_CAT.SEG },
+  { id: 'sign_bio',       lab: 'Placa perigo biológico', blocks: false, cat: FP_CAT.SEG },
+  { id: 'sign_warn',      lab: 'Placa de aviso',      blocks: false, cat: FP_CAT.SEG },
+  { id: 'vent',           lab: 'Duto de ventilação',  blocks: false, cat: FP_CAT.SEG },
+  { id: 'barrier_concrete',lab: 'Barreira de concreto', blocks: true, cat: FP_CAT.SEG },
+  { id: 'serverrack',     lab: 'Rack de servidores',  blocks: true,  cat: FP_CAT.SEG },
+  { id: 'computer',       lab: 'Terminal de computador', blocks: true, cat: FP_CAT.SEG },
+  // ---- Suprimentos e armazenamento ----
+  { id: 'crate',       lab: 'Caixote',            blocks: false, cat: FP_CAT.SUP },
+  { id: 'barrel',      lab: 'Barril/tambor',      blocks: false, colorable: true, cat: FP_CAT.SUP },
+  { id: 'pallet',      lab: 'Palete',             blocks: false, cat: FP_CAT.SUP },
+  { id: 'gascylinder', lab: 'Cilindro de gás',    blocks: false, cat: FP_CAT.SUP },
+  { id: 'toolbox',     lab: 'Caixa de ferramentas', blocks: false, cat: FP_CAT.SUP },
+  { id: 'workbench',   lab: 'Bancada de trabalho', blocks: true, cat: FP_CAT.SUP },
+  // ---- Área externa ----
+  { id: 'sandbags',  lab: 'Sacos de areia', blocks: false, cat: FP_CAT.EXT },
+  { id: 'generator', lab: 'Gerador diesel', blocks: true,  cat: FP_CAT.EXT },
+  { id: 'cart',      lab: 'Carrinho de carga', blocks: false, cat: FP_CAT.EXT }
 ];
 function fpFurnDef(id) { for (var i = 0; i < FP_FURNITURE_TYPES.length; i++) if (FP_FURNITURE_TYPES[i].id === id) return FP_FURNITURE_TYPES[i]; return FP_FURNITURE_TYPES[0]; }
+var FP_DIR_DEG = { n: 0, e: 90, s: 180, w: 270 };
+
+// ============== CELULAS 'm' MULTI-OBJETO (partilhar espaço / arrastar / rodar) ==============
+// Cada celula tipo 'm' agora guarda ate' 6 objetos independentes em cell.items:
+// [{ ft, x (0-100, posicao horizontal dentro da celula), y (0-100), rot (graus,
+// rotacao livre), color, desc, scpRef }]. Plantas salvas no formato antigo
+// (um objeto so', direto em cell.ft/cell.dir/...) continuam funcionando: sao
+// lidas "ao vivo" por fpCellItems() sem precisar migrar o save. So' passam a
+// virar cell.items de verdade quando o Mestre mexe naquela celula de novo
+// (fpMigrateCellItems), no editor.
+function fpCellItems(cell) {
+  if (!cell || cell.t !== 'm') return [];
+  if (cell.items) return cell.items;
+  if (!cell.ft) return [];
+  var legacy = { ft: cell.ft, x: 50, y: 50, rot: FP_DIR_DEG[cell.dir] || 0, color: cell.color, desc: cell.desc };
+  if (cell.ft === 'scpobj') legacy.scpRef = cell.scpRef;
+  return [legacy];
+}
+// So' um objeto SOLIDO (blocks:true) por celula faz sentido fisicamente — os
+// demais (decorativos) podem se sobrepor livremente ("partilhar espaço").
+function fpCellBlocks(cell) {
+  var its = fpCellItems(cell);
+  for (var i = 0; i < its.length; i++) { if (fpFurnDef(its[i].ft).blocks) return true; }
+  return false;
+}
+function fpCellStorageItem(cell) {
+  var its = fpCellItems(cell);
+  for (var i = 0; i < its.length; i++) { if (fpFurnDef(its[i].ft).storage) return its[i]; }
+  return null;
+}
+function fpCellScpItem(cell) {
+  var its = fpCellItems(cell);
+  for (var i = 0; i < its.length; i++) { if (fpFurnDef(its[i].ft).scpObj) return its[i]; }
+  return null;
+}
+function fpCellSitItem(cell) {
+  var its = fpCellItems(cell);
+  for (var i = 0; i < its.length; i++) { if (fpFurnDef(its[i].ft).sit) return its[i]; }
+  return null;
+}
+// Item "principal" de uma celula pra fins de interacao/modal: o de armazenamento
+// ou o Objeto SCP (se houver — so' pode existir um dos dois por celula), senao o
+// primeiro item colocado.
+function fpCellPrimaryItem(cell) {
+  return fpCellStorageItem(cell) || fpCellScpItem(cell) || (fpCellItems(cell)[0] || null);
+}
+// Converte a celula (se ainda estiver no formato antigo de objeto unico) para o
+// formato items[] de verdade, gravando no proprio floor.cells — chamada so' no
+// editor, quando o Mestre de fato mexe na celula (adicionar/ajustar objeto).
+function fpMigrateCellItems(floor, key) {
+  var cell = floor.cells[key];
+  if (!cell || cell.t !== 'm') { cell = { t: 'm', items: [] }; floor.cells[key] = cell; }
+  else if (!cell.items) {
+    var legacy = cell.ft ? { ft: cell.ft, x: 50, y: 50, rot: FP_DIR_DEG[cell.dir] || 0, color: cell.color, desc: cell.desc } : null;
+    if (legacy && cell.ft === 'scpobj') legacy.scpRef = cell.scpRef;
+    cell.items = legacy ? [legacy] : [];
+    delete cell.ft; delete cell.dir; delete cell.color; delete cell.desc; delete cell.scpRef;
+  }
+  return cell.items;
+}
 
 // Desenha o icone vetorial da mobilia, sempre na orientacao base ("virado para
 // cima") e depois rotacionado via transform conforme 'dir' — assim so' precisa
@@ -9156,8 +9250,88 @@ function fpFurnitureSVG(ft, dir, color, s) {
     inner = '<polygon points="' + cx + ',' + (cy - 9) + ' ' + (cx + 9) + ',' + (cy + 7) + ' ' + (cx - 9) + ',' + (cy + 7) + '" fill="rgba(255,60,60,0.12)" stroke="var(--r)" stroke-width="1.4"></polygon>' +
             '<line x1="' + cx + '" y1="' + (cy - 3) + '" x2="' + cx + '" y2="' + (cy + 1.5) + '" stroke="var(--r)" stroke-width="1.6"></line>' +
             '<circle cx="' + cx + '" cy="' + (cy + 4) + '" r="0.9" fill="var(--r)"></circle>';
+  } else if (ft === 'trashbin') {
+    inner = '<circle cx="' + cx + '" cy="' + cy + '" r="7" fill="none" stroke="' + A + '" stroke-width="1.4"></circle>' +
+            '<circle cx="' + cx + '" cy="' + cy + '" r="4.5" fill="none" stroke="' + A + '" stroke-width="0.8" opacity="0.5"></circle>';
+  } else if (ft === 'locker') {
+    inner = '<rect x="' + (cx - 8) + '" y="' + (cy - 9) + '" width="16" height="18" fill="none" stroke="' + A + '" stroke-width="1.4"></rect>' +
+            '<line x1="' + cx + '" y1="' + (cy - 9) + '" x2="' + cx + '" y2="' + (cy + 9) + '" stroke="' + A + '" stroke-width="1"></line>' +
+            '<circle cx="' + (cx - 3) + '" cy="' + cy + '" r="1" fill="' + A + '"></circle><circle cx="' + (cx + 3) + '" cy="' + cy + '" r="1" fill="' + A + '"></circle>';
+  } else if (ft === 'whiteboard') {
+    inner = '<rect x="' + (cx - 9) + '" y="' + (cy - 6) + '" width="18" height="12" fill="none" stroke="var(--t)" stroke-width="1.4"></rect>' +
+            '<line x1="' + (cx - 6) + '" y1="' + (cy - 2) + '" x2="' + (cx + 2) + '" y2="' + (cy - 2) + '" stroke="var(--b)" stroke-width="0.9" opacity="0.7"></line>' +
+            '<line x1="' + (cx - 6) + '" y1="' + (cy + 2) + '" x2="' + (cx + 5) + '" y2="' + (cy + 2) + '" stroke="var(--b)" stroke-width="0.9" opacity="0.7"></line>';
+  } else if (ft === 'gurney') {
+    inner = '<rect x="' + (cx - 6) + '" y="' + (cy - 10) + '" width="12" height="20" rx="2" fill="none" stroke="' + A + '" stroke-width="1.4"></rect>' +
+            '<line x1="' + (cx - 6) + '" y1="' + (cy - 4) + '" x2="' + (cx + 6) + '" y2="' + (cy - 4) + '" stroke="' + A + '" stroke-width="0.8" opacity="0.6"></line>' +
+            '<circle cx="' + cx + '" cy="' + (cy - 7) + '" r="2" fill="' + A + '" opacity="0.5"></circle>';
+  } else if (ft === 'camera') {
+    inner = '<circle cx="' + cx + '" cy="' + cy + '" r="6" fill="none" stroke="var(--t)" stroke-width="1.3"></circle>' +
+            '<polygon points="' + (cx + 5) + ',' + (cy - 3) + ' ' + (cx + 12) + ',' + (cy - 6) + ' ' + (cx + 12) + ',' + (cy + 6) + ' ' + (cx + 5) + ',' + (cy + 3) + '" fill="none" stroke="var(--t)" stroke-width="1" opacity="0.7"></polygon>';
+  } else if (ft === 'cone') {
+    inner = '<polygon points="' + cx + ',' + (cy - 9) + ' ' + (cx + 7) + ',' + (cy + 9) + ' ' + (cx - 7) + ',' + (cy + 9) + '" fill="rgba(255,170,0,0.15)" stroke="var(--y)" stroke-width="1.4"></polygon>' +
+            '<line x1="' + (cx - 4.5) + '" y1="' + (cy + 3) + '" x2="' + (cx + 4.5) + '" y2="' + (cy + 3) + '" stroke="var(--y)" stroke-width="1" opacity="0.7"></line>';
+  } else if (ft === 'extinguisher') {
+    inner = '<rect x="' + (cx - 4) + '" y="' + (cy - 8) + '" width="8" height="15" rx="3" fill="none" stroke="var(--r)" stroke-width="1.4"></rect>' +
+            '<rect x="' + (cx - 2) + '" y="' + (cy - 11) + '" width="4" height="3" fill="var(--r)"></rect>';
+  } else if (ft === 'firstaid') {
+    inner = '<rect x="' + (cx - 8) + '" y="' + (cy - 7) + '" width="16" height="14" fill="none" stroke="var(--g)" stroke-width="1.4"></rect>' +
+            '<line x1="' + cx + '" y1="' + (cy - 4) + '" x2="' + cx + '" y2="' + (cy + 4) + '" stroke="var(--g)" stroke-width="1.6"></line>' +
+            '<line x1="' + (cx - 4) + '" y1="' + cy + '" x2="' + (cx + 4) + '" y2="' + cy + '" stroke="var(--g)" stroke-width="1.6"></line>';
+  } else if (ft === 'sign_bio') {
+    inner = '<circle cx="' + cx + '" cy="' + cy + '" r="9" fill="rgba(255,0,60,0.1)" stroke="var(--r)" stroke-width="1.3"></circle>' +
+            '<circle cx="' + cx + '" cy="' + cy + '" r="2" fill="var(--r)"></circle>' +
+            '<circle cx="' + (cx - 5) + '" cy="' + (cy + 4) + '" r="2" fill="none" stroke="var(--r)" stroke-width="1"></circle>' +
+            '<circle cx="' + (cx + 5) + '" cy="' + (cy + 4) + '" r="2" fill="none" stroke="var(--r)" stroke-width="1"></circle>' +
+            '<circle cx="' + cx + '" cy="' + (cy - 6) + '" r="2" fill="none" stroke="var(--r)" stroke-width="1"></circle>';
+  } else if (ft === 'sign_warn') {
+    inner = '<polygon points="' + cx + ',' + (cy - 9) + ' ' + (cx + 8) + ',' + (cy + 7) + ' ' + (cx - 8) + ',' + (cy + 7) + '" fill="rgba(255,170,0,0.12)" stroke="var(--y)" stroke-width="1.3"></polygon>' +
+            '<line x1="' + cx + '" y1="' + (cy - 3) + '" x2="' + cx + '" y2="' + (cy + 2) + '" stroke="var(--y)" stroke-width="1.4"></line>' +
+            '<circle cx="' + cx + '" cy="' + (cy + 5) + '" r="0.9" fill="var(--y)"></circle>';
+  } else if (ft === 'vent') {
+    inner = '<rect x="' + (cx - 9) + '" y="' + (cy - 9) + '" width="18" height="18" fill="none" stroke="var(--t)" stroke-width="1.3"></rect>';
+    for (var vi = -6; vi <= 6; vi += 3) inner += '<line x1="' + (cx - 7) + '" y1="' + (cy + vi) + '" x2="' + (cx + 7) + '" y2="' + (cy + vi) + '" stroke="var(--t)" stroke-width="0.8" opacity="0.6"></line>';
+  } else if (ft === 'barrier_concrete') {
+    inner = '<path d="M' + (cx - 9) + ',' + (cy + 9) + ' L' + (cx - 6) + ',' + (cy - 8) + ' L' + (cx + 6) + ',' + (cy - 8) + ' L' + (cx + 9) + ',' + (cy + 9) + ' Z" fill="none" stroke="var(--t)" stroke-width="1.4"></path>';
+  } else if (ft === 'serverrack') {
+    inner = '<rect x="' + (cx - 8) + '" y="' + (cy - 9) + '" width="16" height="18" fill="none" stroke="' + A + '" stroke-width="1.4"></rect>';
+    for (var si2 = -6; si2 <= 6; si2 += 4) inner += '<line x1="' + (cx - 8) + '" y1="' + (cy + si2) + '" x2="' + (cx + 8) + '" y2="' + (cy + si2) + '" stroke="' + A + '" stroke-width="0.8" opacity="0.6"></line><circle cx="' + (cx + 5) + '" cy="' + (cy + si2 + 1.5) + '" r="0.7" fill="var(--g)"></circle>';
+  } else if (ft === 'computer') {
+    inner = '<rect x="' + (cx - 8) + '" y="' + (cy - 8) + '" width="16" height="12" fill="none" stroke="' + A + '" stroke-width="1.4"></rect>' +
+            '<rect x="' + (cx - 6) + '" y="' + (cy - 6) + '" width="12" height="8" fill="var(--b)" opacity="0.15"></rect>' +
+            '<line x1="' + (cx - 5) + '" y1="' + (cy + 6) + '" x2="' + (cx + 5) + '" y2="' + (cy + 6) + '" stroke="' + A + '" stroke-width="1.4"></line>';
+  } else if (ft === 'crate') {
+    inner = '<rect x="' + (cx - 8) + '" y="' + (cy - 8) + '" width="16" height="16" fill="none" stroke="var(--brown)" stroke-width="1.4"></rect>' +
+            '<line x1="' + (cx - 8) + '" y1="' + (cy - 8) + '" x2="' + (cx + 8) + '" y2="' + (cy + 8) + '" stroke="var(--brown)" stroke-width="0.7" opacity="0.5"></line>' +
+            '<line x1="' + (cx + 8) + '" y1="' + (cy - 8) + '" x2="' + (cx - 8) + '" y2="' + (cy + 8) + '" stroke="var(--brown)" stroke-width="0.7" opacity="0.5"></line>';
+  } else if (ft === 'barrel') {
+    var bc = fpPaletteHex(color || 'y');
+    inner = '<circle cx="' + cx + '" cy="' + cy + '" r="8" fill="' + bc + '" opacity="0.18" stroke="' + bc + '" stroke-width="1.4"></circle>' +
+            '<circle cx="' + cx + '" cy="' + cy + '" r="4.5" fill="none" stroke="' + bc + '" stroke-width="0.8" opacity="0.6"></circle>';
+  } else if (ft === 'pallet') {
+    inner = '<rect x="' + (cx - 9) + '" y="' + (cy - 6) + '" width="18" height="12" fill="none" stroke="var(--brown)" stroke-width="1.3"></rect>';
+    for (var pi = -6; pi <= 6; pi += 3) inner += '<line x1="' + (cx + pi) + '" y1="' + (cy - 6) + '" x2="' + (cx + pi) + '" y2="' + (cy + 6) + '" stroke="var(--brown)" stroke-width="0.7" opacity="0.6"></line>';
+  } else if (ft === 'gascylinder') {
+    inner = '<circle cx="' + (cx - 4) + '" cy="' + cy + '" r="5" fill="none" stroke="var(--y)" stroke-width="1.3"></circle>' +
+            '<circle cx="' + (cx + 4) + '" cy="' + cy + '" r="5" fill="none" stroke="var(--y)" stroke-width="1.3"></circle>';
+  } else if (ft === 'toolbox') {
+    inner = '<rect x="' + (cx - 9) + '" y="' + (cy - 5) + '" width="18" height="11" fill="none" stroke="var(--y)" stroke-width="1.4"></rect>' +
+            '<path d="M' + (cx - 4) + ',' + (cy - 5) + ' L' + (cx - 4) + ',' + (cy - 8) + ' L' + (cx + 4) + ',' + (cy - 8) + ' L' + (cx + 4) + ',' + (cy - 5) + '" fill="none" stroke="var(--y)" stroke-width="1.2"></path>';
+  } else if (ft === 'workbench') {
+    inner = '<rect x="' + (cx - 10) + '" y="' + (cy - 6) + '" width="20" height="12" fill="none" stroke="' + A + '" stroke-width="1.4"></rect>' +
+            '<rect x="' + (cx - 6) + '" y="' + (cy - 3) + '" width="6" height="6" fill="none" stroke="' + A + '" stroke-width="0.8" opacity="0.6"></rect>';
+  } else if (ft === 'sandbags') {
+    inner = '<ellipse cx="' + (cx - 4) + '" cy="' + (cy - 3) + '" rx="7" ry="4" fill="none" stroke="var(--brown)" stroke-width="1.2"></ellipse>' +
+            '<ellipse cx="' + (cx + 4) + '" cy="' + (cy + 3) + '" rx="7" ry="4" fill="none" stroke="var(--brown)" stroke-width="1.2"></ellipse>';
+  } else if (ft === 'generator') {
+    inner = '<rect x="' + (cx - 10) + '" y="' + (cy - 7) + '" width="20" height="14" fill="none" stroke="var(--y)" stroke-width="1.4"></rect>' +
+            '<circle cx="' + (cx - 4) + '" cy="' + cy + '" r="4" fill="none" stroke="var(--y)" stroke-width="1"></circle>';
+  } else if (ft === 'cart') {
+    inner = '<rect x="' + (cx - 8) + '" y="' + (cy - 6) + '" width="16" height="9" fill="none" stroke="var(--t)" stroke-width="1.3"></rect>' +
+            '<circle cx="' + (cx - 5) + '" cy="' + (cy + 6) + '" r="2" fill="none" stroke="var(--t)" stroke-width="1"></circle>' +
+            '<circle cx="' + (cx + 5) + '" cy="' + (cy + 6) + '" r="2" fill="none" stroke="var(--t)" stroke-width="1"></circle>';
   }
-  var deg = { n: 0, e: 90, s: 180, w: 270 }[dir] || 0;
+  var deg = typeof dir === 'number' ? dir : ({ n: 0, e: 90, s: 180, w: 270 }[dir] || 0);
   return '<svg width="' + s + '" height="' + s + '" style="position:absolute; left:0; top:0; pointer-events:none;"><g style="transform:rotate(' + deg + 'deg); transform-origin:' + cx + 'px ' + cy + 'px;">' + inner + '</g></svg>';
 }
 
@@ -9339,21 +9513,29 @@ function fpRenderGrid(roomId, floorIdx, floor, editable) {
         // Cenario antigo (mobilia em emoji, formato descontinuado) — mantido so' para nao quebrar plantas ja salvas.
         inner += '<div style="position:absolute; left:0; top:0; width:100%; height:100%; background:rgba(140,95,45,0.5); pointer-events:none;"></div>';
       } else if (cell && cell.t === 'm') {
-        var fDefG = fpFurnDef(cell.ft);
-        if (fDefG.scpObj) {
-          var scpStateG = _fpScpBrokenState[fpFurnitureKey(roomId, floorIdx, c, r)];
-          if (scpStateG && scpStateG.broken && scpStateG.img) {
-            inner += '<img src="' + scpStateG.img + '" style="position:absolute; left:1px; top:1px; width:' + (FP_CELL - 2) + 'px; height:' + (FP_CELL - 2) + 'px; object-fit:cover; pointer-events:none;">';
+        var itemsG = fpCellItems(cell);
+        var multiG = itemsG.length > 1;
+        var iconSzG = multiG ? Math.round(FP_CELL * 0.78) : FP_CELL;
+        for (var igi = 0; igi < itemsG.length; igi++) {
+          var itG = itemsG[igi];
+          var fDefIG = fpFurnDef(itG.ft);
+          var wrapStyleG = 'position:absolute; left:' + (itG.x != null ? itG.x : 50) + '%; top:' + (itG.y != null ? itG.y : 50) + '%; width:' + iconSzG + 'px; height:' + iconSzG + 'px; margin-left:-' + (iconSzG / 2) + 'px; margin-top:-' + (iconSzG / 2) + 'px; pointer-events:none;';
+          if (fDefIG.scpObj) {
+            var scpStateG = _fpScpBrokenState[fpFurnitureKey(roomId, floorIdx, c, r)];
+            if (scpStateG && scpStateG.broken && scpStateG.img) {
+              inner += '<div style="' + wrapStyleG + '"><img src="' + scpStateG.img + '" style="width:100%; height:100%; object-fit:cover;"></div>';
+            } else {
+              inner += '<div style="' + wrapStyleG + '">' + fpFurnitureSVG(itG.ft, itG.rot || 0, itG.color, iconSzG) + '</div>';
+            }
+            if (scpStateG && scpStateG.broken) {
+              inner += '<div style="position:absolute; right:1px; top:1px; width:6px; height:6px; border-radius:50%; background:var(--r); box-shadow:0 0 4px var(--r); pointer-events:none;"></div>';
+            }
           } else {
-            inner += fpFurnitureSVG(cell.ft, cell.dir, cell.color, FP_CELL);
+            inner += '<div style="' + wrapStyleG + '">' + fpFurnitureSVG(itG.ft, itG.rot || 0, itG.color, iconSzG) + '</div>';
           }
-          if (scpStateG && scpStateG.broken) {
-            inner += '<div style="position:absolute; right:1px; top:1px; width:6px; height:6px; border-radius:50%; background:var(--r); box-shadow:0 0 4px var(--r); pointer-events:none;"></div>';
-          }
-        } else {
-          inner += fpFurnitureSVG(cell.ft, cell.dir, cell.color, FP_CELL);
         }
-        if (fDefG.storage) {
+        var storItemG = fpCellStorageItem(cell);
+        if (storItemG) {
           var fItemsG = _fpFurnitureItems[fpFurnitureKey(roomId, floorIdx, c, r)];
           var fHasG = !!(fItemsG && fItemsG.length);
           inner += '<div id="fpFurnBadge_' + key + '" style="position:absolute; right:1px; top:1px; width:6px; height:6px; border-radius:50%; background:var(--y); box-shadow:0 0 4px var(--y); display:' + (fHasG ? 'block' : 'none') + '; pointer-events:none;"></div>';
@@ -9549,7 +9731,9 @@ function fpFurnitureInteract(c, r) {
   // longe nao mostra tela nenhuma (nao ha nada util pra fazer/ver dali). Mobilia
   // decorativa (cadeira/vaso/luminaria/etc.) continua abrindo normalmente de
   // qualquer distancia, ja que e' so descricao, sem pegar/deixar item.
-  var interactDef = fpFurnDef(cell.ft);
+  var interactItem = fpCellPrimaryItem(cell);
+  if (!interactItem) return;
+  var interactDef = fpFurnDef(interactItem.ft);
   if ((interactDef.storage || interactDef.scpObj) && !fpNearFurniture(_fpViewRoomId, _fpViewFloor, c, r)) return;
   _fpFurnitureModalKey = fpFurnitureKey(_fpViewRoomId, _fpViewFloor, c, r);
   _fpFurnLeaveMode = 'labcard';
@@ -9599,9 +9783,9 @@ function fpFindDClass(id) { for (var i = 0; i < dclass.length; i++) if (dclass[i
 // de verdade, narrar o resultado) e' RPG, fora do Terminal. O Mestre tambem pode
 // marcar o objeto como alterado/quebrado (troca a imagem exibida e toca um som
 // do Soundpad pra todo mundo), e restaurar depois.
-function fpScpObjRenderModal(cell, canTouch) {
+function fpScpObjRenderModal(item, canTouch) {
   var card = null;
-  if (cell && cell.scpRef) { for (var i = 0; i < labCards.length; i++) if (labCards[i].id === cell.scpRef) { card = labCards[i]; break; } }
+  if (item && item.scpRef) { for (var i = 0; i < labCards.length; i++) if (labCards[i].id === item.scpRef) { card = labCards[i]; break; } }
   var state = _fpScpBrokenState[_fpFurnitureModalKey] || {};
   var h = '<div class="dv"><div class="dh"><h1>Objeto SCP</h1></div>';
   if (!card) {
@@ -9611,7 +9795,7 @@ function fpScpObjRenderModal(cell, canTouch) {
     h += '<div class="ds"><p><span style="color:var(--g); cursor:pointer;" onclick="viewLabCard(\'' + card.id + '\')"><b>' + fpFurnEsc(card.num) + '</b> — ' + fpFurnEsc(card.title) + '</span> ' +
       '<span class="dc" style="color:' + clsColor + '; border-color:' + clsColor + '; font-size:0.65em;">' + card.cls + '</span></p></div>';
   }
-  h += '<div class="ds"><p>' + (cell && cell.desc ? fpFurnEsc(cell.desc) : '<span style="color:var(--td);">Sem descricao.</span>') + '</p></div>';
+  h += '<div class="ds"><p>' + (item && item.desc ? fpFurnEsc(item.desc) : '<span style="color:var(--td);">Sem descricao.</span>') + '</p></div>';
   if (state.broken) {
     h += '<div style="color:var(--r); font-size:0.78em; border:1px solid var(--r); padding:8px 10px; margin-bottom:12px;">OBJETO ALTERADO/DANIFICADO' + (state.label ? ': ' + fpFurnEsc(state.label) : '') + '</div>';
     if (state.img) h += '<img src="' + state.img + '" style="max-width:100%; border:1px solid var(--bd); margin-bottom:12px;">';
@@ -9750,11 +9934,12 @@ function fpFurnitureRenderModal() {
   var roomId = parts[0], floorIdx = parseInt(parts[1], 10), cr = parts[2].split('_'), c = parseInt(cr[0], 10), r = parseInt(cr[1], 10);
   var plan = fpGetPlan(roomId);
   var cell = plan && plan.floors[floorIdx] && plan.floors[floorIdx].cells[c + '_' + r];
-  var def = cell ? fpFurnDef(cell.ft) : fpFurnDef('table');
+  var primItem = cell ? fpCellPrimaryItem(cell) : null;
+  var def = primItem ? fpFurnDef(primItem.ft) : fpFurnDef('table');
   var canTouch = fpNearFurniture(roomId, floorIdx, c, r);
-  if (def.scpObj) { fpScpObjRenderModal(cell, canTouch); return; }
+  if (def.scpObj) { fpScpObjRenderModal(primItem, canTouch); return; }
   var h = '<div class="dv"><div class="dh"><h1>' + def.lab + '</h1></div>';
-  h += '<div class="ds"><p>' + (cell && cell.desc ? fpFurnEsc(cell.desc) : '<span style="color:var(--td);">Sem descricao.</span>') + '</p></div>';
+  h += '<div class="ds"><p>' + (primItem && primItem.desc ? fpFurnEsc(primItem.desc) : '<span style="color:var(--td);">Sem descricao.</span>') + '</p></div>';
   if (def.storage) {
     if (!canTouch) {
       h += '<div style="color:var(--y); font-size:0.78em; border:1px solid var(--y); padding:8px 10px; margin-bottom:12px;">VOCE ESTA LONGE DEMAIS PARA MEXER AQUI — aproxime-se ate no maximo 1 bloco de distancia para pegar ou deixar algo.</div>';
@@ -10030,7 +10215,7 @@ function fpRenderEditor() {
     '<button class="btn btn-s" onclick="fpRenameFloor()">RENOMEAR ANDAR</button></div>';
 
   h += '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">' +
-    toolBtn('w', 'PAREDE') + toolBtn('d', 'PORTA') + toolBtn('s', 'ESCADA') + toolBtn('x', 'SETA (SAIR P/ AREA)') + toolBtn('q', 'QUADRADO') + toolBtn('m', 'MOBÍLIA') + toolBtn('n', 'NPC') + toolBtn('p', 'ENTRADA') + toolBtn('e', 'APAGAR (CHAO)') + '</div>';
+    toolBtn('w', 'PAREDE') + toolBtn('d', 'PORTA') + toolBtn('s', 'ESCADA') + toolBtn('x', 'SETA (SAIR P/ AREA)') + toolBtn('q', 'QUADRADO') + toolBtn('m', 'MOBÍLIA (ADICIONAR)') + toolBtn('ma', 'AJUSTAR/ROTACIONAR') + toolBtn('n', 'NPC') + toolBtn('p', 'ENTRADA') + toolBtn('e', 'APAGAR (CHAO)') + '</div>';
 
   if (_fpEdit.tool === 'w') {
     h += '<div style="color:var(--gd); font-size:0.72em; margin-bottom:4px;">FORMATO DA PAREDE:</div>';
@@ -10079,25 +10264,23 @@ function fpRenderEditor() {
   } else if (_fpEdit.tool === 'm') {
     var curFurn = _fpEdit.furnType || 'chair';
     var curFDef = fpFurnDef(curFurn);
-    h += '<div style="color:var(--gd); font-size:0.72em; margin-bottom:4px;">TIPO DE MOBÍLIA:</div>';
-    h += '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">';
+    h += '<div style="color:var(--gd); font-size:0.72em; margin-bottom:4px;">TIPO DE OBJETO (varios podem ser colocados na mesma celula, exceto objetos solidos):</div>';
+    var lastCatM = null;
     for (var fi = 0; fi < FP_FURNITURE_TYPES.length; fi++) {
       var fdef = FP_FURNITURE_TYPES[fi];
+      if (fdef.cat !== lastCatM) {
+        if (lastCatM !== null) h += '</div>';
+        h += '<div style="color:var(--gd); font-size:0.65em; letter-spacing:1px; margin:8px 0 4px;">' + fdef.cat.toUpperCase() + '</div><div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">';
+        lastCatM = fdef.cat;
+      }
       var onF = curFurn === fdef.id;
       h += '<button class="btn btn-s" style="display:inline-flex; align-items:center; gap:5px; ' + (onF ? 'border-color:var(--y); color:var(--y);' : '') + '" onclick="fpSetFurnType(\'' + fdef.id + '\')">' +
-        '<span style="position:relative; display:inline-block; width:20px; height:20px;">' + fpFurnitureSVG(fdef.id, 'n', _fpEdit.furnColor || 'r', 20) + '</span><span>' + fdef.lab + '</span></button>';
+        '<span style="position:relative; display:inline-block; width:20px; height:20px;">' + fpFurnitureSVG(fdef.id, 0, _fpEdit.furnColor || 'r', 20) + '</span><span>' + fdef.lab + (fdef.blocks ? '' : ' ⇄') + '</span></button>';
     }
     h += '</div>';
-    if (curFDef.dir) {
-      h += '<div style="color:var(--gd); font-size:0.72em; margin-bottom:4px;">VIRADO PARA:</div>';
-      h += '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">';
-      for (var fdi = 0; fdi < FP_SQUARE_DIRS.length; fdi++) {
-        var fsd = FP_SQUARE_DIRS[fdi];
-        var onFD = (_fpEdit.furnDir || 'n') === fsd.id;
-        h += '<button class="btn btn-s" style="' + (onFD ? 'border-color:var(--y); color:var(--y);' : '') + '" onclick="fpSetFurnDir(\'' + fsd.id + '\')">' + fsd.lab + '</button>';
-      }
-      h += '</div>';
-    }
+    h += '<div style="color:var(--gd); font-size:0.72em; margin-bottom:4px;">ROTACAO (livre, em graus) — <span id="fpFurnRotLbl">' + (_fpEdit.furnRot || 0) + '°</span>:</div>';
+    h += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><input type="range" min="0" max="359" step="1" value="' + (_fpEdit.furnRot || 0) + '" oninput="fpSetFurnRot(this.value)" style="flex:1;">' +
+      '<button class="btn btn-s" onclick="fpSetFurnRot(0)">0°</button><button class="btn btn-s" onclick="fpSetFurnRot(90)">90°</button><button class="btn btn-s" onclick="fpSetFurnRot(180)">180°</button><button class="btn btn-s" onclick="fpSetFurnRot(270)">270°</button></div>';
     if (curFDef.colorable) {
       h += '<div style="color:var(--gd); font-size:0.72em; margin-bottom:4px;">COR:</div>';
       h += fpRenderPaletteSwatches(_fpEdit.furnColor || 'r', 'fpSetFurnColor', false);
@@ -10122,8 +10305,11 @@ function fpRenderEditor() {
     var curFHelp = curFDef.sit ? 'O jogador ANDA ate\' aqui para sentar/deitar — nao bloqueia a passagem.' :
       curFDef.scpObj ? 'Bloqueia a passagem. Qualquer jogador perto pode examinar o objeto e colocar itens de teste na bandeja. So' + ' o Mestre ve os efeitos de cada item e pode marcar o objeto como alterado.' :
       curFDef.storage ? 'Bloqueia a passagem. Qualquer jogador pode clicar nela na planta (fora do editor) para ler a descricao e deixar/pegar cartas de laboratorio (SCP/Thaumiel), itens do catalogo de recursos, dossies de Classe-D ou papeis avulsos.' :
-      curFDef.decorative ? 'Puramente decorativo — nao bloqueia a passagem.' : 'Bloqueia a passagem, como um objeto solido.';
-    h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">' + curFHelp + ' Qualquer jogador pode clicar na peca colocada para ler a descricao. Clique numa celula para colocar a mobilia selecionada (com a descricao acima).</div>';
+      curFDef.blocks ? 'Objeto solido — bloqueia a passagem. So\' pode existir UM objeto solido por celula (mas pode dividir a celula com objetos nao-solidos).' :
+      'Objeto nao-solido (marcado com ⇄ acima) — nao bloqueia a passagem e pode DIVIDIR a mesma celula com outros objetos nao-solidos.';
+    h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">' + curFHelp + ' Cada clique numa celula ADICIONA uma copia do objeto selecionado ali (comeca centralizada) — use a ferramenta AJUSTAR/ROTACIONAR para arrastar cada objeto dentro do quadrado, girar livremente ou remover. Qualquer jogador pode clicar na peca colocada para ler a descricao.</div>';
+  } else if (_fpEdit.tool === 'ma') {
+    h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Clique numa celula com objetos ja colocados para abrir o ajuste fino: arraste cada objeto dentro do quadrado (estilo mapa top-view), gire livremente com o controle deslizante e remova o que nao quiser, tudo sem sair da celula.</div>';
   }
 
   h += '<div id="fpEditGridWrap" style="margin:10px 0; overflow:auto; max-width:100%;">' + fpRenderGrid(_fpEdit.roomId, _fpEdit.floorIdx, floor, true) + '</div>';
@@ -10148,6 +10334,15 @@ function fpSetSquareColor(c) { if (!_fpEdit) return; _fpEdit.sqColor = c; fpRend
 function fpSetFurnType(t) { if (!_fpEdit) return; _fpEdit.furnType = t; fpRenderEditor(); }
 function fpSetFurnDir(d) { if (!_fpEdit) return; _fpEdit.furnDir = d; fpRenderEditor(); }
 function fpSetFurnColor(c) { if (!_fpEdit) return; _fpEdit.furnColor = c; fpRenderEditor(); }
+// So' atualiza o valor guardado + o rotulo do slider (sem redesenhar o editor
+// inteiro), pra nao travar/perder o foco do controle enquanto o Mestre arrasta.
+function fpSetFurnRot(v) {
+  if (!_fpEdit) return;
+  var n = parseInt(v, 10); if (isNaN(n)) n = 0; n = ((n % 360) + 360) % 360;
+  _fpEdit.furnRot = n;
+  var lbl = document.getElementById('fpFurnRotLbl');
+  if (lbl) lbl.textContent = n + '°';
+}
 function fpSetScpRef(id) { if (!_fpEdit) return; _fpEdit.scpRef = id; }
 
 function fpEditSwitchFloor(idx) { if (!_fpEdit) return; _fpEdit.floorIdx = idx; fpRenderEditor(); }
@@ -10246,6 +10441,135 @@ function fpPaintEnd() {
   document.removeEventListener('touchend', fpPaintEnd);
 }
 
+// ============== AJUSTE FINO POR CELULA (arrastar/rodar/remover objetos) ==============
+// Abre um "zoom" da celula clicada com a ferramenta AJUSTAR/ROTACIONAR: cada
+// objeto vira um icone arrastavel dentro do quadrado (mousedown/touchstart +
+// move + up, tudo em porcentagem 0-100 da celula) e a rotacao do item
+// selecionado e' livre via slider. Fecha e re-renderiza a grade normal ao sair.
+var _fpAdjC = null, _fpAdjR = null, _fpAdjSel = 0, _fpAdjDragIdx = null, _fpAdjBoxPx = 240;
+
+function fpOpenCellAdjust(c, r) {
+  if (!_fpEdit) return;
+  var floor = fpCurFloor();
+  var key = c + '_' + r;
+  var cell = floor.cells[key];
+  if (!cell || cell.t !== 'm' || !fpCellItems(cell).length) { alert('Nenhum objeto nesta celula ainda. Use a ferramenta MOBILIA (ADICIONAR) primeiro.'); return; }
+  fpMigrateCellItems(floor, key); // garante formato items[] antes de editar
+  _fpAdjC = c; _fpAdjR = r; _fpAdjSel = 0;
+  fpRenderCellAdjustModal();
+}
+
+function fpRenderCellAdjustModal() {
+  var floor = fpCurFloor();
+  var key = _fpAdjC + '_' + _fpAdjR;
+  var cell = floor.cells[key];
+  var itemsAdj = (cell && cell.items) || [];
+  if (_fpAdjSel >= itemsAdj.length) _fpAdjSel = Math.max(0, itemsAdj.length - 1);
+  var box = _fpAdjBoxPx;
+  var h = '<div class="dv"><div class="dh"><h1>Ajustar objetos — celula (' + _fpAdjC + ',' + _fpAdjR + ')</h1></div>';
+  h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Arraste cada icone dentro do quadrado pra reposicionar. Clique num icone pra selecionar (fica com borda amarela) e ajustar a rotacao/remover.</div>';
+  h += '<div id="fpAdjBox" style="position:relative; width:' + box + 'px; height:' + box + 'px; margin:0 auto 14px; background:rgba(0,10,0,0.6); border:1px solid var(--bd); touch-action:none;">';
+  for (var ai = 0; ai < itemsAdj.length; ai++) {
+    var it = itemsAdj[ai];
+    var sz = Math.round(box * 0.3);
+    var sel = ai === _fpAdjSel;
+    h += '<div id="fpAdjItem_' + ai + '" onmousedown="fpAdjItemDown(event,' + ai + ')" ontouchstart="fpAdjItemDown(event,' + ai + ')" style="position:absolute; left:' + it.x + '%; top:' + it.y + '%; width:' + sz + 'px; height:' + sz + 'px; margin-left:-' + (sz / 2) + 'px; margin-top:-' + (sz / 2) + 'px; cursor:grab; border:1px solid ' + (sel ? 'var(--y)' : 'transparent') + '; box-sizing:border-box; border-radius:3px;">' +
+      fpFurnitureSVG(it.ft, it.rot || 0, it.color, sz) + '</div>';
+  }
+  h += '</div>';
+  if (itemsAdj.length) {
+    var curIt = itemsAdj[_fpAdjSel];
+    var curItDef = fpFurnDef(curIt.ft);
+    h += '<div style="color:var(--gd); font-size:0.72em; margin-bottom:4px;">SELECIONADO: ' + curItDef.lab + '</div>';
+    h += '<div style="color:var(--gd); font-size:0.72em; margin-bottom:4px;">ROTACAO — <span id="fpAdjRotLbl">' + (curIt.rot || 0) + '°</span>:</div>';
+    h += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><input type="range" min="0" max="359" step="1" value="' + (curIt.rot || 0) + '" oninput="fpAdjSetRot(this.value)" style="flex:1;"></div>';
+    h += '<div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">' +
+      '<button class="btn btn-s" style="border-color:var(--r); color:var(--r);" onclick="fpAdjRemoveSel()">REMOVER ESTE OBJETO</button></div>';
+  } else {
+    h += '<div style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Celula vazia — feche e use MOBILIA (ADICIONAR) pra colocar algo aqui.</div>';
+  }
+  h += '<button class="btn" style="border-color:var(--g); color:var(--g);" onclick="fpCloseCellAdjust()">FECHAR / VOLTAR A PLANTA</button></div>';
+  document.getElementById('mt').textContent = 'AJUSTAR OBJETOS';
+  document.getElementById('mb').innerHTML = h;
+  document.getElementById('md').classList.add('on');
+}
+
+function fpAdjSelect(i) { _fpAdjSel = i; fpRenderCellAdjustModal(); }
+
+function fpAdjSetRot(v) {
+  var floor = fpCurFloor();
+  var cell = floor.cells[_fpAdjC + '_' + _fpAdjR];
+  if (!cell || !cell.items || !cell.items[_fpAdjSel]) return;
+  var n = parseInt(v, 10); if (isNaN(n)) n = 0; n = ((n % 360) + 360) % 360;
+  cell.items[_fpAdjSel].rot = n;
+  var lbl = document.getElementById('fpAdjRotLbl');
+  if (lbl) lbl.textContent = n + '°';
+  var el = document.getElementById('fpAdjItem_' + _fpAdjSel);
+  if (el) el.innerHTML = fpFurnitureSVG(cell.items[_fpAdjSel].ft, n, cell.items[_fpAdjSel].color, el.offsetWidth);
+}
+
+function fpAdjRemoveSel() {
+  var floor = fpCurFloor();
+  var key = _fpAdjC + '_' + _fpAdjR;
+  var cell = floor.cells[key];
+  if (!cell || !cell.items) return;
+  cell.items.splice(_fpAdjSel, 1);
+  if (!cell.items.length) delete floor.cells[key];
+  _fpAdjSel = 0;
+  fpRenderCellAdjustModal();
+}
+
+function fpAdjItemDown(e, idx) {
+  if (e) e.preventDefault();
+  _fpAdjSel = idx;
+  _fpAdjDragIdx = idx;
+  document.addEventListener('mousemove', fpAdjMouseMove);
+  document.addEventListener('mouseup', fpAdjUp);
+  document.addEventListener('touchmove', fpAdjTouchMove, { passive: false });
+  document.addEventListener('touchend', fpAdjUp);
+  fpRenderCellAdjustModal(); // atualiza destaque de selecao/painel de rotacao pro item agarrado
+}
+
+function fpAdjMouseMove(e) { fpAdjMoveFromPoint(e.clientX, e.clientY); }
+function fpAdjTouchMove(e) {
+  if (_fpAdjDragIdx === null) return;
+  e.preventDefault();
+  var t = e.touches && e.touches[0];
+  if (!t) return;
+  fpAdjMoveFromPoint(t.clientX, t.clientY);
+}
+
+function fpAdjMoveFromPoint(clientX, clientY) {
+  if (_fpAdjDragIdx === null) return;
+  var box = document.getElementById('fpAdjBox');
+  if (!box) return;
+  var rect = box.getBoundingClientRect();
+  var xPct = ((clientX - rect.left) / rect.width) * 100;
+  var yPct = ((clientY - rect.top) / rect.height) * 100;
+  if (xPct < 0) xPct = 0; if (xPct > 100) xPct = 100;
+  if (yPct < 0) yPct = 0; if (yPct > 100) yPct = 100;
+  var floor = fpCurFloor();
+  var cell = floor.cells[_fpAdjC + '_' + _fpAdjR];
+  if (!cell || !cell.items || !cell.items[_fpAdjDragIdx]) return;
+  cell.items[_fpAdjDragIdx].x = Math.round(xPct);
+  cell.items[_fpAdjDragIdx].y = Math.round(yPct);
+  var el = document.getElementById('fpAdjItem_' + _fpAdjDragIdx);
+  if (el) { el.style.left = xPct + '%'; el.style.top = yPct + '%'; }
+}
+
+function fpAdjUp() {
+  _fpAdjDragIdx = null;
+  document.removeEventListener('mousemove', fpAdjMouseMove);
+  document.removeEventListener('mouseup', fpAdjUp);
+  document.removeEventListener('touchmove', fpAdjTouchMove);
+  document.removeEventListener('touchend', fpAdjUp);
+}
+
+function fpCloseCellAdjust() {
+  _fpAdjC = null; _fpAdjR = null; _fpAdjDragIdx = null;
+  fpRenderEditor();
+}
+
 function fpCellClick(c, r) {
   if (!_fpEdit) return;
   var floor = fpCurFloor();
@@ -10288,12 +10612,21 @@ function fpCellClick(c, r) {
     floor.cells[key] = { t: 'q', shape: _fpEdit.sqShape || 'full', dir: _fpEdit.sqDir || 'n', color: _fpEdit.sqColor || 'g' };
   } else if (_fpEdit.tool === 'm') {
     var placeFurnType = _fpEdit.furnType || 'chair';
-    if (placeFurnType === 'scpobj') {
-      if (!_fpEdit.scpRef) { alert('Escolha um SCP vinculado antes de colocar o objeto.'); return; }
-      floor.cells[key] = { t: 'm', ft: 'scpobj', scpRef: _fpEdit.scpRef, desc: (_fpEdit.furnDesc || '').trim() };
-    } else {
-      floor.cells[key] = { t: 'm', ft: placeFurnType, dir: _fpEdit.furnDir || 'n', color: _fpEdit.furnColor || 'r', desc: (_fpEdit.furnDesc || '').trim() };
-    }
+    var placeDef = fpFurnDef(placeFurnType);
+    if (placeFurnType === 'scpobj' && !_fpEdit.scpRef) { alert('Escolha um SCP vinculado antes de colocar o objeto.'); return; }
+    var itemsHere = fpMigrateCellItems(floor, key);
+    if (itemsHere.length >= 6) { alert('Limite de 6 objetos por celula atingido — use AJUSTAR/ROTACIONAR para remover algum antes de adicionar outro.'); return; }
+    if (placeDef.storage && itemsHere.some(function (it) { return fpFurnDef(it.ft).storage; })) { alert('So\' pode haver UM movel de armazenamento (mesa/estante/armario) por celula. Remova o atual em AJUSTAR/ROTACIONAR antes de trocar.'); return; }
+    if (placeDef.scpObj && itemsHere.some(function (it) { return fpFurnDef(it.ft).scpObj; })) { alert('So\' pode haver UM Objeto SCP por celula.'); return; }
+    if (placeDef.blocks && itemsHere.some(function (it) { return fpFurnDef(it.ft).blocks; })) { alert('Ja existe um objeto solido nesta celula — remova-o em AJUSTAR/ROTACIONAR antes de colocar outro objeto solido aqui.'); return; }
+    var placePresets = [[50, 50], [28, 28], [72, 28], [28, 72], [72, 72], [50, 25]];
+    var placePos = placePresets[itemsHere.length % placePresets.length];
+    var newFurnItem = { ft: placeFurnType, x: placePos[0], y: placePos[1], rot: _fpEdit.furnRot || 0, color: _fpEdit.furnColor || 'r', desc: (_fpEdit.furnDesc || '').trim() };
+    if (placeFurnType === 'scpobj') newFurnItem.scpRef = _fpEdit.scpRef;
+    itemsHere.push(newFurnItem);
+  } else if (_fpEdit.tool === 'ma') {
+    fpOpenCellAdjust(c, r);
+    return;
   } else if (_fpEdit.tool === 'n') {
     fpOpenNpcForm(c, r);
     return;
