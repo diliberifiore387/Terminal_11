@@ -2724,26 +2724,35 @@ function fpHashStr(s) {
     return Math.abs(h);
 }
 
+// Rotulo (nome/subtitulo) de um papel do QUADRO — usado tanto pra desenhar o
+// papel no mural (notesRenderPapersOverlay) quanto pra listar num <select>
+// (fpRenderPlayerGiveBody, ao entregar um papel pra outro jogador).
+function notesPaperLabel(p) {
+    if (p.kind === 'labcard') {
+        var card = fpFindLabCard(p.refId);
+        return { label: card ? card.title : '(carta removida)', sub: card ? card.num : 'CARTA DE PESQUISA' };
+    }
+    if (p.kind === 'item') {
+        var itemRef = fpFindCatalogItem(p.refId);
+        return { label: itemRef ? itemRef.name : '(item removido)', sub: itemRef ? itemRef.type : 'ITEM' };
+    }
+    if (p.kind === 'dclass') {
+        var dRef = fpFindDClass(p.refId);
+        return { label: dRef ? dRef.name : '(dossie removido)', sub: dRef ? dRef.code : 'DOSSIE CLASSE-D' };
+    }
+    if (p.kind === 'document') {
+        var docRef = fpFindDocument(p.refId);
+        return { label: docRef ? docRef.title : '(documento removido)', sub: docRef ? (docRef.tag || 'DOCUMENTO') : 'DOCUMENTO' };
+    }
+    return { label: p.name || 'PAPEL AVULSO', sub: 'ANOTACAO' };
+}
+
 function notesRenderPapersOverlay(papers) {
     papers = papers || notesLoadPapers();
     var h = '';
     for (var j = 0; j < papers.length; j++) {
-        var p = papers[j], label, sub;
-        if (p.kind === 'labcard') {
-            var card = fpFindLabCard(p.refId);
-            label = card ? card.title : '(carta removida)'; sub = card ? card.num : 'CARTA DE PESQUISA';
-        } else if (p.kind === 'item') {
-            var itemRef = fpFindCatalogItem(p.refId);
-            label = itemRef ? itemRef.name : '(item removido)'; sub = itemRef ? itemRef.type : 'ITEM';
-        } else if (p.kind === 'dclass') {
-            var dRef = fpFindDClass(p.refId);
-            label = dRef ? dRef.name : '(dossie removido)'; sub = dRef ? dRef.code : 'DOSSIE CLASSE-D';
-        } else if (p.kind === 'document') {
-            var docRef = fpFindDocument(p.refId);
-            label = docRef ? docRef.title : '(documento removido)'; sub = docRef ? (docRef.tag || 'DOCUMENTO') : 'DOCUMENTO';
-        } else {
-            label = p.name || 'PAPEL AVULSO'; sub = 'ANOTACAO';
-        }
+        var p = papers[j];
+        var lbl = notesPaperLabel(p), label = lbl.label, sub = lbl.sub;
         var rot = ((j * 37) % 7) - 3;
         var closeBtn = function(cls) { return '<button class="' + cls + '" onclick="event.stopPropagation(); notesDiscardPaper(\'' + p.id + '\')" title="Descartar">&times;</button>'; };
         if (p.format === 'sheet') {
@@ -3154,6 +3163,39 @@ function handDeliverInvItemTo(target) {
     var itemId = sel ? sel.value : '';
     if (!itemId) { alert('ESCOLHA UM ITEM PARA ENTREGAR.'); return; }
     if (handDeliverInvItemCore(target, itemId)) fpRenderView();
+}
+
+// Entrega um PAPEL do proprio QUADRO (dossie, documento ou papel avulso) pra
+// outro jogador — mesmo espirito do handDeliverInvItemCore, so' que em vez do
+// Inventario Pessoal mexe no quadro de PAPEIS (notesLoadPapers/notesSavePapers).
+// O papel sai do seu mural e chega no do outro jogador exatamente como era
+// (mesmo formato, mesma referencia), com o "De:" atualizado pra quem entregou.
+function handDeliverPaperCore(target, paperId) {
+    if (!target) { alert('JOGADOR INVALIDO.'); return false; }
+    var papers = notesLoadPapers();
+    var p = null, idx = -1;
+    for (var i = 0; i < papers.length; i++) if (papers[i].id === paperId) { p = papers[i]; idx = i; break; }
+    if (!p) { alert('PAPEL NAO ENCONTRADO NO SEU QUADRO.'); return false; }
+    if (typeof fbDB === 'undefined') { alert('SEM CONEXAO COM O BANCO DE DADOS.'); return false; }
+    var entry = {
+        kind: p.kind, refId: p.refId, name: p.name, desc: p.desc, format: p.format,
+        by: (user && user.nm) || userKey, ts: Date.now()
+    };
+    fbDB.ref('hand/gifts/' + target).push(entry);
+    papers.splice(idx, 1);
+    notesSavePapers(papers);
+    alert('ENTREGUE NA MAO DE ' + ((PASS[target] && PASS[target].nm) || target) + '.');
+    return true;
+}
+
+// Usada ao clicar direto no token de um jogador vizinho no mapa (le o papel
+// escolhido no <select id="handPaperSelect"> do dialogo aberto por
+// fpOpenGiveForPlayer, quando o modo e' 'paper').
+function handDeliverPaperTo(target) {
+    var sel = document.getElementById('handPaperSelect');
+    var paperId = sel ? sel.value : '';
+    if (!paperId) { alert('ESCOLHA UM PAPEL PARA ENTREGAR.'); return; }
+    if (handDeliverPaperCore(target, paperId)) fpRenderView();
 }
 
 // ============== BANCO DE DADOS SCP ==============
@@ -8834,6 +8876,15 @@ function fpHandModeButtons() {
 
 // Clique direto no token de um jogador no mapa: abre a entrega ja com o alvo
 // escolhido, sem precisar ir ao painel admin.
+// Jogador comum: so' pode entregar se estiver ao lado (fpNearPlayer ja' foi
+// checado antes de tornar o token clicavel, mas confere de novo aqui por
+// seguranca, caso a posicao tenha mudado entre um redesenho e outro).
+// Pode entregar tanto um item do INVENTARIO PESSOAL (SCPs/itens que carrega)
+// quanto um PAPEL do proprio QUADRO (dossies, documentos, papeis avulsos que
+// pegou) — ver _pGiveMode/fpRenderPlayerGiveBody.
+var _pGiveMode = 'item'; // 'item' | 'paper'
+function fpSetPGiveMode(m, key) { _pGiveMode = m; fpOpenGiveForPlayer(key); }
+
 function fpOpenGiveForPlayer(key) {
   var p = fbPlayers[key];
   var name = (p && p.nm) || key;
@@ -8850,26 +8901,53 @@ function fpOpenGiveForPlayer(key) {
     document.getElementById('md').classList.add('on');
     return;
   }
-  // Jogador comum: so' pode entregar se estiver ao lado (fpNearPlayer ja' foi
-  // checado antes de tornar o token clicavel, mas confere de novo aqui por
-  // seguranca, caso a posicao tenha mudado entre um redesenho e outro).
   if (!fpNearPlayer(key)) { alert('VOCE PRECISA ESTAR AO LADO DE ' + name.toUpperCase() + ' PARA ENTREGAR ALGO NA MAO.'); return; }
-  var list = loadInventory();
   var gh = '<div class="dv"><div class="dh"><h1>DAR PARA ' + fpFurnEsc(name) + '</h1></div>';
-  if (!list.length) {
-    gh += '<div style="text-align:center; padding:20px; color:var(--td); border:1px dashed var(--bd); margin-bottom:14px;">SEUS BOLSOS ESTAO VAZIOS — voce nao tem nenhum item no INVENTARIO PESSOAL pra entregar.</div>';
-  } else {
-    gh += '<div class="help-text" style="color:var(--td); font-size:0.75em; margin-bottom:12px;">Escolha um item do seu INVENTARIO PESSOAL para entregar direto na mao de ' + fpFurnEsc(name) + '. O item sai do seu inventario e vai para o dele.</div>';
-    gh += '<div class="fg"><label>Item</label><select id="handInvSelect" style="width:100%; background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:8px;">';
-    for (var i = 0; i < list.length; i++) gh += '<option value="' + list[i].id + '">' + fpFurnEsc(fpInvEntryLabel(list[i])) + '</option>';
-    gh += '</select></div>';
+  function pModeBtn(m, lab) {
+    var on = _pGiveMode === m;
+    return '<button class="btn btn-s" style="' + (on ? 'border-color:var(--y); color:var(--y);' : '') + '" onclick="fpSetPGiveMode(\'' + m + '\',\'' + key + '\')">' + lab + '</button>';
   }
-  gh += '<div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">' +
-    (list.length ? ('<button class="btn" onclick="handDeliverInvItemTo(\'' + key + '\')">ENTREGAR NA MAO</button>') : '') +
+  gh += '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">' +
+    pModeBtn('item', 'ITEM DO INVENTARIO') + pModeBtn('paper', 'PAPEL DO QUADRO') + '</div>';
+  gh += fpRenderPlayerGiveBody(key, name);
+  gh += '<div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">' + fpRenderPlayerGiveActionBtn(key) +
     '<button class="btn btn-s" onclick="fpRenderView()">VOLTAR A PLANTA</button></div></div>';
   document.getElementById('mt').textContent = 'DAR NA MAO: ' + name;
   document.getElementById('mb').innerHTML = gh;
   document.getElementById('md').classList.add('on');
+}
+
+function fpRenderPlayerGiveBody(key, name) {
+  if (_pGiveMode === 'paper') {
+    var papers = notesLoadPapers();
+    if (!papers.length) {
+      return '<div style="text-align:center; padding:20px; color:var(--td); border:1px dashed var(--bd); margin-bottom:14px;">SEU QUADRO ESTA VAZIO — voce nao tem nenhum papel/documento pra entregar.</div>';
+    }
+    var h = '<div class="help-text" style="color:var(--td); font-size:0.75em; margin-bottom:12px;">Escolha um papel do seu QUADRO para entregar direto na mao de ' + fpFurnEsc(name) + '. O papel sai do seu mural e vai para o dele.</div>';
+    h += '<div class="fg"><label>Papel</label><select id="handPaperSelect" style="width:100%; background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:8px;">';
+    for (var i = 0; i < papers.length; i++) {
+      var lbl = notesPaperLabel(papers[i]);
+      h += '<option value="' + papers[i].id + '">' + fpFurnEsc(lbl.sub) + ' — ' + fpFurnEsc(lbl.label) + '</option>';
+    }
+    h += '</select></div>';
+    return h;
+  }
+  var list = loadInventory();
+  if (!list.length) {
+    return '<div style="text-align:center; padding:20px; color:var(--td); border:1px dashed var(--bd); margin-bottom:14px;">SEUS BOLSOS ESTAO VAZIOS — voce nao tem nenhum item no INVENTARIO PESSOAL pra entregar.</div>';
+  }
+  var gh2 = '<div class="help-text" style="color:var(--td); font-size:0.75em; margin-bottom:12px;">Escolha um item do seu INVENTARIO PESSOAL para entregar direto na mao de ' + fpFurnEsc(name) + '. O item sai do seu inventario e vai para o dele.</div>';
+  gh2 += '<div class="fg"><label>Item</label><select id="handInvSelect" style="width:100%; background:rgba(0,20,0,0.5); border:1px solid var(--gd); color:var(--g); padding:8px;">';
+  for (var j = 0; j < list.length; j++) gh2 += '<option value="' + list[j].id + '">' + fpFurnEsc(fpInvEntryLabel(list[j])) + '</option>';
+  gh2 += '</select></div>';
+  return gh2;
+}
+
+function fpRenderPlayerGiveActionBtn(key) {
+  if (_pGiveMode === 'paper') {
+    return notesLoadPapers().length ? ('<button class="btn" onclick="handDeliverPaperTo(\'' + key + '\')">ENTREGAR NA MAO</button>') : '';
+  }
+  return loadInventory().length ? ('<button class="btn" onclick="handDeliverInvItemTo(\'' + key + '\')">ENTREGAR NA MAO</button>') : '';
 }
 
 // Entrega "como" o NPC que o Mestre esta controlando no momento — escolhe o
