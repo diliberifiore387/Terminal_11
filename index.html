@@ -9460,21 +9460,25 @@ function fpFurnitureSVG(ft, dir, color, s) {
     for (var twi = 4.5; twi <= 20.5; twi += 4) inner += '<line x1="' + twi + '" y1="4" x2="' + twi + '" y2="17" stroke="var(--t)" stroke-width="0.6" opacity="0.5"></line>';
     inner += '<circle cx="5" cy="18.5" r="1.4" fill="none" stroke="var(--t)" stroke-width="1"></circle><circle cx="19" cy="18.5" r="1.4" fill="none" stroke="var(--t)" stroke-width="1"></circle>';
   } else if (ft === 'helicopter') {
-    // Desenho recriado para ficar simetrico/centrado no quadrado 24x24 (cx=cy=12):
-    // circulo tracejado = raio de giro do rotor; asterisco vermelho = 3 pas do
-    // rotor principal partindo de um unico eixo; capsula branca = fuselagem
-    // (com um retangulo semi-transparente ao centro marcando o lugar do
-    // piloto/passageiro, no mesmo estilo do para-brisas dos outros veiculos);
-    // haste fina + circulo vermelho = cauda com rotor de cauda.
-    var hRotorY = cy - 4; // eixo do rotor principal
-    inner = '<circle cx="' + cx + '" cy="' + cy + '" r="10.5" fill="none" stroke="var(--r)" stroke-width="0.7" stroke-dasharray="1.5,2.5" opacity="0.5"></circle>' +
-            '<line x1="' + cx + '" y1="' + hRotorY + '" x2="' + cx + '" y2="1.5" stroke="var(--r)" stroke-width="1.1" opacity="0.85"></line>' +
-            '<line x1="' + cx + '" y1="' + hRotorY + '" x2="' + (cx + 8.5) + '" y2="' + (hRotorY + 5) + '" stroke="var(--r)" stroke-width="1.1" opacity="0.85"></line>' +
-            '<line x1="' + cx + '" y1="' + hRotorY + '" x2="' + (cx - 8.5) + '" y2="' + (hRotorY + 5) + '" stroke="var(--r)" stroke-width="1.1" opacity="0.85"></line>' +
-            '<rect x="' + (cx - 3.5) + '" y="' + hRotorY + '" width="7" height="9" rx="3.5" fill="none" stroke="var(--t)" stroke-width="1.2"></rect>' +
-            '<rect x="' + (cx - 2) + '" y="' + (hRotorY + 2) + '" width="4" height="4" rx="0.6" fill="var(--t)" opacity="0.14" stroke="var(--t)" stroke-width="0.5"></rect>' +
-            '<rect x="' + (cx - 0.6) + '" y="' + (hRotorY + 9) + '" width="1.2" height="4.5" fill="none" stroke="var(--t)" stroke-width="1"></rect>' +
-            '<circle cx="' + cx + '" cy="' + (hRotorY + 14.7) + '" r="1.2" fill="none" stroke="var(--r)" stroke-width="1"></circle>';
+    // Desenho recalibrado por medicao direta de pixels sobre a imagem de
+    // referencia: o eixo do rotor (hub) coincide com o centro da celula e
+    // com o centro do proprio circulo tracejado (disco do rotor, r=10.5); as
+    // 3 pas (vermelhas) partem do hub e tocam a borda do disco a 0/120/240
+    // graus, formando a "estrela de tres pontas"; a capsula (fuselagem)
+    // fica montada sobre o hub, com a maior parte do seu corpo acima dele;
+    // a cauda fina desce da base da capsula ate' um pequeno circulo
+    // vermelho vazado (rotor de cauda) cujo centro cai exatamente sobre a
+    // borda inferior do disco do rotor.
+    // vector-effect="non-scaling-stroke" trava a espessura das linhas em px
+    // reais da tela, para nao ficarem grossas quando o icone e' desenhado
+    // grande (defaultScale 900) — igual ao traco fino de um item 1x1 normal.
+    inner = '<circle cx="' + cx + '" cy="' + cy + '" r="10.5" fill="none" stroke="var(--r)" stroke-width="0.7" stroke-dasharray="1.5,2.5" opacity="0.5" vector-effect="non-scaling-stroke"></circle>' +
+            '<line x1="' + cx + '" y1="' + cy + '" x2="' + cx + '" y2="' + (cy - 10.5) + '" stroke="var(--r)" stroke-width="1.1" opacity="0.85" vector-effect="non-scaling-stroke"></line>' +
+            '<line x1="' + cx + '" y1="' + cy + '" x2="' + (cx + 9.09) + '" y2="' + (cy + 5.25) + '" stroke="var(--r)" stroke-width="1.1" opacity="0.85" vector-effect="non-scaling-stroke"></line>' +
+            '<line x1="' + cx + '" y1="' + cy + '" x2="' + (cx - 9.09) + '" y2="' + (cy + 5.25) + '" stroke="var(--r)" stroke-width="1.1" opacity="0.85" vector-effect="non-scaling-stroke"></line>' +
+            '<rect x="' + (cx - 2.71) + '" y="' + (cy - 6.6) + '" width="5.42" height="10.03" rx="2.71" fill="none" stroke="var(--t)" stroke-width="1.2" vector-effect="non-scaling-stroke"></rect>' +
+            '<rect x="' + (cx - 0.6) + '" y="' + (cy + 3.43) + '" width="1.2" height="5.88" fill="none" stroke="var(--t)" stroke-width="1" vector-effect="non-scaling-stroke"></rect>' +
+            '<circle cx="' + cx + '" cy="' + (cy + 10.5) + '" r="1.19" fill="none" stroke="var(--r)" stroke-width="1" vector-effect="non-scaling-stroke"></circle>';
   }
   var deg = typeof dir === 'number' ? dir : ({ n: 0, e: 90, s: 180, w: 270 }[dir] || 0);
   return '<svg width="' + s + '" height="' + s + '" viewBox="0 0 ' + R + ' ' + R + '" style="position:absolute; left:0; top:0; pointer-events:none; overflow:visible;"><g style="transform:rotate(' + deg + 'deg); transform-origin:50% 50%;">' + inner + '</g></svg>';
