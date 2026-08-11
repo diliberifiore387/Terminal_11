@@ -8715,8 +8715,9 @@ function fpPlayerMove(dx, dy) {
   if (nx < 0 || ny < 0 || nx >= floor.cols || ny >= floor.rows) return;
   var key = nx + '_' + ny;
   var cell = floor.cells[key];
-  if (cell && (cell.t === 'w' || cell.t === 'q' || cell.t === 'f' || (cell.t === 'm' && fpCellBlocks(cell)))) return; // parede, quadrado de cenario ou mobilia solida bloqueia
-  if (fpIsCellBlockedByFootprint(floor, nx, ny)) return; // objeto grande (veiculo/maquina redimensionado) cuja imagem "vaza" para esta celula vizinha
+  if (cell && (cell.t === 'w' || cell.t === 'q' || cell.t === 'f')) return; // parede ou quadrado de cenario bloqueia
+  if (fpIsCellBlockedByFootprint(floor, nx, ny)) return; // mobilia solida bloqueia esta celula (qualquer sobreposicao real — ver fpItemBlockedCellSet)
+  if (floor.izones && floor.izones[key]) return; // zona invisivel do Mestre: impossivel de pisar, so' ele a ve na planta
 
   // Cadeira/sofa/cama nao bloqueiam: o jogador "entra" nelas e fica sentado/deitado
   // ate' o proximo passo (que sai da celula e desfaz o estado sozinho).
@@ -8807,8 +8808,11 @@ function fpNpcMove(dx, dy) {
   if (!t || !floor) return;
   var nx = t.x + dx, ny = t.y + dy;
   if (nx < 0 || ny < 0 || nx >= floor.cols || ny >= floor.rows) return;
-  var cell = floor.cells[nx + '_' + ny];
-  if (cell && (cell.t === 'w' || cell.t === 'q' || cell.t === 'f' || (cell.t === 'm' && fpCellBlocks(cell)))) return;
+  var npcKey = nx + '_' + ny;
+  var cell = floor.cells[npcKey];
+  if (cell && (cell.t === 'w' || cell.t === 'q' || cell.t === 'f')) return;
+  if (fpIsCellBlockedByFootprint(floor, nx, ny)) return; // mesma regra de colisao usada para jogadores, para NPC e jogador nunca divergirem
+  if (floor.izones && floor.izones[npcKey]) return; // zona invisivel do Mestre bloqueia o NPC tambem
   t.x = nx; t.y = ny;
   fbNpcTokens[_npcControl.key] = t;
   if (typeof fbDB !== 'undefined') fbDB.ref('npcTokens/' + _npcControl.key).set(t);
@@ -9185,38 +9189,54 @@ function fpCellBlocks(cell) {
 }
 // Objetos grandes (veiculos/maquinas com slider de TAMANHO ate' 900%) sao
 // desenhados maiores que a propria celula onde foram colocados e "vazam"
-// visualmente por cima das celulas vizinhas — sem isto, um objeto solido
-// bem maior que 1 celula deixava o jogador atravessar a parte da imagem que
-// ultrapassa a celula de origem (so' a celula-base bloqueava). Esta funcao
-// calcula, em pixels, o retangulo realmente ocupado por cada item solido
-// (mesmo calculo de tamanho usado no render, fpCellsPerFootprint) e devolve
-// true se a celula (nx,ny) cair dentro do retangulo de QUALQUER item solido
-// de qualquer celula 'm' nas redondezas — assim a colisao acompanha o
-// tamanho visual real do objeto, nao so' a celula onde foi colocado.
-function fpItemFootprintRange(c, r, it) {
+// visualmente por cima das celulas vizinhas. Em vez de uma percentagem fixa
+// de cobertura (regra dos 80%, que deixava passar frestas visualmente
+// bloqueadas e causava a sensacao de "atravessar" mobilia solida), usamos
+// senso comum: QUALQUER sobreposicao real do retangulo do objeto com uma
+// celula ja basta pra bloquear essa celula — se da' pra ver o objeto ali,
+// nao da' pra pisar ali. So' ignoramos sobreposicoes infimas (ruido de
+// arredondamento de menos de 1px2, que nao representam objeto nenhum).
+// IMPORTANTE: o tamanho usado aqui tem de ser EXATAMENTE o mesmo tamanho em
+// pixels com que o objeto e' desenhado na tela (ver fpRenderGrid, bloco
+// cell.t === 'm') — quando varios objetos dividem a mesma celula o desenho
+// encolhe cada icone para 78% (iconSzGBase), e se a colisao nao aplicar o
+// mesmo fator o jogador ve uma coisa e esbarra em outra. Por isso o parametro
+// 'multi' abaixo espelha esse mesmo fator.
+function fpItemBlockedCellSet(c, r, it, multi) {
   var scale = (it.scale != null ? it.scale : 100);
-  var sizePx = FP_CELL * (scale / 100);
+  var baseSizePx = multi ? FP_CELL * 0.78 : FP_CELL; // mesmo fator de fpRenderGrid (iconSzGBase)
+  var sizePx = baseSizePx * (scale / 100);
   var centerX = c * FP_CELL + (it.x != null ? it.x : 50) / 100 * FP_CELL;
   var centerY = r * FP_CELL + (it.y != null ? it.y : 50) / 100 * FP_CELL;
   var half = sizePx / 2;
-  return {
-    minC: Math.floor((centerX - half) / FP_CELL), maxC: Math.floor((centerX + half - 0.01) / FP_CELL),
-    minR: Math.floor((centerY - half) / FP_CELL), maxR: Math.floor((centerY + half - 0.01) / FP_CELL)
-  };
+  var left = centerX - half, right = centerX + half, top = centerY - half, bottom = centerY + half;
+  var minC = Math.floor(left / FP_CELL), maxC = Math.floor((right - 0.01) / FP_CELL);
+  var minR = Math.floor(top / FP_CELL), maxR = Math.floor((bottom - 0.01) / FP_CELL);
+  var out = [];
+  for (var rr = minR; rr <= maxR; rr++) {
+    for (var cc = minC; cc <= maxC; cc++) {
+      var ox = Math.min(right, (cc + 1) * FP_CELL) - Math.max(left, cc * FP_CELL);
+      var oy = Math.min(bottom, (rr + 1) * FP_CELL) - Math.max(top, rr * FP_CELL);
+      var overlap = Math.max(0, ox) * Math.max(0, oy);
+      if (overlap > 1) out.push(cc + '_' + rr); // qualquer sobreposicao real bloqueia (senso comum)
+    }
+  }
+  return out;
 }
 function fpIsCellBlockedByFootprint(floor, nx, ny) {
   // raio de varrimento generoso o suficiente p/ cobrir o maior TAMANHO possivel (900% ~= 4.5 celulas p/ cada lado)
   var SCAN = 5;
+  var targetKey = nx + '_' + ny;
   for (var rr = Math.max(0, ny - SCAN); rr <= Math.min(floor.rows - 1, ny + SCAN); rr++) {
     for (var cc = Math.max(0, nx - SCAN); cc <= Math.min(floor.cols - 1, nx + SCAN); cc++) {
       var srcCell = floor.cells[cc + '_' + rr];
       if (!srcCell || srcCell.t !== 'm') continue;
       var srcItems = fpCellItems(srcCell);
+      var srcMulti = srcItems.length > 1;
       for (var i = 0; i < srcItems.length; i++) {
         var it = srcItems[i];
         if (!fpFurnDef(it.ft).blocks) continue;
-        var fp = fpItemFootprintRange(cc, rr, it);
-        if (nx >= fp.minC && nx <= fp.maxC && ny >= fp.minR && ny <= fp.maxR) return true;
+        if (fpItemBlockedCellSet(cc, rr, it, srcMulti).indexOf(targetKey) !== -1) return true;
       }
     }
   }
@@ -9701,6 +9721,13 @@ function fpRenderGrid(roomId, floorIdx, floor, editable) {
       }
       if (isSpawn) {
         inner += '<div style="position:absolute; left:1px; top:1px; font-size:0.55em; color:var(--g); pointer-events:none;" title="Ponto de entrada">&#9873;</div>';
+      }
+      // Zona invisivel ("impossivel de pisar"): bloqueia a passagem mas fica
+      // completamente invisivel para Niveis 1-5 — so' aparece (hachurado
+      // vermelho) para quem esta' editando a planta ou para o Mestre (Nivel 6)
+      // vendo a planta normalmente. Nao mexe no resto do desenho da celula.
+      if (floor.izones && floor.izones[key] && (editable || lvl >= 6)) {
+        inner += '<div style="position:absolute; left:0; top:0; width:100%; height:100%; background:repeating-linear-gradient(45deg, rgba(255,0,60,0.20), rgba(255,0,60,0.20) 4px, rgba(255,0,60,0.38) 4px, rgba(255,0,60,0.38) 8px); outline:1px dashed var(--r); outline-offset:-1px; box-sizing:border-box; pointer-events:none; z-index:9;" title="Zona invisivel (bloqueia passagem) — so\' o Mestre ve isto"></div>';
       }
       if (editable) onclick = ' onmousedown="fpCellDown(event,' + c + ',' + r + ')" ontouchstart="fpCellDown(event,' + c + ',' + r + ')" data-fpc="' + c + '" data-fpr="' + r + '"';
       else if (npc && !_npcHasToken) onclick = ' onclick="fpNpcInfo(' + c + ',' + r + ')"';
@@ -10365,7 +10392,7 @@ function fpRenderEditor() {
     '<button class="btn btn-s" onclick="fpRenameFloor()">RENOMEAR ANDAR</button></div>';
 
   h += '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">' +
-    toolBtn('w', 'PAREDE') + toolBtn('d', 'PORTA') + toolBtn('s', 'ESCADA') + toolBtn('x', 'SETA (SAIR P/ AREA)') + toolBtn('q', 'QUADRADO') + toolBtn('m', 'MOBÍLIA (ADICIONAR)') + toolBtn('ma', 'AJUSTAR/ROTACIONAR') + toolBtn('n', 'NPC') + toolBtn('p', 'ENTRADA') + toolBtn('e', 'APAGAR (CHAO)') + '</div>';
+    toolBtn('w', 'PAREDE') + toolBtn('d', 'PORTA') + toolBtn('s', 'ESCADA') + toolBtn('x', 'SETA (SAIR P/ AREA)') + toolBtn('q', 'QUADRADO') + toolBtn('m', 'MOBÍLIA (ADICIONAR)') + toolBtn('ma', 'AJUSTAR/ROTACIONAR') + toolBtn('n', 'NPC') + toolBtn('p', 'ENTRADA') + toolBtn('iz', 'ZONA INVISÍVEL (SÓ MESTRE)') + toolBtn('e', 'APAGAR (CHAO)') + '</div>';
 
   if (_fpEdit.tool === 'w') {
     h += '<div style="color:var(--gd); font-size:0.72em; margin-bottom:4px;">FORMATO DA PAREDE:</div>';
@@ -10460,6 +10487,8 @@ function fpRenderEditor() {
     h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">' + curFHelp + ' Cada clique numa celula ADICIONA uma copia do objeto selecionado ali (comeca centralizada) — use a ferramenta AJUSTAR/ROTACIONAR para arrastar cada objeto dentro do quadrado, girar livremente ou remover. Qualquer jogador pode clicar na peca colocada para ler a descricao.</div>';
   } else if (_fpEdit.tool === 'ma') {
     h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Clique numa celula com objetos ja colocados para abrir o ajuste fino: arraste cada objeto dentro do quadrado (estilo mapa top-view), gire livremente com o controle deslizante e remova o que nao quiser, tudo sem sair da celula.</div>';
+  } else if (_fpEdit.tool === 'iz') {
+    h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Clique (ou arraste) para marcar celulas como IMPOSSIVEIS DE PISAR: bloqueiam a passagem de jogadores e NPCs como se fossem solidas, mas ficam totalmente INVISIVEIS para Niveis 1-5 — so\' o Mestre (Nivel 6) ve a marcacao (hachurado vermelho), tanto aqui no editor como na planta normal. Nao apaga nem substitui o que ja estiver na celula (parede, mobilia, chao vazio...) — fica por cima, como uma camada extra. Para remover, use APAGAR (CHAO) na mesma celula.</div>';
   }
 
   h += '<div id="fpEditGridWrap" style="margin:10px 0; overflow:auto; max-width:100%;">' + fpRenderGrid(_fpEdit.roomId, _fpEdit.floorIdx, floor, true) + '</div>';
@@ -10542,7 +10571,7 @@ function fpUpdateEditGrid() {
 // pedido explicitamente pra parede, que era a mais repetitiva de desenhar. Porta,
 // escada, seta de saida e NPC continuam so' no clique unico (abrem prompt/form, entao
 // arrastar por cima delas nao faria sentido e ficaria pedindo confirmacao a cada celula).
-var FP_DRAG_TOOLS = { w: 1, q: 1, m: 1, e: 1 };
+var FP_DRAG_TOOLS = { w: 1, q: 1, m: 1, e: 1, iz: 1 };
 var _fpPaintActive = false, _fpPaintLastKey = null;
 
 function fpCellDown(e, c, r) {
@@ -10764,6 +10793,10 @@ function fpCellClick(c, r) {
   if (_fpEdit.tool === 'e') {
     delete floor.cells[key];
     delete floor.npcs[key];
+    if (floor.izones) delete floor.izones[key]; // APAGAR (CHAO) limpa tambem a zona invisivel, se houver
+  } else if (_fpEdit.tool === 'iz') {
+    if (!floor.izones) floor.izones = {};
+    floor.izones[key] = true; // nao mexe em floor.cells[key] — fica por cima do que ja estiver la
   } else if (_fpEdit.tool === 'w') {
     floor.cells[key] = { t: 'w', shape: _fpEdit.wallShape || 'auto' };
   } else if (_fpEdit.tool === 'd') {
