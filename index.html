@@ -6774,6 +6774,55 @@ function mapSetZoom(z) {
 }
 function mapZoomBy(delta) { mapSetZoom(_mapZoom + delta); }
 
+// ============== PINCH-TO-ZOOM (dois dedos) NO MAPA ==============
+// Deixa afastar/aproximar o mapa arrastando dois dedos na tela, alem dos
+// botoes -/+ ja existentes. Durante o gesto so mexemos no CSS "zoom" do
+// #mapCanvas (rapido, sem redesenhar nada) pra ficar fluido; so' ao soltar os
+// dedos e' que chamamos mapSetZoom de verdade (salva no localStorage e
+// redesenha o mapa por completo, recalculando o enquadramento/scroll).
+var _mapPinch = null; // { startDist, startZoom, liveZoom } enquanto o gesto acontece
+
+function mapPinchDist(touches) {
+  var dx = touches[0].clientX - touches[1].clientX;
+  var dy = touches[0].clientY - touches[1].clientY;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+function mapPinchStart(e) {
+  if (e.touches.length !== 2) return;
+  _mapPinch = { startDist: mapPinchDist(e.touches), startZoom: _mapZoom, liveZoom: _mapZoom };
+}
+function mapPinchMove(e) {
+  if (!_mapPinch || e.touches.length !== 2) return;
+  e.preventDefault(); // impede o navegador de dar zoom na pagina toda junto
+  var dist = mapPinchDist(e.touches);
+  if (!dist || !_mapPinch.startDist) return;
+  var z = _mapPinch.startZoom * (dist / _mapPinch.startDist);
+  z = Math.round(Math.max(MAP_ZOOM_MIN, Math.min(MAP_ZOOM_MAX, z)) * 20) / 20;
+  _mapPinch.liveZoom = z;
+  var canvas = document.getElementById('mapCanvas');
+  if (canvas) canvas.style.zoom = z;
+  var lbl = document.getElementById('mapZoomLbl');
+  if (lbl) lbl.textContent = Math.round(z * 100) + '%';
+}
+function mapPinchEnd(e) {
+  if (!_mapPinch) return;
+  if (e.touches.length >= 2) return; // ainda tem 2+ dedos na tela, continua o gesto
+  var z = _mapPinch.liveZoom;
+  _mapPinch = null;
+  if (z !== undefined && z !== null && z !== _mapZoom) mapSetZoom(z); // salva e redesenha oficialmente
+}
+// Reanexa os listeners de pinca sempre que o mapa e redesenhado, ja que o
+// #mapViewport e recriado do zero (innerHTML) a cada renderMap.
+function mapBindPinchZoom() {
+  var vp = document.getElementById('mapViewport');
+  if (!vp) return;
+  vp.style.touchAction = 'pan-x pan-y'; // deixa rolar com 1 dedo, mas tira o zoom nativo da pagina com 2 dedos aqui dentro
+  vp.addEventListener('touchstart', mapPinchStart, { passive: true });
+  vp.addEventListener('touchmove', mapPinchMove, { passive: false });
+  vp.addEventListener('touchend', mapPinchEnd, { passive: true });
+  vp.addEventListener('touchcancel', mapPinchEnd, { passive: true });
+}
+
 // Retorna todas as salas DO MAPA ATIVO: as fixas do codigo (so no Site-11) + as
 // adicionadas pelo Administrador (Nivel 6+), guardadas no mapState daquele mapa.
 function mapAllRooms() {
@@ -7278,7 +7327,7 @@ function renderMap(c) {
   h += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">' +
     '<span style="color:var(--td); font-size:0.72em; letter-spacing:2px;">ZOOM:</span>' +
     '<button class="btn btn-s" onclick="mapZoomBy(-' + MAP_ZOOM_STEP + ')" title="Diminuir zoom">&#8722;</button>' +
-    '<span style="color:var(--g); font-size:0.8em; min-width:44px; text-align:center;">' + Math.round(_mapZoom * 100) + '%</span>' +
+    '<span id="mapZoomLbl" style="color:var(--g); font-size:0.8em; min-width:44px; text-align:center;">' + Math.round(_mapZoom * 100) + '%</span>' +
     '<button class="btn btn-s" onclick="mapZoomBy(' + MAP_ZOOM_STEP + ')" title="Aumentar zoom">&#43;</button>' +
     (_mapZoom !== 1 ? '<button class="btn btn-s" onclick="mapSetZoom(1)">RESETAR</button>' : '') +
     '</div>';
@@ -7383,6 +7432,7 @@ function renderMap(c) {
   h += '</div>';
   c.innerHTML = h;
   mapScrollToCurrent(coords[cur.id], offX, offY);
+  mapBindPinchZoom();
 }
 
 // Centra a area visivel do mapa na posicao atual do jogador, sem precisar
