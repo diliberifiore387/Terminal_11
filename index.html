@@ -3284,6 +3284,24 @@ function vItem(id) {
     var x = null;
     for (var i = 0; i < db.length; i++) if (db[i].id === id) { x = db[i]; break; }
     if (!x) return;
+    // Blindagem: normaliza campos que podem ter vindo ausentes/invalidos (ex:
+    // importacao manual, edicao externa) — sem isso, um documento com "tags"
+    // ou "imgs" faltando travava aqui silenciosamente e o popup nunca abria,
+    // sem nenhum erro visivel na tela (so' no console). Mesma logica do
+    // "TENTAR REPARAR E RECARREGAR" que ja existe pra lista, so' que aplicada
+    // no momento de abrir o documento individual.
+    if (!Array.isArray(x.tags)) x.tags = [];
+    if (!Array.isArray(x.imgs)) x.imgs = [];
+    if (!Array.isArray(x.wireframes)) x.wireframes = [];
+    if (!Array.isArray(x.allowed)) x.allowed = [];
+    if (typeof x.cnt !== 'string') x.cnt = x.cnt ? String(x.cnt) : '';
+    if (typeof x.desc !== 'string') x.desc = x.desc ? String(x.desc) : '';
+    if (typeof x.add !== 'string') x.add = x.add ? String(x.add) : '';
+    if (typeof x.num !== 'string') x.num = x.num ? String(x.num) : ('SCP-' + x.id);
+    if (typeof x.tit !== 'string') x.tit = x.tit ? String(x.tit) : '(sem titulo)';
+    if (typeof x.cls !== 'string') x.cls = x.cls || 'Safe';
+    if (!x.dt) x.dt = new Date().toISOString();
+    try {
     var ce = lvl >= 1, cd = lvl >= 5; // Nível 1 pode editar
     var t = '';
     for (var i = 0; i < x.tags.length; i++) t += '<span style="display:inline-block; background:rgba(0,255,65,0.05); border:1px solid var(--bd); padding:2px 8px; margin:2px; font-size:0.78em; color:var(--td);">' + x.tags[i] + '</span>';
@@ -3328,6 +3346,10 @@ function vItem(id) {
     document.getElementById('mt').textContent = 'DOCUMENTO ' + x.num;
     document.getElementById('mb').innerHTML = h;
     document.getElementById('md').classList.add('on');
+    } catch (e) {
+        console.error('ERRO AO ABRIR DOCUMENTO:', e);
+        alert('ERRO AO ABRIR ESTE DOCUMENTO.\n\nDetalhe tecnico: ' + (e && e.message ? e.message : e) + '\n\nTenta editar o documento (se tiveres nivel de acesso) e salvar de novo — isso costuma corrigir.');
+    }
 }
 
 // Nomes de exibicao de quem esta liberado a ver um documento (para a tela do Mestre).
@@ -7384,6 +7406,13 @@ function renderMap(c) {
       label = ''; boxColor = 'transparent'; textColor = 'transparent';
     }
     var showName = isVisited || isCur;
+    // Sala totalmente escondida (nunca visitada e nem adjacente a onde o
+    // jogador esta agora): antes isso ainda desenhava um quadrado com fundo
+    // escuro semitransparente (mesmo com borda "transparent"), o que deixava
+    // ver a posicao de salas que o jogador nem deveria saber que existem.
+    // Fora do modo de edicao do Mestre, essas salas nem entram no HTML.
+    var hidden = !_mapDragMode && !isCur && !isVisited && !isAdj;
+    if (hidden) continue;
     if (_mapDragMode) {
       // No modo de edicao, TUDO fica visivel (mesmo areas nunca exploradas) para o
       // Administrador poder organizar o mapa inteiro, e nada e' clicavel pra entrar —
