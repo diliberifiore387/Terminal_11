@@ -1948,8 +1948,12 @@ function startClock() {
 function loadDB() {
     try {
         var s = localStorage.getItem('scpDB_v2');
-        if (s) db = JSON.parse(s);
-        else { db = defaultDB(); saveDB(); }
+        // NUNCA salvar/empurrar pro Firebase so' por causa de um localStorage
+        // vazio (aparelho novo, cache limpo, aba anonima, etc.) — isso ja
+        // sobrescreveu o banco de dados real de todo mundo antes. So usamos os
+        // exemplos padrao na memoria, ate o Firebase (worldSyncStart, que roda
+        // depois do login) trazer os dados verdadeiros e substituir isso aqui.
+        db = s ? JSON.parse(s) : defaultDB();
     } catch(e) { db = defaultDB(); }
     // Migracao: documentos salvos antes de existir "interv" (pode ser entrevistado) ganham false por padrao
     for (var i = 0; i < db.length; i++) if (typeof db[i].interv !== 'boolean') db[i].interv = false;
@@ -1995,8 +1999,10 @@ function defaultDB() {
 function loadItems() {
     try {
         var s = localStorage.getItem('scpITEMS_v1');
-        if (s) items = JSON.parse(s);
-        else { items = defaultItems(); saveItems(); }
+        // Mesma correcao do loadDB(): nao empurrar pro Firebase so por causa de
+        // localStorage vazio — deixa o Firebase (depois do login) trazer os
+        // itens reais e substituir isso.
+        items = s ? JSON.parse(s) : defaultItems();
     } catch(e) { items = defaultItems(); }
     // Migracao: itens salvos antes de existir "usosMax" ganham o maximo igual ao valor atual
     var needsSave = false;
@@ -2028,8 +2034,10 @@ function defaultItems() {
 function loadDClass() {
     try {
         var s = localStorage.getItem('scpDCLASS_v1');
-        if (s) dclass = JSON.parse(s);
-        else { dclass = defaultDClass(); saveDClass(); }
+        // Mesma correcao do loadDB(): nao empurrar pro Firebase so por causa de
+        // localStorage vazio — deixa o Firebase (depois do login) trazer os
+        // dados reais e substituir isso.
+        dclass = s ? JSON.parse(s) : defaultDClass();
     } catch(e) { dclass = defaultDClass(); }
 }
 function saveDClass() { try { localStorage.setItem('scpDCLASS_v1', JSON.stringify(dclass)); } catch(e) {} worldPush('dclass', dclass); }
@@ -2085,8 +2093,10 @@ function saveInterviewLogs() { try { localStorage.setItem('scpINTERVIEWLOGS_v1',
 function loadLabCards() {
     try {
         var s = localStorage.getItem('scpLAB_v1');
-        if (s) labCards = JSON.parse(s);
-        else { labCards = defaultLabCards(); saveLabCards(); }
+        // Mesma correcao do loadDB(): nao empurrar pro Firebase so por causa de
+        // localStorage vazio — deixa o Firebase (depois do login) trazer as
+        // cartas reais e substituir isso.
+        labCards = s ? JSON.parse(s) : defaultLabCards();
     } catch(e) { labCards = defaultLabCards(); }
 }
 function saveLabCards() { try { localStorage.setItem('scpLAB_v1', JSON.stringify(labCards)); } catch(e) {} worldPush('labCards', labCards); }
