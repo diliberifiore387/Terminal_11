@@ -124,6 +124,10 @@ body { background:var(--bg); color:var(--g); font-family:'Share Tech Mono',monos
 .md { display:none; position:fixed; top:0;left:0; width:100%;height:100%; background:rgba(0,0,0,0.9); z-index:5000; justify-content:center; align-items:center; padding:20px; }
 .md.on { display:flex; }
 .mbox { background:var(--bg2); border:1px solid var(--gd); width:100%; max-width:700px; max-height:85vh; overflow-y:auto; }
+/* Usado pelo editor/visualizador de plantas: a janela cresce pra caber o grid
+   inteiro (mesmo redimensionado pra mais linhas/colunas) sem precisar de um
+   scroll pequeno dentro de outro scroll — ver mdSetWide(). */
+.mbox-wide { max-width:96vw; max-height:94vh; }
 .mh { background:rgba(0,30,0,0.5); padding:14px 18px; border-bottom:1px solid var(--bd); display:flex; justify-content:space-between; align-items:center; }
 .mh span { color:var(--g); letter-spacing:2px; font-size:0.85em; }
 .mc { padding:22px; }
@@ -1316,6 +1320,7 @@ body.simple-mode .help-text{display:none !important;}
                 <div class="tsi" data-nav="lab" onclick="go('lab')">&gt; LABORATORIO</div>
                 <div class="tsi" data-nav="logs" onclick="go('logs')">&gt; LOGS DE CAMPO</div>
                 <div class="tsi" data-nav="map" onclick="go('map')">&gt; MAPA</div>
+                <div class="tsi" onclick="mapOpenPopup(); closeSidebar();">&gt; MAPA (JANELA FLUTUANTE)</div>
                 <div class="tsi" id="nmapmgr" onclick="mapOpenMapManager(); closeSidebar();" style="display:none;">&gt; GERENCIAR MAPAS</div>
                 <div class="tsi" data-nav="notes" onclick="go('notes')">&gt; NOTAS</div>
                 <div class="tsi" data-nav="chat" onclick="go('chat')">&gt; COMUNICACOES <span id="chatBadge" style="display:none; background:var(--r); color:#fff; border-radius:8px; font-size:0.75em; padding:1px 6px; margin-left:6px;"></span></div>
@@ -2161,7 +2166,7 @@ function go(page) {
     if (page === 'db') renderDB(c);
     else if (page === 'lab') { labTab = 'scp'; renderLab(c); }
     else if (page === 'logs') renderLogs(c);
-    else if (page === 'map') renderMap(c);
+    else if (page === 'map') { _mapRenderTarget = 'tcnt'; document.getElementById('md').classList.remove('on'); mdSetWide(false); renderMap(c); }
     else if (page === 'notes') renderNotes(c);
     else if (page === 'chat') { chatActiveThread = null; renderChat(c); chatUpdateBadge(); }
     else if (page === 'radio') renderRadio(c);
@@ -3356,6 +3361,7 @@ function vItem(id) {
     document.getElementById('mt').textContent = 'DOCUMENTO ' + x.num;
     document.getElementById('mb').innerHTML = h;
     document.getElementById('md').classList.add('on');
+    mdSetWide(false);
     } catch (e) {
         console.error('ERRO AO ABRIR DOCUMENTO:', e);
         alert('ERRO AO ABRIR ESTE DOCUMENTO.\n\nDetalhe tecnico: ' + (e && e.message ? e.message : e) + '\n\nTenta editar o documento (se tiveres nivel de acesso) e salvar de novo — isso costuma corrigir.');
@@ -3444,7 +3450,15 @@ function fmt(t) {
             .replace(/\n/g, '<br>');
 }
 
-function xmd() { document.getElementById('md').classList.remove('on'); _fpFurnitureModalKey = null; _invModalOpen = false; }
+function xmd() { document.getElementById('md').classList.remove('on'); _fpFurnitureModalKey = null; _invModalOpen = false; mdSetWide(false); _mapRenderTarget = 'tcnt'; }
+// Alarga (ou devolve ao tamanho normal) a janela popup (#md .mbox). Usado pelo
+// editor/visualizador de plantas, que precisa de mais espaco pra caber o grid
+// sem obrigar a rolar dentro de uma caixinha pequena dentro do popup.
+function mdSetWide(on) {
+  var el = document.querySelector('#md .mbox');
+  if (!el) return;
+  if (on) el.classList.add('mbox-wide'); else el.classList.remove('mbox-wide');
+}
 
 // Bloco de checkboxes "quem pode ver este documento", embutido no formulario —
 // so' aparece pro Mestre (Nivel 6). Segue o mesmo esquema de x.allowed usado em
@@ -6724,6 +6738,77 @@ var DEFAULT_FLOORPLANS = {};
 
 var mapState = null;
 var _mapAdjCache = null;
+// Controla ONDE o mapa "vive" agora: na aba normal (#tcnt) ou na janela popup
+// (#mb). So' um dos dois fica de facto interativo por vez (os dois usam os
+// MESMOS ids internos — #mapViewport, #mapCanvas, etc. — entao nao da pra ter
+// os dois abertos e "ao vivo" simultaneamente sem duplicar ids). Qualquer acao
+// que mude o mapa (mover, zoom, arrastar area...) chama mapRenderCurrent(),
+// que redesenha sempre no alvo certo — os mais de 15 pontos do codigo que antes
+// chamavam renderMap(tcnt) diretamente agora passam por aqui.
+var _mapRenderTarget = 'tcnt';
+function mapRenderCurrent() {
+  var el = document.getElementById(_mapRenderTarget);
+  if (el) renderMap(el);
+}
+// Abre o mapa geral como janela popup (fica por cima do que estiveres a ver,
+// sem precisar de trocar de aba) — util pro Mestre ou jogador quererem
+// consultar o mapa enquanto olham um documento, planta ou outra coisa.
+function mapOpenPopup() {
+  _mapRenderTarget = 'mb';
+  document.getElementById('mt').textContent = 'MAPA';
+  document.getElementById('md').classList.add('on');
+  mdSetWide(true);
+  mapRenderCurrent();
+}
+var _mapJoystickOpen = false;
+function mapToggleJoystick() { _mapJoystickOpen = !_mapJoystickOpen; mapRenderCurrent(); }
+// Monta o "joystick" de movimentacao: pega as areas LIGADAS a atual (mesma regra
+// de mapTryEnter) e posiciona cada uma numa grade de bussola 3x3 (N/S/E/W e
+// diagonais), conforme o angulo real delas no mapa (coords, o mesmo layout usado
+// pra desenhar as linhas) — assim os botoes ficam na mesma direcao visual da
+// area no mapa de verdade, mesmo sem precisar acertar o toque no marcador
+// pequeno. Se duas ligacoes calharem na mesma direcao, a extra aparece numa
+// lista "outras ligacoes" abaixo da grade, em vez de se perderem.
+function mapJoystickHTML(cur, coords) {
+  var adj = mapAdj()[cur.id] || [];
+  var curC = coords[cur.id];
+  var slots = { N: null, NE: null, E: null, SE: null, S: null, SW: null, W: null, NW: null };
+  var overflow = [];
+  for (var i = 0; i < adj.length; i++) {
+    var nId = adj[i], nRoom = mapRoomById(nId), nC = coords[nId];
+    if (!nRoom || !nC || !curC) continue;
+    var dx = nC.x - curC.x, dy = nC.y - curC.y;
+    var ang = Math.atan2(dy, dx) * 180 / Math.PI; // -180..180, 0=E, 90=S (y cresce pra baixo)
+    if (ang < 0) ang += 360;
+    var dir = (ang >= 337.5 || ang < 22.5) ? 'E' : (ang < 67.5) ? 'SE' : (ang < 112.5) ? 'S' : (ang < 157.5) ? 'SW' :
+      (ang < 202.5) ? 'W' : (ang < 247.5) ? 'NW' : (ang < 292.5) ? 'N' : 'NE';
+    if (!slots[dir]) slots[dir] = nRoom; else overflow.push(nRoom);
+  }
+  var arrows = { N: '&#8593;', NE: '&#8599;', E: '&#8594;', SE: '&#8600;', S: '&#8595;', SW: '&#8601;', W: '&#8592;', NW: '&#8598;' };
+  function slotBtn(dir) {
+    var r = slots[dir];
+    if (!r) return '<div></div>';
+    var known = !!(mapState.visited && mapState.visited[r.id]);
+    var lbl = known ? r.name : '?';
+    return '<button class="btn btn-s" style="display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 4px; line-height:1.15;" onclick="mapTryEnter(\'' + r.id + '\')" title="' + fpFurnEsc(lbl) + '"><span style="font-size:1.3em;">' + arrows[dir] + '</span><span style="font-size:0.62em; max-width:78px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + fpFurnEsc(lbl) + '</span></button>';
+  }
+  var h = '<div style="border:1px solid var(--bd); padding:14px; margin-bottom:14px; background:rgba(0,20,0,0.4); max-width:280px;">';
+  h += '<div style="display:grid; grid-template-columns:repeat(3,1fr); gap:6px; text-align:center;">' +
+    slotBtn('NW') + slotBtn('N') + slotBtn('NE') +
+    slotBtn('W') + '<button class="btn btn-s" style="opacity:0.5; cursor:default;" disabled>&#9679;</button>' + slotBtn('E') +
+    slotBtn('SW') + slotBtn('S') + slotBtn('SE') +
+    '</div>';
+  if (overflow.length) {
+    h += '<div style="color:var(--td); font-size:0.68em; margin-top:10px;">OUTRAS LIGACOES:</div><div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:4px;">';
+    for (var j = 0; j < overflow.length; j++) {
+      var known2 = !!(mapState.visited && mapState.visited[overflow[j].id]);
+      h += '<button class="btn btn-s" onclick="mapTryEnter(\'' + overflow[j].id + '\')">' + fpFurnEsc(known2 ? overflow[j].name : '?') + '</button>';
+    }
+    h += '</div>';
+  }
+  h += '</div>';
+  return h;
+}
 var _mapLayoutCache = null;
 var _mapTreeEdgeKeys = null; // ligacoes que formam a "arvore" principal do layout (ver mapComputeLayout)
 
@@ -6802,7 +6887,7 @@ function mapSetZoom(z) {
   z = Math.round(Math.max(MAP_ZOOM_MIN, Math.min(MAP_ZOOM_MAX, z)) * 20) / 20;
   _mapZoom = z;
   mapSaveZoom();
-  renderMap(document.getElementById('tcnt'));
+  mapRenderCurrent();
 }
 function mapZoomBy(delta) { mapSetZoom(_mapZoom + delta); }
 
@@ -6857,9 +6942,24 @@ function mapBindPinchZoom() {
 
 // Retorna todas as salas DO MAPA ATIVO: as fixas do codigo (so no Site-11) + as
 // adicionadas pelo Administrador (Nivel 6+), guardadas no mapState daquele mapa.
+// Aplica as personalizacoes do Nivel 6 (mapState.roomOverrides) em cima das areas
+// BASE do Site-11 (MAP_ROOMS, fixas no codigo) — sem isso, editar uma area original
+// nao tinha onde gravar a mudanca. So mistura os campos que a edicao realmente
+// muda (nome/categoria/nivel/tamanho/descricao); nunca copia manualPos daqui, ja
+// que a posicao das areas base continua controlada pelo layout automatico ou por
+// mapState.posOverrides (o modo de arrastar que ja existia).
+function mapApplyRoomOverride(room) {
+  var ov = mapState && mapState.roomOverrides && mapState.roomOverrides[room.id];
+  if (!ov) return room;
+  var merged = {};
+  for (var k in room) merged[k] = room[k];
+  for (var k2 in ov) merged[k2] = ov[k2];
+  return merged;
+}
 function mapAllRooms() {
   var custom = (mapState && mapState.customRooms) ? mapState.customRooms : [];
-  return mapBaseRooms().concat(custom);
+  var base = mapBaseRooms().map(mapApplyRoomOverride);
+  return base.concat(custom);
 }
 function mapAllLinks() {
   var custom = (mapState && mapState.customLinks) ? mapState.customLinks : [];
@@ -6884,11 +6984,11 @@ function defaultMapState() {
   var home = mapHomeRoomId();
   var visited = {};
   if (home) visited[home] = true;
-  return { current: home, log: [], imgs: {}, floorplans: cloneDefaultFloorplans(), visited: visited, customRooms: [], customLinks: [], posOverrides: {}, labFlags: {}, labItems: {}, labScp: {}, labDclass: {} };
+  return { current: home, log: [], imgs: {}, floorplans: cloneDefaultFloorplans(), visited: visited, customRooms: [], customLinks: [], posOverrides: {}, roomOverrides: {}, labFlags: {}, labItems: {}, labScp: {}, labDclass: {} };
 }
 // Estado "em branco" usado ao criar um mapa novo do zero (sem nenhuma area ainda) —
 // diferente de defaultMapState() porque nao depende do mapa ativo no momento da chamada.
-function mapBlankState() { return { current: null, log: [], imgs: {}, floorplans: {}, visited: {}, customRooms: [], customLinks: [], posOverrides: {}, labFlags: {}, labItems: {}, labScp: {}, labDclass: {} }; }
+function mapBlankState() { return { current: null, log: [], imgs: {}, floorplans: {}, visited: {}, customRooms: [], customLinks: [], posOverrides: {}, roomOverrides: {}, labFlags: {}, labItems: {}, labScp: {}, labDclass: {} }; }
 
 // Data de "hoje" no formato AAAA-MM-DD.
 function todayStr() { return new Date().toISOString().slice(0, 10); }
@@ -6943,6 +7043,7 @@ function loadMapState() {
   if (!mapState.customRooms) mapState.customRooms = [];
   if (!mapState.customLinks) mapState.customLinks = [];
   if (!mapState.posOverrides) mapState.posOverrides = {};
+  if (!mapState.roomOverrides) mapState.roomOverrides = {};
   if (!mapState.labFlags) mapState.labFlags = {};
   if (!mapState.labItems) mapState.labItems = {};
   if (!mapState.labScp) mapState.labScp = {};
@@ -7001,7 +7102,7 @@ function mapExplorerSyncStart() {
     mapState.log = (v && v.log) ? v.log : (mapState.log || []);
     try { localStorage.setItem(mapStorageKey(MAP_ACTIVE_ID), JSON.stringify(mapState)); } catch (e) {}
     mapInvalidateCache();
-    if (nav === 'map') renderMap(document.getElementById('tcnt'));
+    if (nav === 'map') mapRenderCurrent();
   };
   ref.on('value', cb);
   _mapExplorerRef = ref; _mapExplorerCb = cb;
@@ -7237,7 +7338,7 @@ function mapAdjustStat(key, dir) {
   else if (key === 'cr') rpState.cr = Math.max(0, (typeof rpState.cr === 'number' ? rpState.cr : 0) + dir * step);
   saveRPState();
   rpUpdateStatus();
-  if (nav === 'map') renderMap(document.getElementById('tcnt'));
+  if (nav === 'map') mapRenderCurrent();
 }
 
 function mapSetStat(key) {
@@ -7252,7 +7353,7 @@ function mapSetStat(key) {
   else if (key === 'cr') rpState.cr = Math.max(0, val);
   saveRPState();
   rpUpdateStatus();
-  if (nav === 'map') renderMap(document.getElementById('tcnt'));
+  if (nav === 'map') mapRenderCurrent();
 }
 
 // Desenha uma ligacao entre duas salas como duas linhas retas em angulo reto
@@ -7356,13 +7457,17 @@ function renderMap(c) {
 
   h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Areas ja exploradas ficam acesas no mapa. Areas conectadas ainda nao percorridas aparecem apenas como uma linha ate um marcador <span style="color:var(--y);">?</span> desconhecido — clique para caminhar ate la. Marcadores <span style="color:var(--r);">&#128274;</span> exigem nivel de acesso ou o PIN de qualificacao daquele nivel (Nivel 6 nao tem PIN — so o Mestre libera). Linhas <span style="color:var(--b);">azuis tracejadas</span> sao atalhos que podem passar perto de outras salas no caminho — elas NAO ligam a essas salas, so as duas pontas do tracejado se conectam.</div>';
 
-  h += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">' +
+  h += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;">' +
     '<span style="color:var(--td); font-size:0.72em; letter-spacing:2px;">ZOOM:</span>' +
     '<button class="btn btn-s" onclick="mapZoomBy(-' + MAP_ZOOM_STEP + ')" title="Diminuir zoom">&#8722;</button>' +
     '<span id="mapZoomLbl" style="color:var(--g); font-size:0.8em; min-width:44px; text-align:center;">' + Math.round(_mapZoom * 100) + '%</span>' +
     '<button class="btn btn-s" onclick="mapZoomBy(' + MAP_ZOOM_STEP + ')" title="Aumentar zoom">&#43;</button>' +
     (_mapZoom !== 1 ? '<button class="btn btn-s" onclick="mapSetZoom(1)">RESETAR</button>' : '') +
+    '<button class="btn btn-s" style="margin-left:10px; ' + (_mapJoystickOpen ? 'border-color:var(--g); color:var(--g);' : '') + '" onclick="mapToggleJoystick()" title="Movimentacao rapida">&#127918; MOVER</button>' +
+    (_mapRenderTarget === 'tcnt' ? '<button class="btn btn-s" onclick="mapOpenPopup()" title="Abrir o mapa numa janela flutuante">&#10064; JANELA FLUTUANTE</button>' : '') +
     '</div>';
+
+  if (_mapJoystickOpen) h += mapJoystickHTML(cur, coords);
 
   h += '<div id="mapViewport" style="position:relative; width:100%; max-height:560px; overflow:auto; border:1px solid var(--bd); background:rgba(0,10,0,0.55);">';
   var gridBg = _mapDragMode ?
@@ -7493,7 +7598,7 @@ function mapScrollToCurrent(curCoord, offX, offY) {
 function mapToggleDragMode() {
   if (lvl < 6) { alert('ACESSO NEGADO: SOMENTE O ADMINISTRADOR (NIVEL 6) PODE MOVER AREAS.'); return; }
   _mapDragMode = !_mapDragMode;
-  renderMap(document.getElementById('tcnt'));
+  mapRenderCurrent();
 }
 
 // Inicio do arrasto: guarda a posicao de partida do node (e do rotulo, que anda junto)
@@ -7571,7 +7676,7 @@ function mapNodeDragEnd(e) {
   saveMapState();
   mapPushShared('posOverrides');
   mapInvalidateCache();
-  renderMap(document.getElementById('tcnt'));
+  mapRenderCurrent();
 }
 
 // Duplo clique/toque numa area (so' no modo de edicao): devolve essa area especifica
@@ -7583,7 +7688,7 @@ function mapResetNodePos(id) {
   saveMapState();
   mapPushShared('posOverrides');
   mapInvalidateCache();
-  renderMap(document.getElementById('tcnt'));
+  mapRenderCurrent();
 }
 
 // Apaga TODAS as posicoes exatas de uma vez, devolvendo o mapa inteiro ao calculo
@@ -7596,7 +7701,7 @@ function mapResetAllPositions() {
   saveMapState();
   mapPushShared('posOverrides');
   mapInvalidateCache();
-  renderMap(document.getElementById('tcnt'));
+  mapRenderCurrent();
 }
 
 function mapTryEnter(id) {
@@ -7615,7 +7720,7 @@ function mapTryEnter(id) {
     if (room.lvl > MAP_PIN_MAX_LVL) {
       alert('ACESSO NEGADO: ' + (known ? '"' + room.name + '"' : 'Esta area') + ' requer Nivel ' + room.lvl + '.\nAreas de Nivel ' + room.lvl + ' nao aceitam PIN — so o Mestre pode liberar a entrada manualmente.');
       mapLog(known ? room.name : ('Area desconhecida (Nv' + room.lvl + ')'), 'NEGADO');
-      renderMap(document.getElementById('tcnt'));
+      mapRenderCurrent();
       return;
     }
     var pin = prompt('ACESSO NEGADO: ' + (known ? '"' + room.name + '"' : 'Esta area') + ' requer Nivel ' + room.lvl + '.\nSe esta acompanhado por pessoal autorizado, insira o PIN de qualificacao Nivel ' + room.lvl + ':');
@@ -7623,7 +7728,7 @@ function mapTryEnter(id) {
     if (pin !== mapSessionPin(todayStr(), room.lvl)) {
       mapLog(known ? room.name : ('Area desconhecida (Nv' + room.lvl + ')'), 'NEGADO');
       alert('PIN INCORRETO. ACESSO NEGADO.');
-      renderMap(document.getElementById('tcnt'));
+      mapRenderCurrent();
       return;
     }
     mapLog(room.name, 'ESCOLTADO (PIN Nv' + room.lvl + ')');
@@ -7667,7 +7772,7 @@ function mapAnimateMove(fromId, toId, onDone) {
     mapState.visited[toId] = true;
     saveMapState();
     refreshLabNavLabel();
-    renderMap(document.getElementById('tcnt'));
+    mapRenderCurrent();
     if (typeof onDone === 'function') onDone();
   }
 
@@ -7914,7 +8019,7 @@ function mapApplyTeleport(cmd) {
   try { document.getElementById('md').classList.remove('on'); } catch (e) {}
   _fpViewRoomId = null;
   go('map');
-  renderMap(document.getElementById('tcnt'));
+  mapRenderCurrent();
   alert('VOCE FOI TELETRANSPORTADO PARA "' + room.name + '" PELO MESTRE.');
   mapShowFloorplan(cmd.roomId);
 }
@@ -8191,8 +8296,8 @@ function fpUpdateFurnitureBadges() {
 // como a base de SCPs/itens/Classe-D ja faz — sem precisar dar reload na pagina.
 // (mapState.current/visited/log ficam DE FORA de proposito: cada jogador tem sua
 // propria posicao no mapa geral, essa parte continua so local por aparelho.)
-var MAP_SHARED_FIELDS = ['floorplans', 'imgs', 'customRooms', 'customLinks', 'posOverrides', 'labFlags', 'labItems', 'labScp', 'labDclass'];
-var _mapSharedFirstCallback = { floorplans: true, imgs: true, customRooms: true, customLinks: true, posOverrides: true, labFlags: true, labItems: true, labScp: true, labDclass: true };
+var MAP_SHARED_FIELDS = ['floorplans', 'imgs', 'customRooms', 'customLinks', 'posOverrides', 'roomOverrides', 'labFlags', 'labItems', 'labScp', 'labDclass'];
+var _mapSharedFirstCallback = { floorplans: true, imgs: true, customRooms: true, customLinks: true, posOverrides: true, roomOverrides: true, labFlags: true, labItems: true, labScp: true, labDclass: true };
 
 // Chamado depois de qualquer edicao do Mestre num desses campos (alem de
 // saveMapState(), que so grava local). Cada mapa tem sua propria "pasta" no
@@ -8384,8 +8489,18 @@ function mapCreateNew() {
       // duplicar A PARTIR do Site-11, "achata" essas salas fixas dentro de
       // customRooms/customLinks do novo mapa, pra elas nao sumirem na copia.
       if (dupFromId === 'site-11') {
-        seedState.customRooms = MAP_ROOMS.concat(seedState.customRooms || []);
+        // Aplica as personalizacoes (roomOverrides) do Site-11 ANTES de achatar,
+        // senao a copia perderia qualquer nome/descricao editada e voltaria pro
+        // texto original — MAP_ROOMS aqui e' sempre o texto de fabrica.
+        var _baseWithOv = (seedState.roomOverrides ? MAP_ROOMS.map(function(r) {
+          var ov = seedState.roomOverrides[r.id];
+          if (!ov) return r;
+          var m = {}; for (var k in r) m[k] = r[k]; for (var k2 in ov) m[k2] = ov[k2];
+          return m;
+        }) : MAP_ROOMS);
+        seedState.customRooms = _baseWithOv.concat(seedState.customRooms || []);
         seedState.customLinks = MAP_LINKS.concat(seedState.customLinks || []);
+        seedState.roomOverrides = {}; // ja' foi incorporado acima, o mapa novo nao usa mais isso
       }
     } else {
       seedState = mapBlankState();
@@ -9134,22 +9249,19 @@ var FP_PALETTE = [
   { id: 'nv', lab: 'Azul-Marinho', hex: '#1b2a4a', group: 'Neutras e Extras' }
 ];
 function fpPaletteHex(id) { for (var i = 0; i < FP_PALETTE.length; i++) if (FP_PALETTE[i].id === id) return FP_PALETTE[i].hex; return 'var(--g)'; }
-// Gera os botoes de escolha de cor, agrupados por categoria (Primarias/Secundarias/
-// Terciarias/Neutras). onclickFnName e' o nome (string) da funcao global chamada
-// com o id da cor ao clicar num swatch; roundSwatch desenha o indicador redondo
-// (bom para tokens de jogador) em vez de quadrado (bom para o quadrado de cenario).
+// Gera os botoes de escolha de cor: uma paleta COMPACTA, so' os quadradinhos de
+// cor lado a lado (sem texto nem agrupamento) — passa o mouse/segura pra ver o
+// nome. onclickFnName e' o nome (string) da funcao global chamada com o id da
+// cor ao clicar num swatch; roundSwatch desenha o indicador redondo (bom para
+// tokens de jogador) em vez de quadrado (bom para o quadrado de cenario).
 function fpRenderPaletteSwatches(selectedId, onclickFnName, roundSwatch) {
-  var h = '', lastGroup = null;
+  var h = '<div style="display:flex; gap:5px; flex-wrap:wrap; margin-bottom:6px;">';
   for (var i = 0; i < FP_PALETTE.length; i++) {
     var col = FP_PALETTE[i];
-    if (col.group !== lastGroup) {
-      if (lastGroup !== null) h += '</div>';
-      h += '<div style="color:var(--gd); font-size:0.65em; letter-spacing:1px; margin:8px 0 4px;">' + col.group.toUpperCase() + '</div>';
-      h += '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">';
-      lastGroup = col.group;
-    }
     var on = selectedId === col.id;
-    h += '<button class="btn btn-s" style="display:inline-flex; align-items:center; gap:5px; ' + (on ? 'border-color:var(--y); color:var(--y);' : '') + '" onclick="' + onclickFnName + '(\'' + col.id + '\')"><span style="display:inline-block; width:11px; height:11px; ' + (roundSwatch ? 'border-radius:50%;' : '') + ' background:' + col.hex + '; border:1px solid rgba(255,255,255,0.3);"></span>' + col.lab + '</button>';
+    h += '<button type="button" title="' + col.lab + '" onclick="' + onclickFnName + '(\'' + col.id + '\')" style="width:26px; height:26px; padding:0; cursor:pointer; ' +
+      (roundSwatch ? 'border-radius:50%;' : 'border-radius:3px;') +
+      ' background:' + col.hex + '; border:2px solid ' + (on ? 'var(--y)' : 'rgba(255,255,255,0.25)') + '; box-shadow:' + (on ? '0 0 6px var(--y)' : 'none') + ';"></button>';
   }
   h += '</div>';
   return h;
@@ -9167,14 +9279,20 @@ var FP_SQUARE_DIRS = [
 ];
 function fpSquareDirLabel(id) { for (var i = 0; i < FP_SQUARE_DIRS.length; i++) if (FP_SQUARE_DIRS[i].id === id) return FP_SQUARE_DIRS[i].lab; return ''; }
 // Devolve o style (position/size) do bloco preenchido dentro da celula, conforme
-// forma (inteiro/meio) e direcao (so' relevante para meio quadrado).
+// forma (inteiro/meio) e direcao (so' relevante para meio quadrado). O preenchimento
+// "estoura" 1px pra fora nos lados que tocam a borda da propria celula — a celula
+// tem uma bordinha fina de 1px (a linha de grade), e sem esse ajuste o preenchimento
+// ficava so' na area interna a ela, deixando uma fresta visivel entre dois quadrados
+// vizinhos da mesma cor (parecendo "desligados" um do outro). Nos lados onde o corte
+// e' interno a mesma celula (ex.: a divisao de um meio-quadrado), o encaixe fica exato,
+// sem estourar, pra manter a divisao nitida.
 function fpSquareBlockStyle(shape, dir) {
   if (shape === 'center') return 'left:0; top:0; width:100%; height:100%; clip-path:polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);';
-  if (shape !== 'half') return 'left:0; top:0; width:100%; height:100%;';
-  if (dir === 'n') return 'left:0; top:0; width:100%; height:50%;';
-  if (dir === 's') return 'left:0; top:50%; width:100%; height:50%;';
-  if (dir === 'w') return 'left:0; top:0; width:50%; height:100%;';
-  return 'left:50%; top:0; width:50%; height:100%;'; // 'e'
+  if (shape !== 'half') return 'left:-1px; top:-1px; width:calc(100% + 2px); height:calc(100% + 2px);';
+  if (dir === 'n') return 'left:-1px; top:-1px; width:calc(100% + 2px); height:50%;';
+  if (dir === 's') return 'left:-1px; top:50%; width:calc(100% + 2px); height:calc(50% + 1px);';
+  if (dir === 'w') return 'left:-1px; top:-1px; width:calc(50% + 1px); height:calc(100% + 2px);';
+  return 'left:50%; top:-1px; width:calc(50% + 1px); height:calc(100% + 2px);'; // 'e'
 }
 
 // ============== MOBILIA (top-view vetorial, sem emojis) ==============
@@ -9194,8 +9312,8 @@ function fpSquareBlockStyle(shape, dir) {
 var FP_CAT = { FUNC: 'Funcional (armazenamento/SCP)', MOB: 'Mobiliário', SEG: 'Segurança e infraestrutura', SUP: 'Suprimentos e armazenamento', EXT: 'Área externa', VEIC: 'Veículos e objetos grandes' };
 var FP_FURNITURE_TYPES = [
   // ---- Funcional (mantidos por serem base de mecanicas: inventario e SCP) ----
-  { id: 'table',   lab: 'Mesa',       blocks: true,  storage: true, cat: FP_CAT.FUNC },
-  { id: 'shelf',   lab: 'Estante',    blocks: true,  storage: true, cat: FP_CAT.FUNC },
+  { id: 'table',   lab: 'Mesa',       blocks: true,  storage: true, connect: true, cat: FP_CAT.FUNC },
+  { id: 'shelf',   lab: 'Estante',    blocks: true,  storage: true, connect: true, cat: FP_CAT.FUNC },
   { id: 'cabinet', lab: 'Armário',    blocks: true,  storage: true, cat: FP_CAT.FUNC },
   { id: 'scpobj',  lab: 'Objeto SCP', blocks: true,  scpObj: true,  cat: FP_CAT.FUNC },
   // ---- Mobiliário ----
@@ -9217,7 +9335,7 @@ var FP_FURNITURE_TYPES = [
   { id: 'sign_bio',       lab: 'Placa perigo biológico', blocks: false, cat: FP_CAT.SEG },
   { id: 'sign_warn',      lab: 'Placa de aviso',      blocks: false, cat: FP_CAT.SEG },
   { id: 'vent',           lab: 'Duto de ventilação',  blocks: false, cat: FP_CAT.SEG },
-  { id: 'barrier_concrete',lab: 'Barreira de concreto', blocks: true, cat: FP_CAT.SEG },
+  { id: 'barrier_concrete',lab: 'Barreira de concreto', blocks: true, connect: true, cat: FP_CAT.SEG },
   { id: 'serverrack',     lab: 'Rack de servidores',  blocks: true,  cat: FP_CAT.SEG },
   { id: 'computer',       lab: 'Terminal de computador', blocks: true, cat: FP_CAT.SEG },
   // ---- Suprimentos e armazenamento ----
@@ -9226,7 +9344,7 @@ var FP_FURNITURE_TYPES = [
   { id: 'pallet',      lab: 'Palete',             blocks: false, cat: FP_CAT.SUP },
   { id: 'gascylinder', lab: 'Cilindro de gás',    blocks: false, cat: FP_CAT.SUP },
   { id: 'toolbox',     lab: 'Caixa de ferramentas', blocks: false, cat: FP_CAT.SUP },
-  { id: 'workbench',   lab: 'Bancada de trabalho', blocks: true, cat: FP_CAT.SUP },
+  { id: 'workbench',   lab: 'Bancada de trabalho', blocks: true, connect: true, cat: FP_CAT.SUP },
   // ---- Área externa ----
   { id: 'sandbags',  lab: 'Sacos de areia', blocks: false, cat: FP_CAT.EXT },
   { id: 'generator', lab: 'Gerador diesel', blocks: true,  cat: FP_CAT.EXT },
@@ -9799,6 +9917,26 @@ function fpRenderGrid(roomId, floorIdx, floor, editable) {
           var fHasG = !!(fItemsG && fItemsG.length);
           inner += '<div id="fpFurnBadge_' + key + '" style="position:absolute; right:1px; top:1px; width:6px; height:6px; border-radius:50%; background:var(--y); box-shadow:0 0 4px var(--y); display:' + (fHasG ? 'block' : 'none') + '; pointer-events:none;"></div>';
         }
+        // Ligacao visual entre mobilia do MESMO tipo em celulas vizinhas (ex.: duas
+        // mesas lado a lado "encostam" uma na outra em vez de ficarem soltas com um
+        // vao no meio). So' conecta quando cada uma das duas celulas tem UM UNICO
+        // objeto (evita ambiguidade em celulas com varios itens sobrepostos), e so'
+        // pros tipos marcados com connect:true no catalogo. Verifica so' os vizinhos
+        // da DIREITA e de BAIXO — o vizinho da ESQUERDA/CIMA ja desenha essa mesma
+        // ponte quando ELE for renderizado (evita desenhar a ponte duas vezes).
+        if (itemsG.length === 1 && fpFurnDef(itemsG[0].ft).connect) {
+          var _connFt = itemsG[0].ft;
+          var _neighE = floor.cells[(c + 1) + '_' + r];
+          var _neighS = floor.cells[c + '_' + (r + 1)];
+          var _neighEItems = _neighE && _neighE.t === 'm' ? fpCellItems(_neighE) : [];
+          var _neighSItems = _neighS && _neighS.t === 'm' ? fpCellItems(_neighS) : [];
+          if (_neighEItems.length === 1 && _neighEItems[0].ft === _connFt) {
+            inner += '<div style="position:absolute; right:-1px; top:32%; width:calc(18% + 1px); height:36%; background:rgba(120,120,120,0.35); border-top:1px solid rgba(255,255,255,0.15); border-bottom:1px solid rgba(0,0,0,0.3); pointer-events:none; z-index:3;" title="Encostada"></div>';
+          }
+          if (_neighSItems.length === 1 && _neighSItems[0].ft === _connFt) {
+            inner += '<div style="position:absolute; bottom:-1px; left:32%; height:calc(18% + 1px); width:36%; background:rgba(120,120,120,0.35); border-left:1px solid rgba(255,255,255,0.15); border-right:1px solid rgba(0,0,0,0.3); pointer-events:none; z-index:3;" title="Encostada"></div>';
+          }
+        }
       }
       // So' desenha o pontinho estatico do NPC se ele ainda NAO tiver um token
       // proprio ativo (fbNpcTokens) — assim que o Mestre assume o controle uma
@@ -9851,6 +9989,7 @@ function fpRenderView() {
   var roomId = _fpViewRoomId;
   var r = mapRoomById(roomId);
   if (!r) return;
+  mdSetWide(true);
   var plan = fpGetPlan(roomId);
   // Guarda a posicao de scroll da planta ANTES de substituir o HTML — uma troca
   // completa de innerHTML reseta o scroll (e em celulares costuma resetar o
@@ -10592,6 +10731,7 @@ function fpRenderEditor() {
   document.getElementById('mt').textContent = 'EDITOR DE PLANTA';
   document.getElementById('mb').innerHTML = h;
   document.getElementById('md').classList.add('on');
+  mdSetWide(true);
 }
 
 function fpSetTool(t) { if (!_fpEdit) return; _fpEdit.tool = t; fpRenderEditor(); }
@@ -11122,7 +11262,7 @@ function mapResetPosition() {
   if (!mapState) loadMapState();
   mapState.current = mapHomeRoomId();
   saveMapState();
-  renderMap(document.getElementById('tcnt'));
+  mapRenderCurrent();
 }
 
 // Apaga TUDO o que ja foi explorado (usado, por exemplo, antes de mostrar o mapa
@@ -11133,7 +11273,7 @@ function mapResetExploration() {
   mapState.visited = home ? (function() { var v = {}; v[home] = true; return v; })() : {};
   mapState.current = home;
   saveMapState();
-  renderMap(document.getElementById('tcnt'));
+  mapRenderCurrent();
   alert('HISTORICO DE EXPLORACAO APAGADO.');
 }
 
@@ -11142,7 +11282,7 @@ function mapClearLog() {
   if (!confirm('LIMPAR TODO O REGISTRO DE ACESSOS?')) return;
   mapState.log = [];
   saveMapState();
-  renderMap(document.getElementById('tcnt'));
+  mapRenderCurrent();
 }
 
 // ============== ADICIONAR LOCALIZACAO (APENAS NIVEL 6 — O ADMINISTRADOR) ==============
@@ -11250,17 +11390,35 @@ function mapSaveNewRoom(e) {
 }
 
 // ============== GERENCIAR LOCALIZACOES (Nivel 6: editar/mover/apagar) ==============
-// So as localizacoes CRIADAS pelo proprio sistema de "+ ADICIONAR LOCALIZACAO"
-// (mapState.customRooms) podem ser alteradas/apagadas por aqui — as areas
-// originais do Site-11 fazem parte do mapa base e nao entram nesta lista.
+// As localizacoes CRIADAS pelo sistema "+ ADICIONAR LOCALIZACAO" (mapState.customRooms)
+// podem ser editadas, movidas ou apagadas normalmente. As areas BASE do Site-11 (fixas
+// no codigo, MAP_ROOMS) tambem aparecem aqui e podem ter nome/categoria/nivel/tamanho/
+// descricao personalizados (mapState.roomOverrides) — mas nao apagadas nem "ancoradas"
+// por aqui, ja que fazem parte da estrutura fixa do mapa (a posicao delas continua
+// ajustavel pelo modo de arrastar, que ja existia).
 function mapOpenManageRoomsForm() {
   if (lvl < 6) { alert('ACESSO NEGADO: SOMENTE O ADMINISTRADOR (NIVEL 6) PODE GERENCIAR LOCALIZACOES.'); return; }
   if (!mapState) loadMapState();
   var custom = mapState.customRooms || [];
+  var base = mapBaseRooms();
+  var overrides = mapState.roomOverrides || {};
   var h = '<div style="max-width:650px;">' +
     '<div style="color:#b967ff; font-size:0.75em; letter-spacing:3px; margin-bottom:6px;">&gt; ACESSO DE ADMINISTRADOR (NIVEL 6)</div>' +
-    '<div style="color:var(--gd); font-size:0.9em; letter-spacing:2px; margin-bottom:18px;">GERENCIAR LOCALIZACOES CRIADAS — ' + fpFurnEsc(mapActiveMapName()).toUpperCase() + '</div>' +
-    '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:16px;">So localizacoes adicionadas por aqui' + (MAP_ACTIVE_ID === 'site-11' ? ' (nao as areas originais do Site-11)' : '') + ' podem ser editadas, movidas ou apagadas.</div>';
+    '<div style="color:var(--gd); font-size:0.9em; letter-spacing:2px; margin-bottom:18px;">GERENCIAR LOCALIZACOES — ' + fpFurnEsc(mapActiveMapName()).toUpperCase() + '</div>';
+  if (base.length) {
+    h += '<div style="color:var(--td); font-size:0.72em; letter-spacing:1px; margin:16px 0 8px;">AREAS BASE DO SITE (podem ser editadas, mas nao apagadas)</div>';
+    for (var i = 0; i < base.length; i++) {
+      var brm = mapApplyRoomOverride(base[i]);
+      var isOv = !!overrides[base[i].id];
+      h += '<div style="border:1px solid var(--bd); padding:12px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">' +
+        '<div><div style="color:var(--t);">' + brm.name + (isOv ? ' <span style="color:#b967ff; font-size:0.7em;">[PERSONALIZADA]</span>' : '') + '</div><div style="color:var(--td); font-size:0.72em;">' + mapLvlLabel(brm.lvl) + ' &nbsp;&#183;&nbsp; ' + (MAP_CAT_LABELS[brm.cat] || brm.cat) + '</div></div>' +
+        '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
+        '<button class="btn btn-s" onclick="mapOpenEditRoomForm(\'' + base[i].id + '\')">EDITAR</button>' +
+        (isOv ? '<button class="btn btn-s btn-r" onclick="mapResetRoomOverride(\'' + base[i].id + '\')">RESTAURAR PADRAO</button>' : '') +
+        '</div></div>';
+    }
+  }
+  h += '<div style="color:var(--td); font-size:0.72em; letter-spacing:1px; margin:16px 0 8px;">LOCALIZACOES CRIADAS</div>';
   if (!custom.length) {
     h += '<div style="text-align:center; padding:30px 20px; color:var(--td); border:1px dashed var(--bd);">Nenhuma localizacao personalizada foi criada ainda.</div>';
   } else {
@@ -11284,19 +11442,18 @@ function mapOpenEditRoomForm(id) {
   if (lvl < 6) { alert('ACESSO NEGADO.'); return; }
   if (!mapState) loadMapState();
   var custom = mapState.customRooms || [];
-  var rm = null;
+  var rm = null, isBase = false;
   for (var i = 0; i < custom.length; i++) if (custom[i].id === id) rm = custom[i];
-  if (!rm) { alert('LOCALIZACAO NAO ENCONTRADA (so localizacoes criadas pelo Nivel 6 podem ser editadas/movidas).'); return; }
-
-  var rooms = mapAllRooms();
-  var roomOpts = '';
-  for (var i = 0; i < rooms.length; i++) {
-    if (rooms[i].id === id) continue; // nao pode ancorar em si mesma
-    roomOpts += '<option value="' + rooms[i].id + '"' + ((rm.manualPos && rm.manualPos.anchor === rooms[i].id) ? ' selected' : '') + '>' + rooms[i].name + ' [' + mapLvlShort(rooms[i].lvl) + ']</option>';
+  if (!rm) {
+    // Nao e' uma localizacao criada — tenta achar entre as areas BASE do site
+    // (MAP_ROOMS), ja com qualquer personalizacao anterior aplicada.
+    var baseList = mapBaseRooms();
+    for (var j = 0; j < baseList.length; j++) if (baseList[j].id === id) { rm = mapApplyRoomOverride(baseList[j]); isBase = true; }
   }
+  if (!rm) { alert('LOCALIZACAO NAO ENCONTRADA.'); return; }
+
   var catOpts = '';
   for (var key in MAP_CAT_LABELS) catOpts += '<option value="' + key + '"' + (rm.cat === key ? ' selected' : '') + '>' + MAP_CAT_LABELS[key] + '</option>';
-  var dirCur = (rm.manualPos && rm.manualPos.dir) || 'auto';
   var sizeLabs = { s: 'Pequena', m: 'Media', l: 'Grande' };
   var sizeOpts = '';
   for (var sk in sizeLabs) sizeOpts += '<option value="' + sk + '"' + (rm.size === sk ? ' selected' : '') + '>' + sizeLabs[sk] + '</option>';
@@ -11306,42 +11463,75 @@ function mapOpenEditRoomForm(id) {
   var h = '<div style="max-width:650px;">' +
     '<div style="color:#b967ff; font-size:0.75em; letter-spacing:3px; margin-bottom:6px;">&gt; ACESSO DE ADMINISTRADOR (NIVEL 6)</div>' +
     '<div style="color:var(--gd); font-size:0.9em; letter-spacing:2px; margin-bottom:18px;">EDITAR LOCALIZACAO — ' + rm.name + '</div>' +
-    '<form onsubmit="mapSaveEditRoom(event,\'' + id + '\')">' +
+    '<form onsubmit="mapSaveEditRoom(event,\'' + id + '\',' + isBase + ')">' +
     '<div class="fg"><label>Nome da Area</label><input type="text" id="mename" required value="' + escAttr(rm.name) + '"></div>' +
     '<div class="fr"><div class="fg"><label>Categoria</label><select id="mecat" onchange="mapToggleLvlField(\'mecat\',\'melvlWrap\')">' + catOpts + '</select></div>' +
     '<div class="fg" id="melvlWrap" style="display:' + (MAP_CAT_NO_LVL[rm.cat] ? 'none' : '') + ';"><label>Nivel de Acesso Exigido</label><select id="melvl">' + lvlOpts + '</select></div></div>' +
     '<div class="fg"><label>Tamanho (uso visual)</label><select id="mesize">' + sizeOpts + '</select></div>' +
-    '<div class="fg"><label>Descricao</label><textarea id="medesc" required>' + (rm.desc || '') + '</textarea></div>' +
-    '<div class="help-text" style="color:var(--td); font-size:0.72em; margin:10px 0;">Mover a localizacao no mapa: escolha uma area de ancora e uma direcao — a posicao dela no mapa geral e recalculada a partir dai. "Automatica" devolve o posicionamento ao calculo padrao do sistema.</div>' +
-    '<div class="fg"><label>Ancorar posicao a partir de</label><select id="meanchor">' + roomOpts + '</select></div>' +
-    '<div class="fg"><label>Direcao a partir da ancora</label><select id="medir">' +
-    '<option value="auto"' + (dirCur === 'auto' ? ' selected' : '') + '>Automatica (o sistema escolhe)</option>' +
-    '<option value="N"' + (dirCur === 'N' ? ' selected' : '') + '>Norte (acima)</option>' +
-    '<option value="S"' + (dirCur === 'S' ? ' selected' : '') + '>Sul (abaixo)</option>' +
-    '<option value="E"' + (dirCur === 'E' ? ' selected' : '') + '>Leste (direita)</option>' +
-    '<option value="W"' + (dirCur === 'W' ? ' selected' : '') + '>Oeste (esquerda)</option>' +
-    '</select></div>' +
-    '<div style="display:flex; gap:10px; margin-top:18px;">' +
+    '<div class="fg"><label>Descricao</label><textarea id="medesc" required>' + (rm.desc || '') + '</textarea></div>';
+
+  if (isBase) {
+    h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin:10px 0;">Esta e uma area BASE do site — nao pode ser apagada nem "ancorada" a outra por aqui. Para mover a posicao dela no mapa, usa o modo de arrastar (edicao de posicoes) que ja existe.</div>';
+  } else {
+    var rooms = mapAllRooms();
+    var roomOpts = '';
+    for (var i = 0; i < rooms.length; i++) {
+      if (rooms[i].id === id) continue; // nao pode ancorar em si mesma
+      roomOpts += '<option value="' + rooms[i].id + '"' + ((rm.manualPos && rm.manualPos.anchor === rooms[i].id) ? ' selected' : '') + '>' + rooms[i].name + ' [' + mapLvlShort(rooms[i].lvl) + ']</option>';
+    }
+    var dirCur = (rm.manualPos && rm.manualPos.dir) || 'auto';
+    h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin:10px 0;">Mover a localizacao no mapa: escolha uma area de ancora e uma direcao — a posicao dela no mapa geral e recalculada a partir dai. "Automatica" devolve o posicionamento ao calculo padrao do sistema.</div>' +
+      '<div class="fg"><label>Ancorar posicao a partir de</label><select id="meanchor">' + roomOpts + '</select></div>' +
+      '<div class="fg"><label>Direcao a partir da ancora</label><select id="medir">' +
+      '<option value="auto"' + (dirCur === 'auto' ? ' selected' : '') + '>Automatica (o sistema escolhe)</option>' +
+      '<option value="N"' + (dirCur === 'N' ? ' selected' : '') + '>Norte (acima)</option>' +
+      '<option value="S"' + (dirCur === 'S' ? ' selected' : '') + '>Sul (abaixo)</option>' +
+      '<option value="E"' + (dirCur === 'E' ? ' selected' : '') + '>Leste (direita)</option>' +
+      '<option value="W"' + (dirCur === 'W' ? ' selected' : '') + '>Oeste (esquerda)</option>' +
+      '</select></div>';
+  }
+
+  h += '<div style="display:flex; gap:10px; margin-top:18px;">' +
     '<button type="submit" class="btn">SALVAR ALTERACOES</button>' +
     '<button type="button" class="btn btn-r" onclick="mapOpenManageRoomsForm()">CANCELAR</button></div></form></div>';
 
   document.getElementById('tcnt').innerHTML = h;
 }
 
-function mapSaveEditRoom(e, id) {
+function mapSaveEditRoom(e, id, isBase) {
   e.preventDefault();
   if (lvl < 6) { alert('ACESSO NEGADO.'); return; }
-  if (!mapState || !mapState.customRooms) return;
+  if (!mapState) return;
+  var name = document.getElementById('mename').value.trim();
+  if (!name) return;
+  var cat = document.getElementById('mecat').value;
+  var lvlVal = MAP_CAT_NO_LVL[cat] ? 0 : (parseInt(document.getElementById('melvl').value, 10) || 1);
+  var size = document.getElementById('mesize').value;
+  var desc = document.getElementById('medesc').value.trim();
+
+  if (isBase) {
+    // Area base do Site-11: a mudanca vai para roomOverrides, nunca mexe em
+    // MAP_ROOMS (que e' fixo no codigo) nem em manualPos (posicao continua
+    // controlada pelo layout automatico ou pelo modo de arrastar).
+    if (!mapState.roomOverrides) mapState.roomOverrides = {};
+    mapState.roomOverrides[id] = { name: name, cat: cat, lvl: lvlVal, size: size, desc: desc };
+    saveMapState();
+    mapPushShared('roomOverrides');
+    mapInvalidateCache();
+    alert('LOCALIZACAO "' + name + '" ATUALIZADA.');
+    mapOpenManageRoomsForm();
+    return;
+  }
+
+  if (!mapState.customRooms) return;
   var rm = null;
   for (var i = 0; i < mapState.customRooms.length; i++) if (mapState.customRooms[i].id === id) rm = mapState.customRooms[i];
   if (!rm) return;
-  var name = document.getElementById('mename').value.trim();
-  if (!name) return;
   rm.name = name;
-  rm.cat = document.getElementById('mecat').value;
-  rm.lvl = MAP_CAT_NO_LVL[rm.cat] ? 0 : (parseInt(document.getElementById('melvl').value, 10) || rm.lvl);
-  rm.size = document.getElementById('mesize').value;
-  rm.desc = document.getElementById('medesc').value.trim();
+  rm.cat = cat;
+  rm.lvl = lvlVal;
+  rm.size = size;
+  rm.desc = desc;
   var anchor = document.getElementById('meanchor').value;
   var dir = document.getElementById('medir').value;
   if (anchor && dir && dir !== 'auto') rm.manualPos = { anchor: anchor, dir: dir };
@@ -11351,6 +11541,19 @@ function mapSaveEditRoom(e, id) {
   mapPushShared('customRooms');
   mapInvalidateCache();
   alert('LOCALIZACAO "' + rm.name + '" ATUALIZADA.');
+  mapOpenManageRoomsForm();
+}
+
+// Devolve uma area BASE do site ao texto/categoria original de fabrica,
+// apagando so' a personalizacao dela (mapState.roomOverrides[id]).
+function mapResetRoomOverride(id) {
+  if (lvl < 6) { alert('ACESSO NEGADO.'); return; }
+  if (!mapState || !mapState.roomOverrides || !mapState.roomOverrides[id]) return;
+  if (!confirm('RESTAURAR ESTA AREA PARA O TEXTO/CATEGORIA ORIGINAL DE FABRICA?')) return;
+  delete mapState.roomOverrides[id];
+  saveMapState();
+  mapPushShared('roomOverrides');
+  mapInvalidateCache();
   mapOpenManageRoomsForm();
 }
 
