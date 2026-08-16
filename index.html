@@ -1320,7 +1320,6 @@ body.simple-mode .help-text{display:none !important;}
                 <div class="tsi" data-nav="lab" onclick="go('lab')">&gt; LABORATORIO</div>
                 <div class="tsi" data-nav="logs" onclick="go('logs')">&gt; LOGS DE CAMPO</div>
                 <div class="tsi" data-nav="map" onclick="go('map')">&gt; MAPA</div>
-                <div class="tsi" onclick="mapOpenPopup(); closeSidebar();">&gt; MAPA (JANELA FLUTUANTE)</div>
                 <div class="tsi" id="nmapmgr" onclick="mapOpenMapManager(); closeSidebar();" style="display:none;">&gt; GERENCIAR MAPAS</div>
                 <div class="tsi" data-nav="notes" onclick="go('notes')">&gt; NOTAS</div>
                 <div class="tsi" data-nav="chat" onclick="go('chat')">&gt; COMUNICACOES <span id="chatBadge" style="display:none; background:var(--r); color:#fff; border-radius:8px; font-size:0.75em; padding:1px 6px; margin-left:6px;"></span></div>
@@ -6750,16 +6749,6 @@ function mapRenderCurrent() {
   var el = document.getElementById(_mapRenderTarget);
   if (el) renderMap(el);
 }
-// Abre o mapa geral como janela popup (fica por cima do que estiveres a ver,
-// sem precisar de trocar de aba) — util pro Mestre ou jogador quererem
-// consultar o mapa enquanto olham um documento, planta ou outra coisa.
-function mapOpenPopup() {
-  _mapRenderTarget = 'mb';
-  document.getElementById('mt').textContent = 'MAPA';
-  document.getElementById('md').classList.add('on');
-  mdSetWide(true);
-  mapRenderCurrent();
-}
 var _mapJoystickOpen = false;
 function mapToggleJoystick() { _mapJoystickOpen = !_mapJoystickOpen; mapRenderCurrent(); }
 
@@ -6829,69 +6818,12 @@ function floatJoyInitListenersOnce() {
   document.addEventListener('mouseup', floatJoyDragEnd);
   document.addEventListener('touchend', floatJoyDragEnd);
 }
-// Abre o joystick flutuante com as setas de MOVIMENTACAO DO MAPA GERAL (mesma
-// grade de bussola usada no bloco inline antigo, so que agora numa janela que
-// da pra arrastar pra qualquer lugar e que continua visivel em cima do mapa).
-function mapOpenFloatJoystick() {
-  if (!mapState) loadMapState();
-  var cur = mapRoomById(mapState.current) || mapAllRooms()[0];
-  if (!cur) return;
-  var coords = mapComputeLayout();
-  floatJoyOpen('MOVER', mapJoystickHTML(cur, coords));
-}
 // Abre o joystick flutuante com as setas de MOVIMENTACAO DENTRO DA PLANTA
 // (mesmas 4 setas do painel fixo "MOVER-SE NESTA SALA", so que soltas numa
 // janela arrastavel — util pra nao tapar a planta enquanto anda por ela).
 function fpOpenFloatJoystick() {
   if (!userKey || !_fpViewRoomId) return;
   floatJoyOpen('MOVER', fpRenderArrowPanel());
-}
-// Monta o "joystick" de movimentacao: pega as areas LIGADAS a atual (mesma regra
-// de mapTryEnter) e posiciona cada uma numa grade de bussola 3x3 (N/S/E/W e
-// diagonais), conforme o angulo real delas no mapa (coords, o mesmo layout usado
-// pra desenhar as linhas) — assim os botoes ficam na mesma direcao visual da
-// area no mapa de verdade, mesmo sem precisar acertar o toque no marcador
-// pequeno. Se duas ligacoes calharem na mesma direcao, a extra aparece numa
-// lista "outras ligacoes" abaixo da grade, em vez de se perderem.
-function mapJoystickHTML(cur, coords) {
-  var adj = mapAdj()[cur.id] || [];
-  var curC = coords[cur.id];
-  var slots = { N: null, NE: null, E: null, SE: null, S: null, SW: null, W: null, NW: null };
-  var overflow = [];
-  for (var i = 0; i < adj.length; i++) {
-    var nId = adj[i], nRoom = mapRoomById(nId), nC = coords[nId];
-    if (!nRoom || !nC || !curC) continue;
-    var dx = nC.x - curC.x, dy = nC.y - curC.y;
-    var ang = Math.atan2(dy, dx) * 180 / Math.PI; // -180..180, 0=E, 90=S (y cresce pra baixo)
-    if (ang < 0) ang += 360;
-    var dir = (ang >= 337.5 || ang < 22.5) ? 'E' : (ang < 67.5) ? 'SE' : (ang < 112.5) ? 'S' : (ang < 157.5) ? 'SW' :
-      (ang < 202.5) ? 'W' : (ang < 247.5) ? 'NW' : (ang < 292.5) ? 'N' : 'NE';
-    if (!slots[dir]) slots[dir] = nRoom; else overflow.push(nRoom);
-  }
-  var arrows = { N: '&#8593;', NE: '&#8599;', E: '&#8594;', SE: '&#8600;', S: '&#8595;', SW: '&#8601;', W: '&#8592;', NW: '&#8598;' };
-  function slotBtn(dir) {
-    var r = slots[dir];
-    if (!r) return '<div></div>';
-    var known = !!(mapState.visited && mapState.visited[r.id]);
-    var lbl = known ? r.name : '?';
-    return '<button class="btn btn-s" style="display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 4px; line-height:1.15;" onclick="mapTryEnter(\'' + r.id + '\')" title="' + fpFurnEsc(lbl) + '"><span style="font-size:1.3em;">' + arrows[dir] + '</span><span style="font-size:0.62em; max-width:78px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + fpFurnEsc(lbl) + '</span></button>';
-  }
-  var h = '<div style="border:1px solid var(--bd); padding:14px; margin-bottom:14px; background:rgba(0,20,0,0.4); max-width:280px;">';
-  h += '<div style="display:grid; grid-template-columns:repeat(3,1fr); gap:6px; text-align:center;">' +
-    slotBtn('NW') + slotBtn('N') + slotBtn('NE') +
-    slotBtn('W') + '<button class="btn btn-s" style="opacity:0.5; cursor:default;" disabled>&#9679;</button>' + slotBtn('E') +
-    slotBtn('SW') + slotBtn('S') + slotBtn('SE') +
-    '</div>';
-  if (overflow.length) {
-    h += '<div style="color:var(--td); font-size:0.68em; margin-top:10px;">OUTRAS LIGACOES:</div><div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:4px;">';
-    for (var j = 0; j < overflow.length; j++) {
-      var known2 = !!(mapState.visited && mapState.visited[overflow[j].id]);
-      h += '<button class="btn btn-s" onclick="mapTryEnter(\'' + overflow[j].id + '\')">' + fpFurnEsc(known2 ? overflow[j].name : '?') + '</button>';
-    }
-    h += '</div>';
-  }
-  h += '</div>';
-  return h;
 }
 var _mapLayoutCache = null;
 var _mapTreeEdgeKeys = null; // ligacoes que formam a "arvore" principal do layout (ver mapComputeLayout)
@@ -7547,8 +7479,7 @@ function renderMap(c) {
     '<span id="mapZoomLbl" style="color:var(--g); font-size:0.8em; min-width:44px; text-align:center;">' + Math.round(_mapZoom * 100) + '%</span>' +
     '<button class="btn btn-s" onclick="mapZoomBy(' + MAP_ZOOM_STEP + ')" title="Aumentar zoom">&#43;</button>' +
     (_mapZoom !== 1 ? '<button class="btn btn-s" onclick="mapSetZoom(1)">RESETAR</button>' : '') +
-    '<button class="btn btn-s" style="margin-left:10px;" onclick="mapOpenFloatJoystick()" title="Abre um joystick numa janelinha que voce pode arrastar pra qualquer lugar da tela">&#127918; MOVER</button>' +
-    (_mapRenderTarget === 'tcnt' ? '<button class="btn btn-s" onclick="mapOpenPopup()" title="Abrir o mapa numa janela flutuante">&#10064; JANELA FLUTUANTE</button>' : '') +
+    '<button class="btn btn-s" style="margin-left:10px;" onclick="mapShowFloorplan(\'' + cur.id + '\')" title="Abrir a planta desta area numa janela pop-up">&#8862; POP-UP DA PLANTA</button>' +
     '</div>';
 
   h += '<div id="mapViewport" style="position:relative; width:100%; max-height:560px; overflow:auto; border:1px solid var(--bd); background:rgba(0,10,0,0.55);">';
