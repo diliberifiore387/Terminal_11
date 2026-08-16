@@ -6762,6 +6762,90 @@ function mapOpenPopup() {
 }
 var _mapJoystickOpen = false;
 function mapToggleJoystick() { _mapJoystickOpen = !_mapJoystickOpen; mapRenderCurrent(); }
+
+// ============== JOYSTICK FLUTUANTE (janela pequena e arrastavel) ==============
+// Uma janelinha independente do popup grande (#md) — fica por CIMA de tudo
+// (mapa, planta, qualquer outra coisa aberta) e o jogador pode arrasta-la pra
+// qualquer canto da tela pelo cabecalho, pra deixar as setas onde for mais
+// confortavel pro polegar. So existe UMA de cada vez (abrir uma nova fecha a
+// anterior). A posicao escolhida fica lembrada (so nesta sessao/aparelho)
+// entre uma abertura e outra, pra nao ter que reposicionar toda hora.
+var _floatJoyPos = null; // {left, top} em px, lembrado entre aberturas
+var _floatJoyDrag = null; // {dx,dy} enquanto um arrasto esta em andamento
+function floatJoyClose() {
+  var el = document.getElementById('floatJoy');
+  if (el) el.remove();
+  _floatJoyDrag = null;
+}
+function floatJoyOpen(title, innerHtml) {
+  floatJoyClose();
+  var el = document.createElement('div');
+  el.id = 'floatJoy';
+  el.style.cssText = 'position:fixed; z-index:6000; background:var(--bg2); border:1px solid var(--gd); box-shadow:0 0 20px rgba(0,0,0,0.7); min-width:170px; font-family:\'Share Tech Mono\',monospace;';
+  var startLeft = _floatJoyPos ? _floatJoyPos.left : Math.max(10, window.innerWidth - 230);
+  var startTop = _floatJoyPos ? _floatJoyPos.top : Math.max(10, window.innerHeight - 280);
+  startLeft = Math.max(0, Math.min(startLeft, window.innerWidth - 60));
+  startTop = Math.max(0, Math.min(startTop, window.innerHeight - 60));
+  el.style.left = startLeft + 'px';
+  el.style.top = startTop + 'px';
+  el.innerHTML = '<div id="floatJoyHandle" style="cursor:move; background:rgba(0,30,0,0.6); padding:8px 10px; border-bottom:1px solid var(--bd); display:flex; justify-content:space-between; align-items:center; gap:10px; touch-action:none;">' +
+    '<span style="color:var(--g); font-size:0.68em; letter-spacing:2px; white-space:nowrap;">&#10021; ' + title + '</span>' +
+    '<button class="mclose" style="font-size:1.1em; line-height:1;" onclick="floatJoyClose()" title="Fechar">&times;</button></div>' +
+    '<div style="padding:12px; text-align:center;">' + innerHtml + '</div>';
+  document.body.appendChild(el);
+  floatJoyInitListenersOnce();
+  var handle = document.getElementById('floatJoyHandle');
+  handle.addEventListener('mousedown', floatJoyDragStart);
+  handle.addEventListener('touchstart', floatJoyDragStart, { passive: false });
+}
+function floatJoyDragStart(e) {
+  var handle = document.getElementById('floatJoyHandle');
+  var el = document.getElementById('floatJoy');
+  if (!handle || !el) return;
+  var pt = e.touches ? e.touches[0] : e;
+  var rect = el.getBoundingClientRect();
+  _floatJoyDrag = { dx: pt.clientX - rect.left, dy: pt.clientY - rect.top };
+  e.preventDefault();
+}
+function floatJoyDragMove(e) {
+  if (!_floatJoyDrag) return;
+  var el = document.getElementById('floatJoy');
+  if (!el) { _floatJoyDrag = null; return; }
+  var pt = e.touches ? e.touches[0] : e;
+  var left = Math.max(0, Math.min(pt.clientX - _floatJoyDrag.dx, window.innerWidth - 60));
+  var top = Math.max(0, Math.min(pt.clientY - _floatJoyDrag.dy, window.innerHeight - 60));
+  el.style.left = left + 'px';
+  el.style.top = top + 'px';
+  _floatJoyPos = { left: left, top: top };
+  if (e.touches) e.preventDefault();
+}
+function floatJoyDragEnd() { _floatJoyDrag = null; }
+var _floatJoyListenersInit = false;
+function floatJoyInitListenersOnce() {
+  if (_floatJoyListenersInit) return;
+  _floatJoyListenersInit = true;
+  document.addEventListener('mousemove', floatJoyDragMove);
+  document.addEventListener('touchmove', floatJoyDragMove, { passive: false });
+  document.addEventListener('mouseup', floatJoyDragEnd);
+  document.addEventListener('touchend', floatJoyDragEnd);
+}
+// Abre o joystick flutuante com as setas de MOVIMENTACAO DO MAPA GERAL (mesma
+// grade de bussola usada no bloco inline antigo, so que agora numa janela que
+// da pra arrastar pra qualquer lugar e que continua visivel em cima do mapa).
+function mapOpenFloatJoystick() {
+  if (!mapState) loadMapState();
+  var cur = mapRoomById(mapState.current) || mapAllRooms()[0];
+  if (!cur) return;
+  var coords = mapComputeLayout();
+  floatJoyOpen('MOVER', mapJoystickHTML(cur, coords));
+}
+// Abre o joystick flutuante com as setas de MOVIMENTACAO DENTRO DA PLANTA
+// (mesmas 4 setas do painel fixo "MOVER-SE NESTA SALA", so que soltas numa
+// janela arrastavel — util pra nao tapar a planta enquanto anda por ela).
+function fpOpenFloatJoystick() {
+  if (!userKey || !_fpViewRoomId) return;
+  floatJoyOpen('MOVER', fpRenderArrowPanel());
+}
 // Monta o "joystick" de movimentacao: pega as areas LIGADAS a atual (mesma regra
 // de mapTryEnter) e posiciona cada uma numa grade de bussola 3x3 (N/S/E/W e
 // diagonais), conforme o angulo real delas no mapa (coords, o mesmo layout usado
@@ -7463,11 +7547,9 @@ function renderMap(c) {
     '<span id="mapZoomLbl" style="color:var(--g); font-size:0.8em; min-width:44px; text-align:center;">' + Math.round(_mapZoom * 100) + '%</span>' +
     '<button class="btn btn-s" onclick="mapZoomBy(' + MAP_ZOOM_STEP + ')" title="Aumentar zoom">&#43;</button>' +
     (_mapZoom !== 1 ? '<button class="btn btn-s" onclick="mapSetZoom(1)">RESETAR</button>' : '') +
-    '<button class="btn btn-s" style="margin-left:10px; ' + (_mapJoystickOpen ? 'border-color:var(--g); color:var(--g);' : '') + '" onclick="mapToggleJoystick()" title="Movimentacao rapida">&#127918; MOVER</button>' +
+    '<button class="btn btn-s" style="margin-left:10px;" onclick="mapOpenFloatJoystick()" title="Abre um joystick numa janelinha que voce pode arrastar pra qualquer lugar da tela">&#127918; MOVER</button>' +
     (_mapRenderTarget === 'tcnt' ? '<button class="btn btn-s" onclick="mapOpenPopup()" title="Abrir o mapa numa janela flutuante">&#10064; JANELA FLUTUANTE</button>' : '') +
     '</div>';
-
-  if (_mapJoystickOpen) h += mapJoystickHTML(cur, coords);
 
   h += '<div id="mapViewport" style="position:relative; width:100%; max-height:560px; overflow:auto; border:1px solid var(--bd); background:rgba(0,10,0,0.55);">';
   var gridBg = _mapDragMode ?
@@ -9997,6 +10079,14 @@ function fpRenderView() {
   var _fpPrevScroll = null;
   var _fpPrevWrap = document.getElementById('fpPlanScroll');
   if (_fpPrevWrap) _fpPrevScroll = { left: _fpPrevWrap.scrollLeft, top: _fpPrevWrap.scrollTop };
+  // O popup inteiro (.mbox) tambem rola por conta propria quando o conteudo e
+  // mais alto que a tela — so restaurar o scroll do grid (acima) nao bastava,
+  // porque trocar o innerHTML de #mb tambem reseta o scroll do .mbox pro topo,
+  // dando a impressao de que a tela "pula"/balanca pra cima e pra baixo a cada
+  // redesenho (troca de andar, cor do token, etc.). Guarda e restaura os dois.
+  var _fpPrevBoxScroll = null;
+  var _fpPrevBox = document.querySelector('#md .mbox');
+  if (_fpPrevBox) _fpPrevBoxScroll = _fpPrevBox.scrollTop;
   var h = '<div class="dv"><div class="dh"><h1>Planta — ' + r.name + '</h1></div>';
   if (!plan) {
     h += '<div style="text-align:center; padding:40px 20px; color:var(--td); border:1px dashed var(--bd); margin:18px 0;">Nenhuma planta desenhada para esta area ainda.</div>';
@@ -10019,6 +10109,7 @@ function fpRenderView() {
       _fpMoveBoxHtml += '<div style="flex:1; min-width:220px; margin:16px 0; padding:14px; border:1px solid var(--bd); text-align:center;">';
       _fpMoveBoxHtml += '<div style="color:var(--gd); font-size:0.72em; letter-spacing:1px; margin-bottom:10px;">MOVER-SE NESTA SALA</div>';
       _fpMoveBoxHtml += fpRenderArrowPanel();
+      _fpMoveBoxHtml += '<div style="margin-top:10px;"><button class="btn btn-s" onclick="fpOpenFloatJoystick()" title="Abre estas mesmas setas numa janelinha que voce pode arrastar pra qualquer lugar da tela, sem tapar a planta">&#127918; JOYSTICK FLUTUANTE</button></div>';
       if (lvl >= 6) {
         _fpMoveBoxHtml += '<div style="margin-top:10px;"><button class="btn btn-s" style="' + (_fpMestreVisible ? 'border-color:var(--y); color:var(--y);' : '') + '" onclick="fpToggleMestreVisible()">' + (_fpMestreVisible ? '&#128065; VISIVEL (ON)' : '&#128065; INVISIVEL — TORNAR-SE VISIVEL') + '</button></div>';
       }
@@ -10053,6 +10144,10 @@ function fpRenderView() {
   if (_fpPrevScroll) {
     var _fpNewWrap = document.getElementById('fpPlanScroll');
     if (_fpNewWrap) { _fpNewWrap.scrollLeft = _fpPrevScroll.left; _fpNewWrap.scrollTop = _fpPrevScroll.top; }
+  }
+  if (_fpPrevBoxScroll !== null) {
+    var _fpNewBox = document.querySelector('#md .mbox');
+    if (_fpNewBox) _fpNewBox.scrollTop = _fpPrevBoxScroll;
   }
 }
 
