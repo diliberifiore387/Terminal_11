@@ -1322,6 +1322,7 @@ body.simple-mode .help-text{display:none !important;}
                 <div class="tsi" data-nav="map" onclick="go('map')">&gt; MAPA</div>
                 <div class="tsi" id="nmapmgr" onclick="mapOpenMapManager(); closeSidebar();" style="display:none;">&gt; GERENCIAR MAPAS</div>
                 <div class="tsi" data-nav="notes" onclick="go('notes')">&gt; NOTAS</div>
+                <div class="tsi" id="nshared" data-nav="shared" onclick="go('shared')" style="display:none;">&gt; PARTILHADOS <span id="sharedBadge" style="display:none; background:var(--g); color:#000; border-radius:8px; font-size:0.75em; padding:1px 6px; margin-left:6px;"></span></div>
                 <div class="tsi" data-nav="chat" onclick="go('chat')">&gt; COMUNICACOES <span id="chatBadge" style="display:none; background:var(--r); color:#fff; border-radius:8px; font-size:0.75em; padding:1px 6px; margin-left:6px;"></span></div>
                 <div class="tsi" data-nav="radio" onclick="go('radio')">&gt; CANAL DE VOZ <span id="radioBadge" style="display:none; background:var(--g); color:#000; border-radius:8px; font-size:0.75em; padding:1px 6px; margin-left:6px;">NO AR</span></div>
                 <div class="tsi" data-nav="new" onclick="go('new')">&gt; NOVO DOCUMENTO</div>
@@ -1415,6 +1416,17 @@ function toggleSimpleMode() {
 var db = [], labCards = [], items = [], dclass = [], documents = [];
 var testLogs = [], interviewLogs = [];
 var user = null, userKey = null, lvl = 0, nav = 'db', editId = null, imgs = [];
+// ============== PARTILHA ENTRE JOGADORES (documentos e logs colaborativos) ==============
+// shareMatrix: quem cada jogador pode escolher pra partilhar (definido pelo Mestre no
+// Painel Admin). Formato: { loginKey: [loginKey, loginKey, ...] }. E' sempre simetrico
+// (se A pode partilhar com B, B tambem pode partilhar com A) — garantido ao salvar.
+var shareMatrix = {};
+// sharedItems: documentos partilhados criados pelos jogadores (aba PARTILHADOS), um por
+// chave no Firebase (world/sharedItems/<id>) — assim varias pessoas podem editar itens
+// diferentes ao mesmo tempo sem se atropelar. Cache local: { id: {...item} }.
+var sharedItems = {};
+var _shOpenId = null; // id do item partilhado aberto no editor agora (pra saber o que atualizar ao vivo)
+var _shSaveTimer = null; // debounce do autosave ao digitar no editor colaborativo
 var researcherProfile = null;
 var labTab = 'scp'; // scp | item | dclass
 
@@ -1881,6 +1893,8 @@ function doLogin() {
     n.style.display = a.lv >= 4 ? '' : 'none';
     var nmm = document.getElementById('nmapmgr');
     if (nmm) nmm.style.display = a.lv >= 6 ? '' : 'none';
+    shareSyncStart();
+    updateSharedNavVisibility();
     document.getElementById('o5fab').style.display = a.lv >= 5 ? 'flex' : 'none';
     var rs = document.getElementById('researcherSection');
     if (rs) rs.style.display = 'block';
@@ -1930,6 +1944,10 @@ function logout() {
         try { fbDB.ref('players/' + userKey).remove(); } catch (e) {}
     }
     mapExplorerSyncStop(); // para de escutar o historico pessoal do login que esta saindo
+    shareSyncStop();
+    _shOpenId = null;
+    var nsh = document.getElementById('nshared');
+    if (nsh) nsh.style.display = 'none';
     user = null; lvl = 0; userKey = null;
     mapState = null; // idem: nao deixa a posicao/historico deste login "vazar" pro proximo, na mesma aba
     researcherProfile = null; rpState = null;
@@ -2167,6 +2185,7 @@ function go(page) {
     else if (page === 'logs') renderLogs(c);
     else if (page === 'map') { _mapRenderTarget = 'tcnt'; document.getElementById('md').classList.remove('on'); mdSetWide(false); renderMap(c); }
     else if (page === 'notes') renderNotes(c);
+    else if (page === 'shared') { _shOpenId = null; renderShared(c); }
     else if (page === 'chat') { chatActiveThread = null; renderChat(c); chatUpdateBadge(); }
     else if (page === 'radio') renderRadio(c);
     else if (page === 'new') renderForm(c);
@@ -2337,13 +2356,20 @@ function openTestLogForm(logId) {
         '<div class="fg"><label>Data (in-game)</label><input type="text" id="tlData" value="' + (ed ? fpFurnEsc(ed.data || '') : '') + '" placeholder="ex: 14/03/2024"></div></div>' +
         '<div class="fg"><label>Sujeito / Executor do teste</label><input type="text" id="tlSujeito" value="' + (ed ? fpFurnEsc(ed.sujeito || '') : '') + '" placeholder="ex: D-9341, Dr. Fulano..."></div>' +
         '<div class="fg"><label>Itens utilizados</label><input type="text" id="tlItens" value="' + (ed ? fpFurnEsc(ed.itens || '') : '') + '" placeholder="ex: Lanterna UV, Giz de Contencao..."></div>' +
-        '<div class="fg"><label>Efeitos observados</label><textarea id="tlEfeitos" placeholder="Descreva o que aconteceu durante o teste...">' + (ed ? (ed.efeitos || '') : '') + '</textarea></div>' +
-        '<div class="fg"><label>Resultado</label><select id="tlResultado">' + resultH + '</select></div>' +
+        '<div class="fg"><label>Efeitos observados</label><textarea id="tlEfeitos" oninput="shLogLiveInput(\'testLogs\')" placeholder="Descreva o que aconteceu durante o teste...">' + (ed ? (ed.efeitos || '') : '') + '</textarea></div>' +
+        '<div class="fg"><label>Resultado</label><select id="tlResultado" onchange="shLogLiveInput(\'testLogs\')">' + resultH + '</select></div>' +
+        '<div class="fg"><label>Partilhar com (edicao em conjunto, em tempo real)</label>' + shColabCheckboxesHTML(ed ? (ed.collaborators || []) : [], 'shColabTest') + '</div>' +
         '<div style="display:flex; gap:10px; margin-top:18px;"><button type="submit" class="btn">' + (ed ? 'ATUALIZAR' : 'SALVAR') + '</button>' +
         '<button type="button" class="btn btn-r" onclick="xmd()">CANCELAR</button></div></form></div>';
     document.getElementById('mt').textContent = ed ? 'EDITAR LOG DE TESTE' : 'NOVO LOG DE TESTE';
     document.getElementById('mb').innerHTML = h;
     document.getElementById('md').classList.add('on');
+    var tlScpEl = document.getElementById('tlScp'); if (tlScpEl) tlScpEl.onchange = function() { shLogLiveInput('testLogs'); };
+    var tlDataEl = document.getElementById('tlData'); if (tlDataEl) tlDataEl.oninput = function() { shLogLiveInput('testLogs'); };
+    var tlSujEl = document.getElementById('tlSujeito'); if (tlSujEl) tlSujEl.oninput = function() { shLogLiveInput('testLogs'); };
+    var tlItEl = document.getElementById('tlItens'); if (tlItEl) tlItEl.oninput = function() { shLogLiveInput('testLogs'); };
+    if (ed && ed.collaborators && ed.collaborators.length) shLogLiveStart('testLogs', ed.id);
+    else shLogLiveStop();
 }
 
 function sTestLog(e, logId) {
@@ -2359,7 +2385,8 @@ function sTestLog(e, logId) {
         efeitos: document.getElementById('tlEfeitos').value,
         resultado: document.getElementById('tlResultado').value,
         autor: (user && user.nm) || userKey || 'Desconhecido',
-        dt: oldDt || new Date().toISOString()
+        dt: oldDt || new Date().toISOString(),
+        collaborators: shReadCheckedColabs('shColabTest')
     };
     if (logId) {
         var idx = -1;
@@ -2367,6 +2394,9 @@ function sTestLog(e, logId) {
         if (idx !== -1) testLogs[idx] = x;
     } else testLogs.push(x);
     saveTestLogs();
+    if (typeof fbDB !== 'undefined') { try { fbDB.ref('world/liveLogEdits/' + x.id).remove(); } catch (e) {} }
+    shLogLiveStop();
+    updateSharedNavVisibility();
     xmd();
     renderLogs(document.getElementById('tcnt'));
 }
@@ -2432,11 +2462,19 @@ function openInterviewLogForm(logId) {
         '<div class="fg"><label>Entrevistador</label><input type="text" id="ilEntrevistador" value="' + (ed ? fpFurnEsc(ed.entrevistador || '') : '') + '" placeholder="ex: Dr. Fulano"></div>' +
         '<div class="fg"><label>Transcricao</label><textarea id="ilTranscricao" style="min-height:200px;" placeholder="Pergunta: ...&#10;Resposta: ...">' + (ed ? (ed.transcricao || '') : '') + '</textarea></div>' +
         '<div class="fg"><label>Notas / observacoes</label><textarea id="ilNotas" placeholder="Estado psicologico, comportamento, observacoes gerais...">' + (ed ? (ed.notas || '') : '') + '</textarea></div>' +
+        '<div class="fg"><label>Partilhar com (edicao em conjunto, em tempo real)</label>' + shColabCheckboxesHTML(ed ? (ed.collaborators || []) : [], 'shColabInt') + '</div>' +
         '<div style="display:flex; gap:10px; margin-top:18px;"><button type="submit" class="btn">' + (ed ? 'ATUALIZAR' : 'SALVAR') + '</button>' +
         '<button type="button" class="btn btn-r" onclick="xmd()">CANCELAR</button></div></form></div>';
     document.getElementById('mt').textContent = ed ? 'EDITAR LOG DE ENTREVISTA' : 'NOVO LOG DE ENTREVISTA';
     document.getElementById('mb').innerHTML = h;
     document.getElementById('md').classList.add('on');
+    var ilScpEl = document.getElementById('ilScp'); if (ilScpEl) ilScpEl.onchange = function() { shLogLiveInput('interviewLogs'); };
+    var ilDataEl = document.getElementById('ilData'); if (ilDataEl) ilDataEl.oninput = function() { shLogLiveInput('interviewLogs'); };
+    var ilEntEl = document.getElementById('ilEntrevistador'); if (ilEntEl) ilEntEl.oninput = function() { shLogLiveInput('interviewLogs'); };
+    var ilTrEl = document.getElementById('ilTranscricao'); if (ilTrEl) ilTrEl.oninput = function() { shLogLiveInput('interviewLogs'); };
+    var ilNotEl = document.getElementById('ilNotas'); if (ilNotEl) ilNotEl.oninput = function() { shLogLiveInput('interviewLogs'); };
+    if (ed && ed.collaborators && ed.collaborators.length) shLogLiveStart('interviewLogs', ed.id);
+    else shLogLiveStop();
 }
 
 function sInterviewLog(e, logId) {
@@ -2451,7 +2489,8 @@ function sInterviewLog(e, logId) {
         transcricao: document.getElementById('ilTranscricao').value,
         notas: document.getElementById('ilNotas').value,
         autor: (user && user.nm) || userKey || 'Desconhecido',
-        dt: oldDt || new Date().toISOString()
+        dt: oldDt || new Date().toISOString(),
+        collaborators: shReadCheckedColabs('shColabInt')
     };
     if (logId) {
         var idx = -1;
@@ -2459,6 +2498,9 @@ function sInterviewLog(e, logId) {
         if (idx !== -1) interviewLogs[idx] = x;
     } else interviewLogs.push(x);
     saveInterviewLogs();
+    if (typeof fbDB !== 'undefined') { try { fbDB.ref('world/liveLogEdits/' + x.id).remove(); } catch (e) {} }
+    shLogLiveStop();
+    updateSharedNavVisibility();
     xmd();
     renderLogs(document.getElementById('tcnt'));
 }
@@ -2479,6 +2521,7 @@ function notesRenderBoardTab() {
     var papers = notesLoadPapers();
     var h = '<div style="color:var(--td); font-size:0.8em; margin:14px 0 12px;">Quadro livre, tipo mural: rabisque com o mouse/dedo e arraste os papeis que voce pegou nas plantas — tudo no mesmo espaco. O desenho e a posicao de cada papel sao salvos automaticamente. Clique num papel (sem arrastar) pra examinar; arraste pra reorganizar.</div>';
     if (lvl >= 6) h += '<div style="margin-bottom:12px;"><button class="btn" style="border-color:var(--p,#b967ff); color:var(--p,#b967ff);" onclick="newDocumentFromNotes()">+ CRIAR DOCUMENTO</button></div>';
+    h += '<div style="margin-bottom:12px;"><button class="btn" style="border-color:var(--g); color:var(--g);" onclick="openNewSharedDocForm()">+ NOVO DOCUMENTO PARTILHADO</button></div>';
     h += '<div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">';
     h += '<span style="color:var(--gd); font-size:0.75em; letter-spacing:1px;">COR:</span>';
     for (var i = 0; i < NOTES_DRAW_COLORS.length; i++) {
@@ -3449,7 +3492,7 @@ function fmt(t) {
             .replace(/\n/g, '<br>');
 }
 
-function xmd() { document.getElementById('md').classList.remove('on'); _fpFurnitureModalKey = null; _invModalOpen = false; mdSetWide(false); _mapRenderTarget = 'tcnt'; }
+function xmd() { document.getElementById('md').classList.remove('on'); _fpFurnitureModalKey = null; _invModalOpen = false; mdSetWide(false); _mapRenderTarget = 'tcnt'; shLogLiveStop(); }
 // Alarga (ou devolve ao tamanho normal) a janela popup (#md .mbox). Usado pelo
 // editor/visualizador de plantas, que precisa de mais espaco pra caber o grid
 // sem obrigar a rolar dentro de uma caixinha pequena dentro do popup.
@@ -5587,7 +5630,9 @@ function renderAdmin(c) {
             '<button class="btn btn-s" style="border-color:var(--y); color:var(--y);" onclick="dbManageAccess(' + x.id + ')">ACESSO</button> ' +
             '<button class="btn btn-s btn-r" onclick="dItem(' + x.id + ')">DEL</button></td></tr>';
     }
-    h += '</tbody></table></div></div></div>';
+    h += '</tbody></table></div></div>';
+    if (lvl >= 6) h += renderShareMatrixAdminHTML();
+    h += '</div>';
     c.innerHTML = h;
 }
 
@@ -8647,6 +8692,7 @@ function worldSyncStart() {
       else if (field === 'testLogs') testLogs = v;
       else if (field === 'interviewLogs') interviewLogs = v;
       try { localStorage.setItem(WORLD_KEYS[field], JSON.stringify(v)); } catch(e) {}
+      if (field === 'testLogs' || field === 'interviewLogs') { try { shLiveRefreshLogForm(field); } catch (e) {} }
       try { refreshCurrentPage(); } catch (e) { console.error('ERRO AO ATUALIZAR TELA APOS SYNC DE "' + field + '":', e); }
     });
   });
@@ -8661,6 +8707,351 @@ function refreshCurrentPage() {
   else if (nav === 'lab') renderLab(c);
   else if (nav === 'adm') renderAdmin(c);
   else if (nav === 'logs') renderLogs(c);
+  else if (nav === 'shared') renderShared(c);
+}
+
+// ============== PARTILHA ENTRE JOGADORES (documentos e logs colaborativos) ==============
+// Visao geral:
+// - O Mestre define, no Painel Admin, quais duplas de jogadores PODEM se escolher
+//   uma a outra pra partilhar (shareMatrix, Firebase 'world/shareMatrix'). O Mestre
+//   em si pode sempre partilhar com qualquer jogador, sem precisar estar na matriz.
+// - "Documentos partilhados" sao um tipo de conteudo novo, criado por qualquer
+//   jogador na aba NOTAS (QUADRO), guardados em 'world/sharedItems/<id>' (uma chave
+//   por documento, pra varios documentos poderem ser editados ao mesmo tempo por
+//   pessoas diferentes sem se atropelarem). Editar o titulo/conteudo propaga pros
+//   colaboradores quase em tempo real (autosave com pequeno atraso).
+// - Logs de Teste/Entrevista ja eram globais (visiveis a todos); aqui so' adicionamos
+//   um campo 'collaborators' (quem esta' colaborando ativamente) e uma sincronizacao
+//   "ao vivo" à parte (world/liveLogEdits/<id>) enquanto o formulario estiver aberto,
+//   pra nao precisar reescrever o array inteiro de logs a cada tecla digitada.
+// - Uma aba nova ("PARTILHADOS") aparece no menu assim que o jogador tiver pelo menos
+//   um documento ou log partilhado (criado por ele ou com ele).
+
+function shAllPlayerKeys() {
+    var out = [];
+    for (var k in PASS) if (PASS.hasOwnProperty(k) && PASS[k].lv < 6) out.push(k);
+    return out;
+}
+
+// Quem o utilizador logado pode escolher pra partilhar. O Mestre pode escolher
+// qualquer jogador; os demais so' veem quem o Mestre liberou pra eles na matriz.
+function shColleagueKeysFor(key) {
+    if (PASS[key] && PASS[key].lv >= 6) return shAllPlayerKeys().filter(function(k) { return k !== key; });
+    var list = shareMatrix[key] || [];
+    return list.filter(function(k) { return PASS[k] && k !== key; });
+}
+
+function shColabCheckboxesHTML(selected, prefix) {
+    var opts = shColleagueKeysFor(userKey);
+    if (!opts.length) {
+        return '<div style="color:var(--td); font-size:0.78em; margin:6px 0 4px;">O Mestre ainda nao liberou nenhum colega pra voce partilhar documentos/logs. Peca pra ele configurar em PAINEL ADMIN &gt; PERMISSOES DE PARTILHA.</div>';
+    }
+    var h = '<div style="display:flex; flex-direction:column; gap:8px; margin:6px 0 4px; padding:10px; border:1px solid var(--bd);">';
+    for (var i = 0; i < opts.length; i++) {
+        var k = opts[i];
+        var checked = selected && selected.indexOf(k) !== -1;
+        h += '<label style="display:flex; align-items:center; gap:8px; cursor:pointer;"><input type="checkbox" value="' + k + '" ' + (checked ? 'checked' : '') + ' id="' + prefix + '_' + k + '"> ' + fpFurnEsc(PASS[k].nm) + '</label>';
+    }
+    h += '</div>';
+    return h;
+}
+
+function shReadCheckedColabs(prefix) {
+    var opts = shColleagueKeysFor(userKey);
+    var out = [];
+    for (var i = 0; i < opts.length; i++) {
+        var el = document.getElementById(prefix + '_' + opts[i]);
+        if (el && el.checked) out.push(opts[i]);
+    }
+    return out;
+}
+
+function shareSyncStart() {
+    if (typeof fbDB === 'undefined') return;
+    fbDB.ref('world/shareMatrix').on('value', function(snap) {
+        shareMatrix = snap.val() || {};
+        if (nav === 'adm') { try { renderAdmin(document.getElementById('tcnt')); } catch (e) {} }
+    });
+    fbDB.ref('world/sharedItems').on('value', function(snap) {
+        sharedItems = snap.val() || {};
+        updateSharedNavVisibility();
+        if (nav === 'shared' && !_shOpenId) { try { renderShared(document.getElementById('tcnt')); } catch (e) {} }
+        if (_shOpenId) { try { shLiveRefreshDocEditor(); } catch (e) {} }
+    });
+}
+
+function shareSyncStop() {
+    if (typeof fbDB === 'undefined') return;
+    try { fbDB.ref('world/shareMatrix').off(); } catch (e) {}
+    try { fbDB.ref('world/sharedItems').off(); } catch (e) {}
+}
+
+function shMyItemsCount() {
+    var n = 0;
+    for (var id in sharedItems) if (sharedItems.hasOwnProperty(id)) {
+        var it = sharedItems[id];
+        if (lvl >= 6 || (it.collaborators && it.collaborators.indexOf(userKey) !== -1)) n++;
+    }
+    for (var i = 0; i < testLogs.length; i++) { var t = testLogs[i]; if (t.collaborators && t.collaborators.length && (lvl >= 6 || t.collaborators.indexOf(userKey) !== -1)) n++; }
+    for (var i = 0; i < interviewLogs.length; i++) { var t2 = interviewLogs[i]; if (t2.collaborators && t2.collaborators.length && (lvl >= 6 || t2.collaborators.indexOf(userKey) !== -1)) n++; }
+    return n;
+}
+
+function updateSharedNavVisibility() {
+    var nsh = document.getElementById('nshared');
+    if (!nsh) return;
+    var n = shMyItemsCount();
+    nsh.style.display = n > 0 ? '' : 'none';
+    var b = document.getElementById('sharedBadge');
+    if (b) { if (n > 0) { b.style.display = ''; b.textContent = n; } else b.style.display = 'none'; }
+}
+
+// ---- PAINEL ADMIN: o Mestre escolhe antecipadamente quem pode partilhar com quem ----
+function renderShareMatrixAdminHTML() {
+    var players = shAllPlayerKeys().sort();
+    var h = '<div style="margin-bottom:25px;">' +
+        '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:8px;">&gt; PERMISSOES DE PARTILHA (DOCUMENTOS/LOGS COLABORATIVOS)</div>' +
+        '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:12px;">Marque quais duplas de jogadores podem escolher um ao outro pra partilhar e editar documentos/logs juntos em tempo real. Voce (Mestre) sempre pode partilhar com qualquer jogador, mesmo sem marcar nada aqui.</div>';
+    if (players.length < 2) {
+        h += '<div style="color:var(--td); font-size:0.8em;">E preciso pelo menos 2 contas de jogador cadastradas (fora o Mestre).</div></div>';
+        return h;
+    }
+    h += '<div style="display:flex; flex-direction:column; gap:8px; max-height:400px; overflow:auto; padding:10px; border:1px solid var(--bd); margin-bottom:10px;">';
+    for (var i = 0; i < players.length; i++) {
+        for (var j = i + 1; j < players.length; j++) {
+            var a = players[i], b = players[j];
+            var checked = (shareMatrix[a] || []).indexOf(b) !== -1;
+            h += '<label style="display:flex; align-items:center; gap:8px; cursor:pointer;"><input type="checkbox" id="shPair_' + a + '_' + b + '" ' + (checked ? 'checked' : '') + '> ' + fpFurnEsc(PASS[a].nm) + ' &harr; ' + fpFurnEsc(PASS[b].nm) + '</label>';
+        }
+    }
+    h += '</div><button class="btn" onclick="shareMatrixSave()">SALVAR PERMISSOES DE PARTILHA</button></div>';
+    return h;
+}
+
+function shareMatrixSave() {
+    if (lvl < 6) return;
+    var players = shAllPlayerKeys().sort();
+    var m = {};
+    for (var i = 0; i < players.length; i++) m[players[i]] = [];
+    for (var i = 0; i < players.length; i++) {
+        for (var j = i + 1; j < players.length; j++) {
+            var a = players[i], b = players[j];
+            var el = document.getElementById('shPair_' + a + '_' + b);
+            if (el && el.checked) { m[a].push(b); m[b].push(a); }
+        }
+    }
+    shareMatrix = m;
+    if (typeof fbDB !== 'undefined') fbDB.ref('world/shareMatrix').set(m);
+    alert('PERMISSOES DE PARTILHA ATUALIZADAS.');
+}
+
+// ---- DOCUMENTOS PARTILHADOS (criados por qualquer jogador, na aba NOTAS) ----
+function openNewSharedDocForm() {
+    var h = '<div class="dv"><div class="dh"><h1>NOVO DOCUMENTO PARTILHADO</h1></div>' +
+        '<form onsubmit="sNewSharedDoc(event)">' +
+        '<div class="fg"><label>Titulo</label><input type="text" id="shNewTitle" placeholder="ex: Anotacoes da investigacao..." required></div>' +
+        '<div class="fg"><label>Conteudo inicial (opcional)</label><textarea id="shNewContent" style="min-height:150px;" placeholder="Comece a escrever..."></textarea></div>' +
+        '<div class="fg"><label>Partilhar com (edicao em conjunto, em tempo real)</label>' + shColabCheckboxesHTML([], 'shNewColab') + '</div>' +
+        '<div style="display:flex; gap:10px; margin-top:18px;"><button type="submit" class="btn">CRIAR E PARTILHAR</button>' +
+        '<button type="button" class="btn btn-r" onclick="xmd()">CANCELAR</button></div></form></div>';
+    document.getElementById('mt').textContent = 'NOVO DOCUMENTO PARTILHADO';
+    document.getElementById('mb').innerHTML = h;
+    document.getElementById('md').classList.add('on');
+}
+
+function sNewSharedDoc(e) {
+    e.preventDefault();
+    var titleEl = document.getElementById('shNewTitle');
+    var title = (titleEl.value || '').trim();
+    if (!title) { alert('DE UM TITULO AO DOCUMENTO.'); return; }
+    var content = document.getElementById('shNewContent').value || '';
+    var collabs = shReadCheckedColabs('shNewColab');
+    var id = 'shdoc-' + Date.now() + '-' + Math.floor(Math.random() * 10000);
+    var item = {
+        id: id, kind: 'doc', title: title, content: content,
+        owner: userKey, ownerName: (user && user.nm) || userKey,
+        collaborators: [userKey].concat(collabs),
+        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), updatedBy: userKey
+    };
+    if (typeof fbDB !== 'undefined') fbDB.ref('world/sharedItems/' + id).set(item);
+    sharedItems[id] = item;
+    xmd();
+    updateSharedNavVisibility();
+    go('shared');
+    openSharedDocEditor(id);
+}
+
+function renderShared(c) {
+    var h = '<div style="max-width:900px;">' +
+        '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:8px;">&gt; DOCUMENTOS E LOGS PARTILHADOS</div>' +
+        '<div style="color:var(--td); font-size:0.8em; margin-bottom:18px;">Itens que voce criou ou que outro jogador partilhou com voce. Editar aqui aparece pra todos os colaboradores quase em tempo real.</div>';
+    var rows = [];
+    for (var id in sharedItems) if (sharedItems.hasOwnProperty(id)) {
+        var it = sharedItems[id];
+        if (!(lvl >= 6 || (it.collaborators && it.collaborators.indexOf(userKey) !== -1))) continue;
+        rows.push({ type: 'doc', id: id, title: it.title || '(sem titulo)', updatedAt: it.updatedAt, collaborators: it.collaborators || [] });
+    }
+    for (var i = 0; i < testLogs.length; i++) {
+        var t = testLogs[i];
+        if (t.collaborators && t.collaborators.length && (lvl >= 6 || t.collaborators.indexOf(userKey) !== -1))
+            rows.push({ type: 'testlog', id: t.id, title: 'LOG DE TESTE — ' + (t.scpNum || 'sem SCP'), updatedAt: t.dt, collaborators: t.collaborators });
+    }
+    for (var i = 0; i < interviewLogs.length; i++) {
+        var t2 = interviewLogs[i];
+        if (t2.collaborators && t2.collaborators.length && (lvl >= 6 || t2.collaborators.indexOf(userKey) !== -1))
+            rows.push({ type: 'interviewlog', id: t2.id, title: 'LOG DE ENTREVISTA — ' + (t2.scpNum || 'sem SCP'), updatedAt: t2.dt, collaborators: t2.collaborators });
+    }
+    if (!rows.length) {
+        h += '<div style="text-align:center; padding:30px 20px; color:var(--td); border:1px dashed var(--bd);">NENHUM ITEM PARTILHADO NO MOMENTO.</div></div>';
+        c.innerHTML = h;
+        return;
+    }
+    rows.sort(function(a, b) { return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0); });
+    for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        var names = r.collaborators.map(function(k) { return PASS[k] ? PASS[k].nm : k; }).join(', ');
+        var openFn = r.type === 'doc' ? ("openSharedDocEditor('" + r.id + "')") : (r.type === 'testlog' ? ("editTestLog('" + r.id + "')") : ("editInterviewLog('" + r.id + "')"));
+        h += '<div class="item-card" style="margin-bottom:12px; cursor:pointer;" onclick="' + openFn + '">' +
+            '<div style="color:var(--g); font-weight:bold;">' + fpFurnEsc(r.title) + '</div>' +
+            '<div style="color:var(--td); font-size:0.75em; margin-top:2px;">Colaboradores: ' + fpFurnEsc(names || '-') + '</div>' +
+            '</div>';
+    }
+    h += '</div>';
+    c.innerHTML = h;
+}
+
+function openSharedDocEditor(id) {
+    var it = sharedItems[id];
+    if (!it) { alert('DOCUMENTO NAO ENCONTRADO (pode ter sido apagado).'); go('shared'); return; }
+    if (!(lvl >= 6 || (it.collaborators && it.collaborators.indexOf(userKey) !== -1))) { alert('SEM ACESSO A ESTE DOCUMENTO.'); return; }
+    _shOpenId = id;
+    var c = document.getElementById('tcnt');
+    var collabNames = (it.collaborators || []).map(function(k) { return PASS[k] ? PASS[k].nm : k; }).join(', ');
+    var h = '<div style="max-width:900px;">' +
+        '<button class="btn btn-s" onclick="closeSharedDocEditor()">&larr; VOLTAR</button>' +
+        '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin:14px 0 6px;">&gt; DOCUMENTO PARTILHADO // COLABORATIVO</div>' +
+        '<div style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Editado em conjunto com: ' + fpFurnEsc(collabNames || '-') + '. Alteracoes aparecem para todos em tempo real.</div>' +
+        '<div class="fg" style="margin-bottom:10px;"><label>TITULO</label><input type="text" id="shDocTitle" value="' + fpFurnEsc(it.title || '') + '" oninput="shDocLiveInput()"></div>' +
+        '<div class="fg"><label>CONTEUDO</label><textarea id="shDocContent" style="min-height:500px; font-size:0.9em; line-height:1.6;" oninput="shDocLiveInput()">' + (it.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</textarea></div>' +
+        '<div id="shDocStatus" style="color:var(--g); font-size:0.78em; min-height:18px; margin-top:8px;"></div>' +
+        '<div style="display:flex; gap:10px; margin-top:10px;">';
+    if (it.owner === userKey || lvl >= 6) h += '<button class="btn btn-r" onclick="shDeleteItem(\'' + id + '\')">EXCLUIR DOCUMENTO</button>';
+    else h += '<button class="btn btn-r" onclick="shLeaveItem(\'' + id + '\')">SAIR DA PARTILHA</button>';
+    h += '</div></div>';
+    c.innerHTML = h;
+}
+
+function closeSharedDocEditor() { _shOpenId = null; go('shared'); }
+
+function shDocLiveInput() {
+    if (!_shOpenId || typeof fbDB === 'undefined') return;
+    var st = document.getElementById('shDocStatus');
+    if (st) st.textContent = 'A guardar...';
+    if (_shSaveTimer) clearTimeout(_shSaveTimer);
+    var id = _shOpenId;
+    _shSaveTimer = setTimeout(function() {
+        var tEl = document.getElementById('shDocTitle'), cEl = document.getElementById('shDocContent');
+        if (!tEl || !cEl) return;
+        var data = { title: tEl.value, content: cEl.value, updatedAt: new Date().toISOString(), updatedBy: userKey };
+        fbDB.ref('world/sharedItems/' + id).update(data);
+        var st2 = document.getElementById('shDocStatus');
+        if (st2) st2.textContent = 'GUARDADO // ' + new Date().toLocaleTimeString('pt-BR');
+    }, 500);
+}
+
+function shLiveRefreshDocEditor() {
+    if (!_shOpenId) return;
+    var it = sharedItems[_shOpenId];
+    if (!it) { alert('ESTE DOCUMENTO FOI APAGADO.'); closeSharedDocEditor(); return; }
+    var tEl = document.getElementById('shDocTitle'), cEl = document.getElementById('shDocContent');
+    if (tEl && document.activeElement !== tEl && tEl.value !== (it.title || '')) tEl.value = it.title || '';
+    if (cEl && document.activeElement !== cEl && cEl.value !== (it.content || '')) cEl.value = it.content || '';
+}
+
+function shDeleteItem(id) {
+    var it = sharedItems[id];
+    if (!it) return;
+    if (!(it.owner === userKey || lvl >= 6)) { alert('SO O CRIADOR OU O MESTRE PODE EXCLUIR ESTE DOCUMENTO.'); return; }
+    if (!confirm('EXCLUIR ESTE DOCUMENTO PARTILHADO PRA TODOS?')) return;
+    if (typeof fbDB !== 'undefined') fbDB.ref('world/sharedItems/' + id).remove();
+    delete sharedItems[id];
+    _shOpenId = null;
+    go('shared');
+}
+
+function shLeaveItem(id) {
+    var it = sharedItems[id];
+    if (!it) return;
+    if (!confirm('SAIR DESTA PARTILHA? VOCE PERDE O ACESSO A ESTE DOCUMENTO.')) return;
+    var newCollabs = (it.collaborators || []).filter(function(k) { return k !== userKey; });
+    if (typeof fbDB !== 'undefined') fbDB.ref('world/sharedItems/' + id + '/collaborators').set(newCollabs);
+    _shOpenId = null;
+    go('shared');
+}
+
+// ---- SINCRONIZACAO AO VIVO DOS LOGS DE TESTE/ENTREVISTA (enquanto o formulario esta aberto) ----
+// Em vez de reescrever o array inteiro de logs a cada tecla (que arriscaria apagar
+// edicoes de OUTROS logs feitas por outra pessoa ao mesmo tempo), usamos um canal
+// paralelo por log (world/liveLogEdits/<id>) so' enquanto alguem tem aquele log
+// especifico aberto pra editar. Ao salvar (ATUALIZAR/CANCELAR), este canal e' limpo
+// e o log "de verdade" (testLogs/interviewLogs) e' quem manda.
+var _logLiveId = null, _logLiveKind = null, _logLiveTimer = null;
+
+function shLogLiveStart(kind, id) {
+    shLogLiveStop();
+    if (typeof fbDB === 'undefined') return;
+    _logLiveId = id; _logLiveKind = kind;
+    fbDB.ref('world/liveLogEdits/' + id).on('value', function(snap) {
+        if (_logLiveId !== id) return;
+        var v = snap.val();
+        if (!v || v.by === userKey) return; // ignora eco do proprio autosave
+        shApplyLiveLogFields(kind, v);
+    });
+}
+
+function shLogLiveStop() {
+    if (_logLiveId && typeof fbDB !== 'undefined') { try { fbDB.ref('world/liveLogEdits/' + _logLiveId).off(); } catch (e) {} }
+    _logLiveId = null; _logLiveKind = null;
+    if (_logLiveTimer) { clearTimeout(_logLiveTimer); _logLiveTimer = null; }
+}
+
+function shApplyLiveLogFields(kind, v) {
+    var map = kind === 'testLogs'
+        ? { scpNum: 'tlScp', data: 'tlData', sujeito: 'tlSujeito', itens: 'tlItens', efeitos: 'tlEfeitos', resultado: 'tlResultado' }
+        : { scpNum: 'ilScp', data: 'ilData', entrevistador: 'ilEntrevistador', transcricao: 'ilTranscricao', notas: 'ilNotas' };
+    for (var f in map) {
+        if (!map.hasOwnProperty(f) || v[f] === undefined) continue;
+        var el = document.getElementById(map[f]);
+        if (el && document.activeElement !== el) el.value = v[f];
+    }
+}
+
+function shFieldVal(id) { var el = document.getElementById(id); return el ? el.value : ''; }
+
+function shLogLiveInput(kind) {
+    if (!_logLiveId || _logLiveKind !== kind) return;
+    if (_logLiveTimer) clearTimeout(_logLiveTimer);
+    var id = _logLiveId;
+    _logLiveTimer = setTimeout(function() {
+        if (!_logLiveId || typeof fbDB === 'undefined') return;
+        var data = kind === 'testLogs'
+            ? { scpNum: shFieldVal('tlScp'), data: shFieldVal('tlData'), sujeito: shFieldVal('tlSujeito'), itens: shFieldVal('tlItens'), efeitos: shFieldVal('tlEfeitos'), resultado: shFieldVal('tlResultado'), by: userKey, ts: Date.now() }
+            : { scpNum: shFieldVal('ilScp'), data: shFieldVal('ilData'), entrevistador: shFieldVal('ilEntrevistador'), transcricao: shFieldVal('ilTranscricao'), notas: shFieldVal('ilNotas'), by: userKey, ts: Date.now() };
+        fbDB.ref('world/liveLogEdits/' + id).set(data);
+    }, 500);
+}
+
+// Chamado de dentro de worldSyncStart quando testLogs/interviewLogs mudam: se o
+// formulario aberto agora for justamente o log que acabou de mudar (porque outra
+// pessoa salvou/atualizou pelo botao ATUALIZAR, nao so' pelo canal ao vivo), refaz
+// os campos que nao estao em foco pra refletir o valor mais recente.
+function shLiveRefreshLogForm(field) {
+    if (!_logLiveId || _logLiveKind !== field) { updateSharedNavVisibility(); return; }
+    var arr = field === 'testLogs' ? testLogs : interviewLogs;
+    var cur = null;
+    for (var i = 0; i < arr.length; i++) if (arr[i].id === _logLiveId) { cur = arr[i]; break; }
+    if (cur) shApplyLiveLogFields(field, cur);
+    updateSharedNavVisibility();
 }
 
 // ============== GLITCH (efeito visual disparado pelo Mestre para todos) ==============
