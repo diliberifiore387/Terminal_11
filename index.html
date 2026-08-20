@@ -4777,6 +4777,7 @@ function renderDocumentForm(c, docId) {
         '<div class="fg"><label>Selo/Tipo</label><select id="fdtag">';
     for (var i = 0; i < DOC_TAGS.length; i++) h += '<option' + (isE && d.tag === DOC_TAGS[i] ? ' selected' : '') + '>' + DOC_TAGS[i] + '</option>';
     h += '</select></div></div>' +
+        '<div class="fg"><label>Data de criacao (Mestre)</label><input type="datetime-local" id="fddate" value="' + (isE && d.dt ? d.dt.slice(0, 16) : new Date().toISOString().slice(0, 16)) + '"></div>' +
         '<div class="fg"><label>Codigo (opcional — ex: MEMO-014)</label><input type="text" id="fdcode" value="' + (isE && d.code ? fpFurnEsc(d.code) : '') + '"></div>' +
         '<div class="fg"><label>Conteudo</label><textarea id="fdbody" style="min-height:160px;" required>' + (isE ? fpFurnEsc(d.body) : '') + '</textarea></div>' +
         '<div class="fg"><label>Imagem (opcional)</label>' +
@@ -4821,11 +4822,14 @@ function sDocumentForm(e, docId) {
     var tag = document.getElementById('fdtag').value;
     var code = document.getElementById('fdcode').value.trim();
     var body = document.getElementById('fdbody').value.trim();
+    var dateVal = document.getElementById('fddate').value;
+    var dt = new Date().toISOString();
+    if (dateVal) { var parsed = new Date(dateVal); if (!isNaN(parsed.getTime())) dt = parsed.toISOString(); }
     if (docId) {
         var d = fpFindDocument(docId);
-        if (d) { d.title = title; d.tag = tag; d.code = code; d.body = body; d.imgs = docImgs.slice(); }
+        if (d) { d.title = title; d.tag = tag; d.code = code; d.body = body; d.imgs = docImgs.slice(); d.dt = dt; }
     } else {
-        documents.push({ id: 'doc-' + Date.now() + '-' + Math.floor(Math.random() * 10000), title: title, tag: tag, code: code, body: body, imgs: docImgs.slice(), dt: new Date().toISOString() });
+        documents.push({ id: 'doc-' + Date.now() + '-' + Math.floor(Math.random() * 10000), title: title, tag: tag, code: code, body: body, imgs: docImgs.slice(), dt: dt });
     }
     saveDocuments();
     docFormCancel();
@@ -8141,9 +8145,9 @@ function mapShowRoom(id) {
   }
 
   h += '<div style="margin-top:18px; display:flex; gap:10px; flex-wrap:wrap;">' +
-    '<button class="btn" onclick="mapShowFloorplan(\'' + r.id + '\')">VER PLANTA DA AREA</button>' +
-    '<button class="btn" onclick="mapSetImage(\'' + r.id + '\')">DEFINIR IMAGEM</button>' +
-    '<button class="btn" onclick="xmd()">FECHAR</button></div>';
+    '<button class="btn" onclick="mapShowFloorplan(\'' + r.id + '\')">VER PLANTA DA AREA</button>';
+  if (lvl >= 6) h += '<button class="btn" onclick="mapSetImage(\'' + r.id + '\')">DEFINIR IMAGEM</button>';
+  h += '<button class="btn" onclick="xmd()">FECHAR</button></div>';
 
   h += '</div>';
   document.getElementById('mt').textContent = 'AREA: ' + r.name;
@@ -8152,6 +8156,7 @@ function mapShowRoom(id) {
 }
 
 function mapSetImage(id) {
+  if (lvl < 6) { alert('SO O MESTRE PODE DEFINIR A IMAGEM DE UMA AREA.'); return; }
   var cur = (mapState.imgs && mapState.imgs[id]) || '';
   var url = prompt('URL DA IMAGEM PARA ESTA AREA (deixe vazio para remover):', cur);
   if (url === null) return;
@@ -8733,14 +8738,23 @@ function shAllPlayerKeys() {
     return out;
 }
 
-// Quem o utilizador logado pode escolher pra partilhar. O Mestre pode escolher
-// qualquer jogador. Um jogador so' pode partilhar se o Mestre marcou "pode partilhar
-// edicao de documentos" pra ele (shareMatrix[key] === true) — e, se puder, ve todos
-// os outros jogadores que TAMBEM tem essa permissao ligada.
+// Quem o utilizador logado pode escolher pra partilhar: qualquer jogador que o Mestre
+// tenha marcado com a patente "Partilhar" — nao interessa se o proprio utilizador
+// tem essa patente ou nao, so' interessa quem esta' disponivel (ja' marcado) pelo
+// Mestre. Mestre em si pode sempre escolher qualquer jogador.
 function shColleagueKeysFor(key) {
     if (PASS[key] && PASS[key].lv >= 6) return shAllPlayerKeys().filter(function(k) { return k !== key; });
-    if (!shareMatrix[key]) return [];
-    return shAllPlayerKeys().filter(function(k) { return k !== key && shareMatrix[k]; });
+    return shAllPlayerKeys().filter(function(k) { return k !== key && shHasPerm(k, 'share'); });
+}
+
+// Patentes de partilha, definidas pelo Mestre por jogador:
+//  share  — pode ser escolhido/aparecer na lista de colegas pra partilhar
+//  edit   — pode digitar/editar nos documentos partilhados em que e' colaborador
+//  export — pode exportar (baixar) documentos partilhados em que e' colaborador
+function shHasPerm(key, perm) {
+    if (PASS[key] && PASS[key].lv >= 6) return true; // Mestre sempre pode tudo
+    var p = shareMatrix[key];
+    return !!(p && p[perm]);
 }
 
 function shColabCheckboxesHTML(selected, prefix) {
@@ -8808,23 +8822,29 @@ function updateSharedNavVisibility() {
     if (b) { if (n > 0) { b.style.display = ''; b.textContent = n; } else b.style.display = 'none'; }
 }
 
-// ---- PAINEL ADMIN: o Mestre decide quem pode partilhar edicao de documentos ----
+// ---- PAINEL ADMIN: o Mestre da' "patentes" de partilha por jogador ----
 function renderShareMatrixAdminHTML() {
     var players = shAllPlayerKeys().sort();
     var h = '<div style="margin-bottom:25px;">' +
-        '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:8px;">&gt; PERMISSOES DE PARTILHA (DOCUMENTOS/LOGS COLABORATIVOS)</div>' +
-        '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:12px;">Marque quais jogadores podem partilhar a edicao de documentos/logs. Quem estiver marcado consegue escolher, entre os outros marcados, com quem editar junto em tempo real. Voce (Mestre) sempre pode partilhar com qualquer jogador, mesmo sem marcar nada aqui.</div>';
+        '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:8px;">&gt; PATENTES DE PARTILHA (DOCUMENTOS COLABORATIVOS)</div>' +
+        '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:12px;">Pra cada jogador, escolha o que ele pode fazer com documentos partilhados. PARTILHAR = aparece na lista de colegas pra ser escolhido por outros. EDITAR = pode digitar nos documentos partilhados em que e colaborador. EXPORTAR = pode baixar esses documentos. Voce (Mestre) sempre tem as tres, em qualquer documento.</div>';
     if (!players.length) {
         h += '<div style="color:var(--td); font-size:0.8em;">Nenhuma conta de jogador cadastrada (fora o Mestre).</div></div>';
         return h;
     }
-    h += '<div style="display:flex; flex-direction:column; gap:8px; max-height:400px; overflow:auto; padding:10px; border:1px solid var(--bd); margin-bottom:10px;">';
+    h += '<div style="display:flex; flex-direction:column; gap:14px; max-height:440px; overflow:auto; padding:10px; border:1px solid var(--bd); margin-bottom:10px;">';
     for (var i = 0; i < players.length; i++) {
         var k = players[i];
-        var checked = !!shareMatrix[k];
-        h += '<label style="display:flex; align-items:center; gap:8px; cursor:pointer;"><input type="checkbox" id="shPerm_' + k + '" ' + (checked ? 'checked' : '') + '> ' + fpFurnEsc(PASS[k].nm) + ' pode partilhar edicao de documentos?</label>';
+        var p = shareMatrix[k] || {};
+        h += '<div style="padding-bottom:10px; border-bottom:1px solid var(--bd);">' +
+            '<div style="color:var(--g); font-size:0.85em; margin-bottom:6px;">' + fpFurnEsc(PASS[k].nm) + '</div>' +
+            '<div style="display:flex; gap:16px; flex-wrap:wrap;">' +
+            '<label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="shPerm_' + k + '_share" ' + (p.share ? 'checked' : '') + '> Partilhar</label>' +
+            '<label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="shPerm_' + k + '_edit" ' + (p.edit ? 'checked' : '') + '> Editar</label>' +
+            '<label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="shPerm_' + k + '_export" ' + (p.export ? 'checked' : '') + '> Exportar</label>' +
+            '</div></div>';
     }
-    h += '</div><button class="btn" onclick="shareMatrixSave()">SALVAR PERMISSOES DE PARTILHA</button></div>';
+    h += '</div><button class="btn" onclick="shareMatrixSave()">SALVAR PATENTES DE PARTILHA</button></div>';
     return h;
 }
 
@@ -8833,12 +8853,15 @@ function shareMatrixSave() {
     var players = shAllPlayerKeys().sort();
     var m = {};
     for (var i = 0; i < players.length; i++) {
-        var el = document.getElementById('shPerm_' + players[i]);
-        m[players[i]] = !!(el && el.checked);
+        var k = players[i];
+        var se = document.getElementById('shPerm_' + k + '_share');
+        var ee = document.getElementById('shPerm_' + k + '_edit');
+        var xe = document.getElementById('shPerm_' + k + '_export');
+        m[k] = { share: !!(se && se.checked), edit: !!(ee && ee.checked), export: !!(xe && xe.checked) };
     }
     shareMatrix = m;
     if (typeof fbDB !== 'undefined') fbDB.ref('world/shareMatrix').set(m);
-    alert('PERMISSOES DE PARTILHA ATUALIZADAS.');
+    alert('PATENTES DE PARTILHA ATUALIZADAS.');
 }
 
 // ---- DOCUMENTOS PARTILHADOS (criados por qualquer jogador, na aba NOTAS) ----
@@ -8921,20 +8944,39 @@ function openSharedDocEditor(id) {
     if (!it) { alert('DOCUMENTO NAO ENCONTRADO (pode ter sido apagado).'); go('shared'); return; }
     if (!(lvl >= 6 || (it.collaborators && it.collaborators.indexOf(userKey) !== -1))) { alert('SEM ACESSO A ESTE DOCUMENTO.'); return; }
     _shOpenId = id;
+    var canEdit = shHasPerm(userKey, 'edit');
+    var canExport = shHasPerm(userKey, 'export');
     var c = document.getElementById('tcnt');
     var collabNames = (it.collaborators || []).map(function(k) { return PASS[k] ? PASS[k].nm : k; }).join(', ');
+    var ro = canEdit ? '' : ' readonly disabled';
     var h = '<div style="max-width:900px;">' +
         '<button class="btn btn-s" onclick="closeSharedDocEditor()">&larr; VOLTAR</button>' +
         '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin:14px 0 6px;">&gt; DOCUMENTO PARTILHADO // COLABORATIVO</div>' +
-        '<div style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Editado em conjunto com: ' + fpFurnEsc(collabNames || '-') + '. Alteracoes aparecem para todos em tempo real.</div>' +
-        '<div class="fg" style="margin-bottom:10px;"><label>TITULO</label><input type="text" id="shDocTitle" value="' + fpFurnEsc(it.title || '') + '" oninput="shDocLiveInput()"></div>' +
-        '<div class="fg"><label>CONTEUDO</label><textarea id="shDocContent" style="min-height:500px; font-size:0.9em; line-height:1.6;" oninput="shDocLiveInput()">' + (it.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</textarea></div>' +
+        '<div style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Editado em conjunto com: ' + fpFurnEsc(collabNames || '-') + '. Alteracoes aparecem para todos em tempo real.' + (canEdit ? '' : ' Voce tem apenas permissao de leitura neste documento (o Mestre nao deu a patente EDITAR).') + '</div>' +
+        '<div class="fg" style="margin-bottom:10px;"><label>TITULO</label><input type="text" id="shDocTitle" value="' + fpFurnEsc(it.title || '') + '" oninput="shDocLiveInput()"' + ro + '></div>' +
+        '<div class="fg"><label>CONTEUDO</label><textarea id="shDocContent" style="min-height:500px; font-size:0.9em; line-height:1.6;" oninput="shDocLiveInput()"' + ro + '>' + (it.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</textarea></div>' +
         '<div id="shDocStatus" style="color:var(--g); font-size:0.78em; min-height:18px; margin-top:8px;"></div>' +
-        '<div style="display:flex; gap:10px; margin-top:10px;">';
+        '<div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">';
+    if (canExport) h += '<button class="btn btn-s" onclick="shExportItem(\'' + id + '\')">EXPORTAR (.TXT)</button>';
     if (it.owner === userKey || lvl >= 6) h += '<button class="btn btn-r" onclick="shDeleteItem(\'' + id + '\')">EXCLUIR DOCUMENTO</button>';
     else h += '<button class="btn btn-r" onclick="shLeaveItem(\'' + id + '\')">SAIR DA PARTILHA</button>';
     h += '</div></div>';
     c.innerHTML = h;
+}
+
+function shExportItem(id) {
+    var it = sharedItems[id];
+    if (!it) return;
+    var txt = (it.title || 'documento') + '\n\n' + (it.content || '');
+    var blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = (it.title || 'documento').replace(/[^a-z0-9\-_ ]/gi, '_') + '.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function() { URL.revokeObjectURL(url); }, 2000);
 }
 
 function closeSharedDocEditor() { _shOpenId = null; go('shared'); }
@@ -9230,8 +9272,9 @@ function fpRenderPlayerTokens(roomId, floorIdx) {
     var isMe = (k === userKey);
     if (p.hidden && !isMe) continue; // Mestre invisivel: so' ele mesmo ve o proprio token
     var label = ((p.nm || k) + '').charAt(0).toUpperCase();
-    var tokHex = fpPaletteHex(p.color || (isMe ? 'y' : 'b'));
-    var ring = isMe ? '0 0 0 2px var(--y), 0 0 4px rgba(0,0,0,0.8)' : '0 0 4px rgba(0,0,0,0.8)';
+    var tokHex = fpPlayerColorHex(p.color || (isMe ? 'y' : 'b'));
+    var ringHex = isMe ? fpPlayerColorHex(p.ringColor || 'y') : '';
+    var ring = isMe ? ('0 0 0 2px ' + ringHex + ', 0 0 4px rgba(0,0,0,0.8)') : '0 0 4px rgba(0,0,0,0.8)';
     var sitting = !!p.sit;
     var tokSize = sitting ? 12 : 16;
     var sitLab = sitting ? (p.sit === 'bed' ? ' (deitado)' : ' (sentado)') : '';
@@ -9290,6 +9333,17 @@ function fpSetMyColor(colorId) {
   if (!userKey) return;
   if (!fbPlayers[userKey]) fbPlayers[userKey] = { roomId: _fpViewRoomId, floorIdx: _fpViewFloor, x: 0, y: 0, nm: (user && user.nm) || userKey };
   fbPlayers[userKey].color = colorId;
+  if (typeof fbDB !== 'undefined') fbDB.ref('players/' + userKey).set(fbPlayers[userKey]);
+  fpRenderView();
+}
+
+// Cor da "aureola" (o contorno/halo que marca qual token e' o seu, na sua propria
+// tela — os outros jogadores nao veem esse contorno no token dos outros, so' cada
+// um ve o proprio). Separado da cor de preenchimento do token (fpSetMyColor).
+function fpSetMyRingColor(colorId) {
+  if (!userKey) return;
+  if (!fbPlayers[userKey]) fbPlayers[userKey] = { roomId: _fpViewRoomId, floorIdx: _fpViewFloor, x: 0, y: 0, nm: (user && user.nm) || userKey };
+  fbPlayers[userKey].ringColor = colorId;
   if (typeof fbDB !== 'undefined') fbDB.ref('players/' + userKey).set(fbPlayers[userKey]);
   fpRenderView();
 }
@@ -9616,6 +9670,47 @@ var FP_NPC_COLORS = [
   { id: 'w', lab: 'Branco', hex: '#e8e8e8' }
 ];
 function fpColorHex(id) { for (var i = 0; i < FP_NPC_COLORS.length; i++) if (FP_NPC_COLORS[i].id === id) return FP_NPC_COLORS[i].hex; return 'var(--g)'; }
+// Roda de cores dedicada ao TOKEN/AUREOLA do jogador no mapa (24 cores). Separada
+// da FP_NPC_COLORS (tokens de NPC) e da FP_PALETTE (quadrados/mobilia) — cada uma
+// tem seu proprio picker, pra nao misturar id's de listas diferentes.
+var FP_PLAYER_COLORS = [
+  { id: 'y', lab: 'Amarelo', hex: 'var(--y)' },
+  { id: 'g', lab: 'Verde', hex: 'var(--g)' },
+  { id: 'r', lab: 'Vermelho', hex: 'var(--r)' },
+  { id: 'b', lab: 'Azul', hex: 'var(--b)' },
+  { id: 'p', lab: 'Roxo', hex: '#b967ff' },
+  { id: 'o', lab: 'Laranja', hex: '#ff8800' },
+  { id: 'w', lab: 'Branco', hex: '#e8e8e8' },
+  { id: 'c1', lab: 'Vermelho-Escuro', hex: '#da583e' },
+  { id: 'c2', lab: 'Coral', hex: '#da8f3e' },
+  { id: 'c3', lab: 'Salmao', hex: '#dac63e' },
+  { id: 'c4', lab: 'Ambar', hex: '#b7da3e' },
+  { id: 'c5', lab: 'Dourado', hex: '#80da3e' },
+  { id: 'c6', lab: 'Oliva', hex: '#48da3e' },
+  { id: 'c7', lab: 'Verde-Lima', hex: '#3eda6a' },
+  { id: 'c8', lab: 'Esmeralda', hex: '#3edaa1' },
+  { id: 'c9', lab: 'Verde-Agua', hex: '#3edad8' },
+  { id: 'c10', lab: 'Turquesa', hex: '#3ea4da' },
+  { id: 'c11', lab: 'Ciano', hex: '#3e6dda' },
+  { id: 'c12', lab: 'Azul-Celeste', hex: '#453eda' },
+  { id: 'c13', lab: 'Azul-Royal', hex: '#7c3eda' },
+  { id: 'c14', lab: 'Indigo', hex: '#b43eda' },
+  { id: 'c15', lab: 'Violeta', hex: '#da3ec9' },
+  { id: 'c16', lab: 'Magenta', hex: '#da3e92' },
+  { id: 'c17', lab: 'Rosa-Choque', hex: '#da3e5b' }
+];
+function fpPlayerColorHex(id) { for (var i = 0; i < FP_PLAYER_COLORS.length; i++) if (FP_PLAYER_COLORS[i].id === id) return FP_PLAYER_COLORS[i].hex; return 'var(--y)'; }
+function fpRenderPlayerColorSwatches(selectedId, onclickFnName) {
+  var h = '<div style="display:flex; gap:5px; flex-wrap:wrap; margin-bottom:6px; max-width:340px;">';
+  for (var i = 0; i < FP_PLAYER_COLORS.length; i++) {
+    var col = FP_PLAYER_COLORS[i];
+    var on = selectedId === col.id;
+    h += '<button type="button" title="' + col.lab + '" onclick="' + onclickFnName + '(\'' + col.id + '\')" style="width:24px; height:24px; padding:0; cursor:pointer; border-radius:50%; ' +
+      'background:' + col.hex + '; border:2px solid ' + (on ? 'var(--y)' : 'rgba(255,255,255,0.25)') + '; box-shadow:' + (on ? '0 0 6px var(--y)' : 'none') + ';"></button>';
+  }
+  h += '</div>';
+  return h;
+}
 
 // ============== QUADRADOS / OBJETOS DE CENARIO (minimalista) ==============
 // Celulas tipo 'q' (quadrado): preenchem a sala visualmente com blocos de cor
@@ -10420,10 +10515,11 @@ function fpRenderView() {
     h += '</div></div>';
     h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Linha solida = parede &nbsp;&nbsp; linha tracejada + &#128682;/&#128274; = porta (ande ate ela para destrancar/atravessar) &nbsp;&nbsp; &#9650;/&#9660; = escada para o andar de cima/baixo (ande ate ela para subir/descer) &nbsp;&nbsp; <span style="color:var(--b);">&#9654;</span> seta azul = passagem para OUTRA AREA (ande ate ela para ver a revelacao e atravessar) &nbsp;&nbsp; bloco colorido = quadrado/objeto de cenario (bloqueia a passagem) &nbsp;&nbsp; ponto colorido = NPC (clique para ver ficha) &nbsp;&nbsp; losango colorido = NPC sob controle do Mestre &nbsp;&nbsp; borda verde + &#9873; = ponto de entrada &nbsp;&nbsp; circulo colorido = jogador, cada um com a cor que escolheu &nbsp; (<span style="color:var(--y);">contorno amarelo</span> = voce)</div>';
     h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Mobília <span style="color:var(--y);">âmbar</span>: cadeira/sofá/cama nao bloqueiam — ande ate elas para sentar/deitar (o token fica menor sobre o desenho). Mesa/estante/armário bloqueiam e podem ser clicadas para deixar ou pegar itens (um pontinho amarelo no canto avisa que ha algo la). Vaso/luminária so decoram e bloqueiam; tapete e so decorativo e nao bloqueia.</div>';
-    var _fpMoveBoxHtml = '', _fpNpcBoxHtml = '', _fpMyColor = 'y';
+    var _fpMoveBoxHtml = '', _fpNpcBoxHtml = '', _fpMyColor = 'y', _fpMyRing = 'y';
     if (userKey) {
       fpEnsureMyPosition(roomId, _fpViewFloor, curFloor);
       _fpMyColor = (fbPlayers[userKey] && fbPlayers[userKey].color) || 'y';
+      _fpMyRing = (fbPlayers[userKey] && fbPlayers[userKey].ringColor) || 'y';
       _fpMoveBoxHtml += '<div style="flex:1; min-width:220px; margin:16px 0; padding:14px; border:1px solid var(--bd); text-align:center;">';
       _fpMoveBoxHtml += '<div style="color:var(--gd); font-size:0.72em; letter-spacing:1px; margin-bottom:10px;">MOVER-SE NESTA SALA</div>';
       _fpMoveBoxHtml += fpRenderArrowPanel();
@@ -10448,7 +10544,11 @@ function fpRenderView() {
     if (userKey) {
       h += '<div style="margin:16px 0; padding:14px; border:1px solid var(--bd);">';
       h += '<div style="color:var(--gd); font-size:0.72em; letter-spacing:1px; margin-bottom:10px; text-align:center;">COR DO SEU PERSONAGEM NO MAPA</div>';
-      h += fpRenderPaletteSwatches(_fpMyColor, 'fpSetMyColor', true);
+      h += fpRenderPlayerColorSwatches(_fpMyColor, 'fpSetMyColor');
+      h += '</div>';
+      h += '<div style="margin:16px 0; padding:14px; border:1px solid var(--bd);">';
+      h += '<div style="color:var(--gd); font-size:0.72em; letter-spacing:1px; margin-bottom:10px; text-align:center;">COR DA AUREOLA (contorno que marca voce)</div>';
+      h += fpRenderPlayerColorSwatches(_fpMyRing, 'fpSetMyRingColor');
       h += '</div>';
     }
   }
