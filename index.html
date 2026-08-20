@@ -8734,11 +8734,13 @@ function shAllPlayerKeys() {
 }
 
 // Quem o utilizador logado pode escolher pra partilhar. O Mestre pode escolher
-// qualquer jogador; os demais so' veem quem o Mestre liberou pra eles na matriz.
+// qualquer jogador. Um jogador so' pode partilhar se o Mestre marcou "pode partilhar
+// edicao de documentos" pra ele (shareMatrix[key] === true) — e, se puder, ve todos
+// os outros jogadores que TAMBEM tem essa permissao ligada.
 function shColleagueKeysFor(key) {
     if (PASS[key] && PASS[key].lv >= 6) return shAllPlayerKeys().filter(function(k) { return k !== key; });
-    var list = shareMatrix[key] || [];
-    return list.filter(function(k) { return PASS[k] && k !== key; });
+    if (!shareMatrix[key]) return [];
+    return shAllPlayerKeys().filter(function(k) { return k !== key && shareMatrix[k]; });
 }
 
 function shColabCheckboxesHTML(selected, prefix) {
@@ -8806,23 +8808,21 @@ function updateSharedNavVisibility() {
     if (b) { if (n > 0) { b.style.display = ''; b.textContent = n; } else b.style.display = 'none'; }
 }
 
-// ---- PAINEL ADMIN: o Mestre escolhe antecipadamente quem pode partilhar com quem ----
+// ---- PAINEL ADMIN: o Mestre decide quem pode partilhar edicao de documentos ----
 function renderShareMatrixAdminHTML() {
     var players = shAllPlayerKeys().sort();
     var h = '<div style="margin-bottom:25px;">' +
         '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:8px;">&gt; PERMISSOES DE PARTILHA (DOCUMENTOS/LOGS COLABORATIVOS)</div>' +
-        '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:12px;">Marque quais duplas de jogadores podem escolher um ao outro pra partilhar e editar documentos/logs juntos em tempo real. Voce (Mestre) sempre pode partilhar com qualquer jogador, mesmo sem marcar nada aqui.</div>';
-    if (players.length < 2) {
-        h += '<div style="color:var(--td); font-size:0.8em;">E preciso pelo menos 2 contas de jogador cadastradas (fora o Mestre).</div></div>';
+        '<div class="help-text" style="color:var(--td); font-size:0.78em; margin-bottom:12px;">Marque quais jogadores podem partilhar a edicao de documentos/logs. Quem estiver marcado consegue escolher, entre os outros marcados, com quem editar junto em tempo real. Voce (Mestre) sempre pode partilhar com qualquer jogador, mesmo sem marcar nada aqui.</div>';
+    if (!players.length) {
+        h += '<div style="color:var(--td); font-size:0.8em;">Nenhuma conta de jogador cadastrada (fora o Mestre).</div></div>';
         return h;
     }
     h += '<div style="display:flex; flex-direction:column; gap:8px; max-height:400px; overflow:auto; padding:10px; border:1px solid var(--bd); margin-bottom:10px;">';
     for (var i = 0; i < players.length; i++) {
-        for (var j = i + 1; j < players.length; j++) {
-            var a = players[i], b = players[j];
-            var checked = (shareMatrix[a] || []).indexOf(b) !== -1;
-            h += '<label style="display:flex; align-items:center; gap:8px; cursor:pointer;"><input type="checkbox" id="shPair_' + a + '_' + b + '" ' + (checked ? 'checked' : '') + '> ' + fpFurnEsc(PASS[a].nm) + ' &harr; ' + fpFurnEsc(PASS[b].nm) + '</label>';
-        }
+        var k = players[i];
+        var checked = !!shareMatrix[k];
+        h += '<label style="display:flex; align-items:center; gap:8px; cursor:pointer;"><input type="checkbox" id="shPerm_' + k + '" ' + (checked ? 'checked' : '') + '> ' + fpFurnEsc(PASS[k].nm) + ' pode partilhar edicao de documentos?</label>';
     }
     h += '</div><button class="btn" onclick="shareMatrixSave()">SALVAR PERMISSOES DE PARTILHA</button></div>';
     return h;
@@ -8832,13 +8832,9 @@ function shareMatrixSave() {
     if (lvl < 6) return;
     var players = shAllPlayerKeys().sort();
     var m = {};
-    for (var i = 0; i < players.length; i++) m[players[i]] = [];
     for (var i = 0; i < players.length; i++) {
-        for (var j = i + 1; j < players.length; j++) {
-            var a = players[i], b = players[j];
-            var el = document.getElementById('shPair_' + a + '_' + b);
-            if (el && el.checked) { m[a].push(b); m[b].push(a); }
-        }
+        var el = document.getElementById('shPerm_' + players[i]);
+        m[players[i]] = !!(el && el.checked);
     }
     shareMatrix = m;
     if (typeof fbDB !== 'undefined') fbDB.ref('world/shareMatrix').set(m);
