@@ -3256,7 +3256,40 @@ function handDeliverPaperTo(target) {
 // O Mestre (Nivel 6) sempre ve tudo, esteja ou nao na lista.
 function dbAccessible(x) {
     if (lvl >= 6) return true;
-    return !!(x.allowed && x.allowed.indexOf(userKey) !== -1);
+    if (x.allowed && x.allowed.indexOf(userKey) !== -1) return true;
+    // Colaborador (partilhado com) ou o proprio host da partilha sempre pode
+    // acessar o documento, mesmo que o Mestre nao o tenha marcado em "allowed" —
+    // sem isso a pessoa nao conseguiria nem abrir o rascunho/documento partilhado.
+    if (x.collaborators && x.collaborators.indexOf(userKey) !== -1) return true;
+    if (x.editSession && x.editSession.hostKey === userKey) return true;
+    return false;
+}
+
+function dbFind(id) {
+    for (var i = 0; i < db.length; i++) if (db[i].id === id) return db[i];
+    return null;
+}
+
+// Rotulo mostrado no card/documento enquanto uma partilha esta ativa e ainda
+// NAO foi submetida pelo host: "A SER CRIADO" (documento novo, nunca salvo) ou
+// "A SER EDITADO" (documento ja existente sendo editado em conjunto agora).
+// Para quem nao e o host, mostra tambem quem esta a dar host ("PARTILHADO POR").
+function dbEditSessionLabel(x) {
+    if (!x.editSession) return '';
+    var hostName = (PASS[x.editSession.hostKey] && PASS[x.editSession.hostKey].nm) || x.editSession.hostKey;
+    var statusTxt = x.editSession.draft ? 'A SER CRIADO' : 'A SER EDITADO';
+    if (x.editSession.hostKey === userKey) return statusTxt;
+    return statusTxt + ' \u2014 PARTILHADO POR ' + fpFurnEsc(hostName);
+}
+
+// Enquanto uma partilha (editSession) estiver ativa num documento, so' quem
+// esta a dar host pode SUBMETER (SALVAR/ATUALIZAR) — o Mestre pode sempre.
+// Sem partilha ativa (ou documento novo, sem id ainda), qualquer um com
+// permissao normal de edicao pode submeter, como sempre foi.
+function dbCanSubmitSession(ed) {
+    if (lvl >= 6) return true;
+    if (!ed || !ed.editSession || !ed.editSession.hostKey) return true;
+    return ed.editSession.hostKey === userKey;
 }
 
 function renderDB(c) {
@@ -3309,9 +3342,11 @@ function rGrid(items) {
         var t = '';
         for (var j = 0; j < Math.min(tg.length, 3); j++) t += '<span style="color:var(--td); font-size:0.72em;">' + tg[j] + '</span> ';
         var shared = x.collaborators && x.collaborators.length;
+        var sessLabel = dbEditSessionLabel(x);
         h += '<div class="card" onclick="vItem(' + x.id + ')">' +
-            '<div class="c-h"><span class="c-n">' + (x.num || '') + '</span><span class="c-cl ' + x.cls + '">' + x.cls + '</span></div>' +
-            '<div class="c-t">' + (x.tit || '') + (shared ? ' <span style="color:var(--y); font-size:0.68em; border:1px solid var(--y); padding:1px 6px; letter-spacing:1px; vertical-align:middle;">PARTILHADO</span>' : '') + '</div>' +
+            '<div class="c-h"><span class="c-n">' + (x.num || '(RASCUNHO)') + '</span><span class="c-cl ' + x.cls + '">' + x.cls + '</span></div>' +
+            '<div class="c-t">' + (x.tit || '(sem titulo)') + (shared ? ' <span style="color:var(--y); font-size:0.68em; border:1px solid var(--y); padding:1px 6px; letter-spacing:1px; vertical-align:middle;">PARTILHADO</span>' : '') + '</div>' +
+            (sessLabel ? '<div style="color:var(--y); font-size:0.7em; letter-spacing:1px; margin:3px 0 5px;">&gt; ' + sessLabel + '</div>' : '') +
             '<div class="c-p">' + (x.desc ? x.desc.substring(0,110) + '...' : '') + '</div>' +
             '<div class="c-m"><span>' + t + '</span></div></div>';
     }
@@ -3372,6 +3407,7 @@ function vItem(id) {
         '<div class="dh"><h1>' + x.num + '</h1><h2>' + x.tit + '</h2>' +
         '<span class="dc ' + x.cls + '">' + x.cls + '</span>' +
         (x.collaborators && x.collaborators.length ? '<span style="display:inline-block; margin-left:8px; color:var(--y); font-size:0.68em; border:1px solid var(--y); padding:1px 6px; letter-spacing:1px; vertical-align:middle;">PARTILHADO</span>' : '') +
+        (dbEditSessionLabel(x) ? '<div style="margin-top:8px; color:var(--y); font-size:0.85em; letter-spacing:1px;">&gt; ' + dbEditSessionLabel(x) + '</div>' : '') +
         (lvl >= 6 ? '<div style="margin-top:8px; color:var(--y); font-size:0.82em;">ACESSO LIBERADO PARA: ' + (dbAllowedNames(x).length ? dbAllowedNames(x).join(', ') : '(ninguem ainda — so' + ' voce, Mestre)') + '</div>' : '') +
         '</div>' +
         wf + im +
@@ -3551,10 +3587,10 @@ function renderForm(c, ed) {
         '<div style="height:110px; background:rgba(0,10,0,0.5); border:1px dashed var(--bd); display:flex; align-items:center; justify-content:center; color:var(--td); cursor:pointer; font-size:0.85em;" onclick="document.getElementById(\'fii\').click()">+ ADICIONAR</div></div>' +
         '<input type="file" id="fii" accept="image/*" multiple style="display:none" onchange="hImg(event)">' +
         '</div>' +
-        '<div class="fg"><label>Partilhar com (edicao em conjunto, em tempo real)</label>' + shColabCheckboxesHTML(isE ? (ed.collaborators || []) : [], 'shColabDb') +
-        '<span style="display:block; color:var(--td); font-size:0.7em; margin-top:4px;">Marque os colegas que devem poder digitar neste MESMO documento ao mesmo tempo que voce (precisa ter a patente "Editar" liberada pelo Mestre). So' + ' funciona depois de salvar pelo menos uma vez.</span></div>' +
-        '<div style="display:flex; gap:10px; margin-top:18px;">' +
-        '<button type="submit" class="btn">' + (isE ? 'ATUALIZAR' : 'SALVAR') + '</button>' +
+        '<div class="fg"><label>Partilhar com (edicao em conjunto, em tempo real)</label>' + shColabCheckboxesHTML(isE ? (ed.collaborators || []) : [], 'shColabDb', 'shDbColabChanged') +
+        '<span style="display:block; color:var(--td); font-size:0.7em; margin-top:4px;">Ao marcar um colega aqui, o documento ja aparece pra ele no BANCO DE DADOS como "A SER CRIADO"/"A SER EDITADO" — mesmo antes de salvar — e ele ja pode abrir e digitar junto (precisa ter a patente "Editar" liberada pelo Mestre). Mas so' + ' quem esta a dar host nesta partilha (quem marcou primeiro) pode SUBMETER a criacao/edicao final.</span></div>' +
+        '<div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:18px;">' +
+        (dbCanSubmitSession(ed) ? '<button type="submit" class="btn">' + (isE ? 'ATUALIZAR' : 'SALVAR') + '</button>' : '<span style="color:var(--y); font-size:0.78em;">So' + ' quem esta a dar host nesta partilha pode SUBMETER. Suas alteracoes continuam sincronizando em tempo real pra ele.</span>') +
         '<button type="button" class="btn btn-r" onclick="dbFormCancel()">CANCELAR</button></div></form></div>';
     c.innerHTML = h;
     if (isE) { imgs = ed.imgs || []; wfImgs = ed.wireframes || []; editId = ed.id; rFImgs(); rWfImgs(); if (ed.collaborators && ed.collaborators.length) shDbLiveStart(ed.id); else shDbLiveStop(); }
@@ -3586,6 +3622,16 @@ function rmImg(i) { imgs.splice(i, 1); rFImgs(); }
 
 function sItem(e) {
     e.preventDefault();
+    // Se houver uma sessao de partilha ativa neste documento e quem esta a
+    // submeter nao for o host dela (nem o Mestre), bloqueia — so' o host pode
+    // SUBMETER a criacao/edicao enquanto a partilha estiver em andamento. (O
+    // botao SALVAR/ATUALIZAR ja fica escondido pra quem nao e' host, isso aqui
+    // e' so' uma segunda trava.)
+    var existingForGuard = editId ? dbFind(editId) : null;
+    if (!dbCanSubmitSession(existingForGuard)) {
+        alert('SOMENTE QUEM ESTA A DAR HOST NESTA PARTILHA PODE SUBMETER A CRIACAO/EDICAO.\nAguarde o host salvar, ou peca pra ele finalizar.');
+        return;
+    }
     // O bloco de checkboxes so' existe no formulario pro Mestre (Nivel 6). Quem
     // nao e' Mestre nao ve/mexe nessa lista — nesse caso preserva o que ja
     // existia no documento (ou fica vazio, se for um documento novo).
@@ -3618,6 +3664,7 @@ function sItem(e) {
         wireframes: wfImgs,
         allowed: allowedVal,
         collaborators: shReadCheckedColabs('shColabDb'),
+        editSession: null, // ao SUBMETER, a partilha em andamento e' finalizada — documento passa a ser definitivo
         dt: editId ? ((function(){for(var i=0;i<db.length;i++)if(db[i].id===editId)return db[i].dt;return new Date().toISOString()})()) : new Date().toISOString()
     };
     if (editId) {
@@ -8813,7 +8860,7 @@ function shHasPerm(key, perm) {
     return !!(p && p[perm]);
 }
 
-function shColabCheckboxesHTML(selected, prefix) {
+function shColabCheckboxesHTML(selected, prefix, onchangeFn) {
     var opts = shColleagueKeysFor(userKey);
     if (!opts.length) {
         return '<div style="color:var(--td); font-size:0.78em; margin:6px 0 4px;">O Mestre ainda nao liberou nenhum colega pra voce partilhar documentos/logs. Peca pra ele configurar em PAINEL ADMIN &gt; PERMISSOES DE PARTILHA.</div>';
@@ -8822,7 +8869,7 @@ function shColabCheckboxesHTML(selected, prefix) {
     for (var i = 0; i < opts.length; i++) {
         var k = opts[i];
         var checked = selected && selected.indexOf(k) !== -1;
-        h += '<label style="display:flex; align-items:center; gap:8px; cursor:pointer;"><input type="checkbox" value="' + k + '" ' + (checked ? 'checked' : '') + ' id="' + prefix + '_' + k + '"> ' + fpFurnEsc(PASS[k].nm) + '</label>';
+        h += '<label style="display:flex; align-items:center; gap:8px; cursor:pointer;"><input type="checkbox" value="' + k + '" ' + (checked ? 'checked' : '') + ' id="' + prefix + '_' + k + '"' + (onchangeFn ? ' onchange="' + onchangeFn + '()"' : '') + '> ' + fpFurnEsc(PASS[k].nm) + '</label>';
     }
     h += '</div>';
     return h;
@@ -9102,6 +9149,69 @@ function shLiveRefreshDocForm() {
 // permite dois jogadores editarem/criarem o MESMO documento SCP ao mesmo tempo.
 var _dbLiveId = null, _dbLiveTimer = null;
 
+// Disparado pelo onchange de cada checkbox de "Partilhar com" (renderForm).
+// Ao marcar o PRIMEIRO colaborador de uma sessao: se o documento ainda nao
+// existe (NOVO DOCUMENTO), cria agora mesmo um rascunho no Banco de Dados
+// (editSession.draft = true) com o que ja foi preenchido no formulario, pra
+// aparecer na hora pro colaborador como "A SER CRIADO". Se o documento ja
+// existe (esta a ser editado), so' liga a sessao de partilha nele
+// (editSession.draft = false, "A SER EDITADO"). Em ambos os casos, quem fez
+// a marcacao vira o host da sessao — so' ele (ou o Mestre) pode submeter
+// enquanto ela estiver ativa. Ao desmarcar todos os colaboradores: se era um
+// rascunho que nunca chegou a ser submetido, descarta o documento por
+// completo; se ja era um documento de verdade, so' encerra a sessao.
+function shDbColabChanged() {
+    var checked = shReadCheckedColabs('shColabDb');
+    if (!checked.length) {
+        if (editId) {
+            var cur = dbFind(editId);
+            if (cur && cur.editSession) {
+                if (cur.editSession.draft) {
+                    db = db.filter(function(it) { return it.id !== editId; });
+                    editId = null;
+                } else {
+                    cur.editSession = null;
+                    cur.collaborators = [];
+                }
+                saveDB();
+                if (typeof fbDB !== 'undefined') { try { fbDB.ref('world/liveDbEdits/' + (cur.id) ).remove(); } catch (e) {} }
+                updateSharedNavVisibility();
+            }
+        }
+        shDbLiveStop();
+        return;
+    }
+    if (!editId) {
+        editId = Date.now();
+        var draftX = {
+            id: editId,
+            num: shFieldVal('fn'), tit: shFieldVal('ft'), cls: shFieldVal('fc') || 'Safe',
+            clr: parseInt(shFieldVal('fl')) || 1,
+            tags: [], interv: (document.getElementById('finterv') ? document.getElementById('finterv').checked : false),
+            cnt: shFieldVal('fcnt'), desc: shFieldVal('fd'), add: shFieldVal('fa'),
+            imgs: [], wireframes: [],
+            allowed: (lvl < 6 && userKey) ? [userKey] : [],
+            collaborators: checked,
+            editSession: { hostKey: userKey, draft: true, ts: Date.now() },
+            dt: new Date().toISOString()
+        };
+        db.push(draftX);
+        saveDB();
+        updateSharedNavVisibility();
+        shDbLiveStart(editId);
+        shDbLiveInput();
+    } else {
+        var x = dbFind(editId);
+        if (x) {
+            x.collaborators = checked;
+            if (!x.editSession) x.editSession = { hostKey: userKey, draft: false, ts: Date.now() };
+            saveDB();
+            updateSharedNavVisibility();
+        }
+        if (_dbLiveId !== editId) shDbLiveStart(editId);
+    }
+}
+
 function shDbLiveStart(id) {
     shDbLiveStop();
     if (typeof fbDB === 'undefined') return;
@@ -9161,8 +9271,19 @@ function shLiveRefreshDbForm() {
 }
 
 // Fecha o formulario de EDITAR/NOVO documento SCP, parando o canal ao vivo antes.
+// Se quem cancela e' o host de um rascunho que nunca chegou a ser submetido,
+// descarta o documento por completo (ele nunca devia ter existido de verdade).
 function dbFormCancel() {
+    if (editId) {
+        var x = dbFind(editId);
+        if (x && x.editSession && x.editSession.draft && x.editSession.hostKey === userKey) {
+            db = db.filter(function(it) { return it.id !== editId; });
+            saveDB();
+        }
+        if (typeof fbDB !== 'undefined') { try { fbDB.ref('world/liveDbEdits/' + editId).remove(); } catch (e) {} }
+    }
     shDbLiveStop();
+    editId = null;
     go('db');
 }
 
