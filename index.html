@@ -1417,16 +1417,9 @@ var db = [], labCards = [], items = [], dclass = [], documents = [];
 var testLogs = [], interviewLogs = [];
 var user = null, userKey = null, lvl = 0, nav = 'db', editId = null, imgs = [];
 // ============== PARTILHA ENTRE JOGADORES (documentos e logs colaborativos) ==============
-// shareMatrix: quem cada jogador pode escolher pra partilhar (definido pelo Mestre no
-// Painel Admin). Formato: { loginKey: [loginKey, loginKey, ...] }. E' sempre simetrico
-// (se A pode partilhar com B, B tambem pode partilhar com A) — garantido ao salvar.
+// shareMatrix: patentes de partilha por jogador, definidas pelo Mestre no Painel Admin.
+// Formato: { loginKey: { share: bool, edit: bool, export: bool } }.
 var shareMatrix = {};
-// sharedItems: documentos partilhados criados pelos jogadores (aba PARTILHADOS), um por
-// chave no Firebase (world/sharedItems/<id>) — assim varias pessoas podem editar itens
-// diferentes ao mesmo tempo sem se atropelar. Cache local: { id: {...item} }.
-var sharedItems = {};
-var _shOpenId = null; // id do item partilhado aberto no editor agora (pra saber o que atualizar ao vivo)
-var _shSaveTimer = null; // debounce do autosave ao digitar no editor colaborativo
 var researcherProfile = null;
 var labTab = 'scp'; // scp | item | dclass
 
@@ -1945,7 +1938,8 @@ function logout() {
     }
     mapExplorerSyncStop(); // para de escutar o historico pessoal do login que esta saindo
     shareSyncStop();
-    _shOpenId = null;
+    shDocLiveStop();
+    shLogLiveStop();
     var nsh = document.getElementById('nshared');
     if (nsh) nsh.style.display = 'none';
     user = null; lvl = 0; userKey = null;
@@ -2185,7 +2179,7 @@ function go(page) {
     else if (page === 'logs') renderLogs(c);
     else if (page === 'map') { _mapRenderTarget = 'tcnt'; document.getElementById('md').classList.remove('on'); mdSetWide(false); renderMap(c); }
     else if (page === 'notes') renderNotes(c);
-    else if (page === 'shared') { _shOpenId = null; renderShared(c); }
+    else if (page === 'shared') renderShared(c);
     else if (page === 'chat') { chatActiveThread = null; renderChat(c); chatUpdateBadge(); }
     else if (page === 'radio') renderRadio(c);
     else if (page === 'new') renderForm(c);
@@ -2520,8 +2514,7 @@ var NOTES_DRAW_COLORS = ['#00ff41', '#ffffff', '#ff3b3b', '#ffd23b', '#3ba0ff'];
 function notesRenderBoardTab() {
     var papers = notesLoadPapers();
     var h = '<div style="color:var(--td); font-size:0.8em; margin:14px 0 12px;">Quadro livre, tipo mural: rabisque com o mouse/dedo e arraste os papeis que voce pegou nas plantas — tudo no mesmo espaco. O desenho e a posicao de cada papel sao salvos automaticamente. Clique num papel (sem arrastar) pra examinar; arraste pra reorganizar.</div>';
-    if (lvl >= 6) h += '<div style="margin-bottom:12px;"><button class="btn" style="border-color:var(--p,#b967ff); color:var(--p,#b967ff);" onclick="newDocumentFromNotes()">+ CRIAR DOCUMENTO</button></div>';
-    h += '<div style="margin-bottom:12px;"><button class="btn" style="border-color:var(--g); color:var(--g);" onclick="openNewSharedDocForm()">+ NOVO DOCUMENTO PARTILHADO</button></div>';
+    if (lvl >= 6 || shHasPerm(userKey, 'share')) h += '<div style="margin-bottom:12px;"><button class="btn" style="border-color:var(--p,#b967ff); color:var(--p,#b967ff);" onclick="newDocumentFromNotes()">+ CRIAR DOCUMENTO</button></div>';
     h += '<div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">';
     h += '<span style="color:var(--gd); font-size:0.75em; letter-spacing:1px;">COR:</span>';
     for (var i = 0; i < NOTES_DRAW_COLORS.length; i++) {
@@ -4769,28 +4762,36 @@ function renderDocGrid(list) {
 function renderDocumentForm(c, docId) {
     var d = docId ? fpFindDocument(docId) : null;
     var isE = !!d;
+    if (isE && !(lvl >= 6 || d.owner === userKey || (d.collaborators && d.collaborators.indexOf(userKey) !== -1 && shHasPerm(userKey, 'edit')))) {
+        alert('SEM PERMISSAO PARA EDITAR ESTE DOCUMENTO.');
+        docFormCancel();
+        return;
+    }
     docImgs = isE && d.imgs ? d.imgs.slice() : [];
     var h = '<div style="max-width:650px;">' +
         '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:18px;">&gt; ' + (isE ? 'EDITAR' : 'NOVO') + ' DOCUMENTO</div>' +
         '<form onsubmit="sDocumentForm(event' + (isE ? ",'" + d.id + "'" : '') + ')">' +
-        '<div class="fr"><div class="fg"><label>Titulo</label><input type="text" id="fdtitle" value="' + (isE ? fpFurnEsc(d.title) : '') + '" required></div>' +
-        '<div class="fg"><label>Selo/Tipo</label><select id="fdtag">';
+        '<div class="fr"><div class="fg"><label>Titulo</label><input type="text" id="fdtitle" value="' + (isE ? fpFurnEsc(d.title) : '') + '" oninput="shDocLiveInput()" required></div>' +
+        '<div class="fg"><label>Selo/Tipo</label><select id="fdtag" onchange="shDocLiveInput()">';
     for (var i = 0; i < DOC_TAGS.length; i++) h += '<option' + (isE && d.tag === DOC_TAGS[i] ? ' selected' : '') + '>' + DOC_TAGS[i] + '</option>';
     h += '</select></div></div>' +
-        '<div class="fg"><label>Data de criacao (Mestre)</label><input type="datetime-local" id="fddate" value="' + (isE && d.dt ? d.dt.slice(0, 16) : new Date().toISOString().slice(0, 16)) + '"></div>' +
-        '<div class="fg"><label>Codigo (opcional — ex: MEMO-014)</label><input type="text" id="fdcode" value="' + (isE && d.code ? fpFurnEsc(d.code) : '') + '"></div>' +
-        '<div class="fg"><label>Conteudo</label><textarea id="fdbody" style="min-height:160px;" required>' + (isE ? fpFurnEsc(d.body) : '') + '</textarea></div>' +
+        '<div class="fg"><label>Data de criacao (Mestre)</label><input type="datetime-local" id="fddate" value="' + (isE && d.dt ? d.dt.slice(0, 16) : new Date().toISOString().slice(0, 16)) + '"' + (lvl >= 6 ? '' : ' readonly disabled') + '></div>' +
+        '<div class="fg"><label>Codigo (opcional — ex: MEMO-014)</label><input type="text" id="fdcode" value="' + (isE && d.code ? fpFurnEsc(d.code) : '') + '" oninput="shDocLiveInput()"></div>' +
+        '<div class="fg"><label>Conteudo</label><textarea id="fdbody" style="min-height:160px;" oninput="shDocLiveInput()" required>' + (isE ? fpFurnEsc(d.body) : '') + '</textarea></div>' +
         '<div class="fg"><label>Imagem (opcional)</label>' +
         '<div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:10px;" id="fdim">' +
         '<div style="height:110px; background:rgba(0,10,0,0.5); border:1px dashed var(--bd); display:flex; align-items:center; justify-content:center; color:var(--td); cursor:pointer; font-size:0.85em;" onclick="document.getElementById(\'fdii\').click()">+ ADICIONAR</div></div>' +
         '<input type="file" id="fdii" accept="image/*" multiple style="display:none" onchange="hDocImg(event)">' +
         '</div>' +
+        '<div class="fg"><label>Partilhar com (edicao em conjunto, em tempo real)</label>' + shColabCheckboxesHTML(isE ? (d.collaborators || []) : [], 'shColabDoc') + '</div>' +
         '<div style="display:flex; gap:10px; margin-top:18px;">' +
         '<button type="submit" class="btn">SALVAR</button>' +
         '<button type="button" class="btn btn-s" onclick="docFormCancel()">CANCELAR</button>' +
         '</div></form></div>';
     c.innerHTML = h;
     rDocImgs();
+    if (isE && d.collaborators && d.collaborators.length) shDocLiveStart(d.id);
+    else shDocLiveStop();
 }
 
 function hDocImg(e) {
@@ -4822,16 +4823,28 @@ function sDocumentForm(e, docId) {
     var tag = document.getElementById('fdtag').value;
     var code = document.getElementById('fdcode').value.trim();
     var body = document.getElementById('fdbody').value.trim();
+    var collabs = shReadCheckedColabs('shColabDoc');
     var dateVal = document.getElementById('fddate').value;
     var dt = new Date().toISOString();
     if (dateVal) { var parsed = new Date(dateVal); if (!isNaN(parsed.getTime())) dt = parsed.toISOString(); }
+    var savedId;
     if (docId) {
         var d = fpFindDocument(docId);
-        if (d) { d.title = title; d.tag = tag; d.code = code; d.body = body; d.imgs = docImgs.slice(); d.dt = dt; }
+        if (d) {
+            d.title = title; d.tag = tag; d.code = code; d.body = body; d.imgs = docImgs.slice();
+            if (lvl >= 6) d.dt = dt; // so' o Mestre pode alterar a data de criacao
+            if (!d.owner) d.owner = userKey; // documentos antigos, sem dono, passam a pertencer a quem editar primeiro
+            d.collaborators = [d.owner].concat(collabs.filter(function(k) { return k !== d.owner; }));
+            savedId = d.id;
+        }
     } else {
-        documents.push({ id: 'doc-' + Date.now() + '-' + Math.floor(Math.random() * 10000), title: title, tag: tag, code: code, body: body, imgs: docImgs.slice(), dt: dt });
+        savedId = 'doc-' + Date.now() + '-' + Math.floor(Math.random() * 10000);
+        documents.push({ id: savedId, title: title, tag: tag, code: code, body: body, imgs: docImgs.slice(), dt: dt, owner: userKey, collaborators: [userKey].concat(collabs) });
     }
     saveDocuments();
+    if (typeof fbDB !== 'undefined') { try { fbDB.ref('world/liveDocEdits/' + savedId).remove(); } catch (e) {} }
+    shDocLiveStop();
+    updateSharedNavVisibility();
     docFormCancel();
 }
 
@@ -4839,6 +4852,7 @@ function sDocumentForm(e, docId) {
 // Global (Mestre) ou direto das Notas/Inventario (ver newDocumentFromNotes),
 // que e' o outro jeito de criar um documento sem precisar entrar no Laboratorio.
 function docFormCancel() {
+    shDocLiveStop();
     var c = document.getElementById('tcnt');
     if (_docFormReturnTo === 'notes') { go('notes'); renderNotes(c); }
     else if (_docFormReturnTo === 'global') { go('lab'); labTab = 'global'; renderLab(c); }
@@ -4846,6 +4860,8 @@ function docFormCancel() {
 }
 
 function deleteDocument(docId) {
+    var d = fpFindDocument(docId);
+    if (d && !(lvl >= 6 || d.owner === userKey || !d.owner)) { alert('SO O CRIADOR OU O MESTRE PODE EXCLUIR ESTE DOCUMENTO.'); return; }
     if (!confirm('CONFIRMA EXCLUSAO PERMANENTE DESTE DOCUMENTO?')) return;
     var nd = [];
     for (var i = 0; i < documents.length; i++) if (documents[i].id !== docId) nd.push(documents[i]);
@@ -8074,6 +8090,7 @@ function mapApplyTeleport(cmd) {
     var meOld = fbPlayers[userKey] || {};
     var data = { roomId: cmd.roomId, floorIdx: floorIdx, x: (cmd.x != null ? cmd.x : (meOld.x || 0)), y: (cmd.y != null ? cmd.y : (meOld.y || 0)), nm: (user && user.nm) || userKey };
     if (meOld.color) data.color = meOld.color;
+    if (meOld.ringColor) data.ringColor = meOld.ringColor;
     if (lvl >= 6) data.hidden = !_fpMestreVisible;
     fbPlayers[userKey] = data;
     fbDB.ref('players/' + userKey).set(data);
@@ -8247,7 +8264,23 @@ function mapShowSessionPin() {
 // acesso OU por codigo escolhido) e NPCs (pontos coloridos com descricao, secao
 // e imagem). Fica tudo guardado em mapState.floorplans[roomId], junto com o
 // resto do progresso salvo — nao depende de nenhuma imagem externa.
-var FP_CELL = 24; // tamanho de cada celula da grade, em pixels
+var FP_CELL = 24; // tamanho de cada celula da grade, em pixels — recalculado a cada render por fpAutoCellSize()
+var FP_MAX_DIM = 60; // maximo de colunas/linhas que uma planta pode ter (era travado em 30)
+
+// Calcula um tamanho de celula que faz a planta inteira (colunas x linhas) caber
+// na tela disponivel, tanto na largura quanto na altura, sem precisar de scroll
+// pra cima/baixo pra ver o resto do desenho. Plantas pequenas continuam do
+// tamanho "normal" (24px); plantas grandes (perto do limite de 60) encolhem as
+// celulas automaticamente. reserveH e' o espaco (em px) que o resto da tela ao
+// redor do grid (abas de andar, botoes, texto de ajuda etc.) costuma ocupar.
+function fpAutoCellSize(cols, rows, reserveH) {
+  var vw = window.innerWidth || 1000, vh = window.innerHeight || 700;
+  var maxW = Math.max(200, vw * 0.92 - 60); // 0.92 ~ largura do popup (.mbox-wide e' 96vw), 60 = padding/margens
+  var maxH = Math.max(200, vh - (reserveH || 380));
+  var size = Math.floor(Math.min(maxW / cols, maxH / rows, 24));
+  if (size < 8) size = 8;
+  return size;
+}
 var _fpEdit = null;        // planta em edicao (rascunho, so vira definitivo ao salvar)
 var _fpViewRoomId = null;  // area sendo visualizada no modo leitura
 var _fpViewFloor = 0;      // indice do andar sendo visualizado no modo leitura
@@ -8698,6 +8731,7 @@ function worldSyncStart() {
       else if (field === 'interviewLogs') interviewLogs = v;
       try { localStorage.setItem(WORLD_KEYS[field], JSON.stringify(v)); } catch(e) {}
       if (field === 'testLogs' || field === 'interviewLogs') { try { shLiveRefreshLogForm(field); } catch (e) {} }
+      if (field === 'documents') { try { shLiveRefreshDocForm(); } catch (e) {} }
       try { refreshCurrentPage(); } catch (e) { console.error('ERRO AO ATUALIZAR TELA APOS SYNC DE "' + field + '":', e); }
     });
   });
@@ -8717,20 +8751,25 @@ function refreshCurrentPage() {
 
 // ============== PARTILHA ENTRE JOGADORES (documentos e logs colaborativos) ==============
 // Visao geral:
-// - O Mestre define, no Painel Admin, quais duplas de jogadores PODEM se escolher
-//   uma a outra pra partilhar (shareMatrix, Firebase 'world/shareMatrix'). O Mestre
-//   em si pode sempre partilhar com qualquer jogador, sem precisar estar na matriz.
-// - "Documentos partilhados" sao um tipo de conteudo novo, criado por qualquer
-//   jogador na aba NOTAS (QUADRO), guardados em 'world/sharedItems/<id>' (uma chave
-//   por documento, pra varios documentos poderem ser editados ao mesmo tempo por
-//   pessoas diferentes sem se atropelarem). Editar o titulo/conteudo propaga pros
-//   colaboradores quase em tempo real (autosave com pequeno atraso).
+// - O Mestre da', pra cada jogador, "patentes" de partilha no Painel Admin
+//   (shareMatrix, Firebase 'world/shareMatrix'): PARTILHAR (aparece na lista de
+//   colegas pra ser escolhido), EDITAR (pode digitar em documentos partilhados em
+//   que e' colaborador) e EXPORTAR (pode baixar esses documentos). O Mestre em si
+//   sempre tem as tres, em qualquer documento.
+// - "Documentos partilhados" SAO os documentos de verdade do Banco de Dados/
+//   Laboratorio (array `documents`, criados/editados via renderDocumentForm — o
+//   mesmo "NOVO DOCUMENTO"/"CRIAR DOCUMENTO" de sempre). Cada documento pode levar
+//   um campo `collaborators` (quem colabora nele). Enquanto o formulario esta'
+//   aberto, os campos sincronizam quase em tempo real por um canal paralelo
+//   (world/liveDocEdits/<id>), sem precisar reescrever o array inteiro de
+//   documentos a cada tecla digitada.
 // - Logs de Teste/Entrevista ja eram globais (visiveis a todos); aqui so' adicionamos
 //   um campo 'collaborators' (quem esta' colaborando ativamente) e uma sincronizacao
 //   "ao vivo" à parte (world/liveLogEdits/<id>) enquanto o formulario estiver aberto,
 //   pra nao precisar reescrever o array inteiro de logs a cada tecla digitada.
 // - Uma aba nova ("PARTILHADOS") aparece no menu assim que o jogador tiver pelo menos
-//   um documento ou log partilhado (criado por ele ou com ele).
+//   um documento ou log partilhado (criado por ele ou com ele) — e' so' uma vitrine
+//   que junta tudo, a edicao em si continua acontecendo nos formularios de sempre.
 
 function shAllPlayerKeys() {
     var out = [];
@@ -8787,27 +8826,18 @@ function shareSyncStart() {
     fbDB.ref('world/shareMatrix').on('value', function(snap) {
         shareMatrix = snap.val() || {};
         if (nav === 'adm') { try { renderAdmin(document.getElementById('tcnt')); } catch (e) {} }
-    });
-    fbDB.ref('world/sharedItems').on('value', function(snap) {
-        sharedItems = snap.val() || {};
         updateSharedNavVisibility();
-        if (nav === 'shared' && !_shOpenId) { try { renderShared(document.getElementById('tcnt')); } catch (e) {} }
-        if (_shOpenId) { try { shLiveRefreshDocEditor(); } catch (e) {} }
     });
 }
 
 function shareSyncStop() {
     if (typeof fbDB === 'undefined') return;
     try { fbDB.ref('world/shareMatrix').off(); } catch (e) {}
-    try { fbDB.ref('world/sharedItems').off(); } catch (e) {}
 }
 
 function shMyItemsCount() {
     var n = 0;
-    for (var id in sharedItems) if (sharedItems.hasOwnProperty(id)) {
-        var it = sharedItems[id];
-        if (lvl >= 6 || (it.collaborators && it.collaborators.indexOf(userKey) !== -1)) n++;
-    }
+    for (var i = 0; i < documents.length; i++) { var doc = documents[i]; if (doc.collaborators && doc.collaborators.length && (lvl >= 6 || doc.collaborators.indexOf(userKey) !== -1)) n++; }
     for (var i = 0; i < testLogs.length; i++) { var t = testLogs[i]; if (t.collaborators && t.collaborators.length && (lvl >= 6 || t.collaborators.indexOf(userKey) !== -1)) n++; }
     for (var i = 0; i < interviewLogs.length; i++) { var t2 = interviewLogs[i]; if (t2.collaborators && t2.collaborators.length && (lvl >= 6 || t2.collaborators.indexOf(userKey) !== -1)) n++; }
     return n;
@@ -8864,51 +8894,19 @@ function shareMatrixSave() {
     alert('PATENTES DE PARTILHA ATUALIZADAS.');
 }
 
-// ---- DOCUMENTOS PARTILHADOS (criados por qualquer jogador, na aba NOTAS) ----
-function openNewSharedDocForm() {
-    var h = '<div class="dv"><div class="dh"><h1>NOVO DOCUMENTO PARTILHADO</h1></div>' +
-        '<form onsubmit="sNewSharedDoc(event)">' +
-        '<div class="fg"><label>Titulo</label><input type="text" id="shNewTitle" placeholder="ex: Anotacoes da investigacao..." required></div>' +
-        '<div class="fg"><label>Conteudo inicial (opcional)</label><textarea id="shNewContent" style="min-height:150px;" placeholder="Comece a escrever..."></textarea></div>' +
-        '<div class="fg"><label>Partilhar com (edicao em conjunto, em tempo real)</label>' + shColabCheckboxesHTML([], 'shNewColab') + '</div>' +
-        '<div style="display:flex; gap:10px; margin-top:18px;"><button type="submit" class="btn">CRIAR E PARTILHAR</button>' +
-        '<button type="button" class="btn btn-r" onclick="xmd()">CANCELAR</button></div></form></div>';
-    document.getElementById('mt').textContent = 'NOVO DOCUMENTO PARTILHADO';
-    document.getElementById('mb').innerHTML = h;
-    document.getElementById('md').classList.add('on');
-}
-
-function sNewSharedDoc(e) {
-    e.preventDefault();
-    var titleEl = document.getElementById('shNewTitle');
-    var title = (titleEl.value || '').trim();
-    if (!title) { alert('DE UM TITULO AO DOCUMENTO.'); return; }
-    var content = document.getElementById('shNewContent').value || '';
-    var collabs = shReadCheckedColabs('shNewColab');
-    var id = 'shdoc-' + Date.now() + '-' + Math.floor(Math.random() * 10000);
-    var item = {
-        id: id, kind: 'doc', title: title, content: content,
-        owner: userKey, ownerName: (user && user.nm) || userKey,
-        collaborators: [userKey].concat(collabs),
-        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), updatedBy: userKey
-    };
-    if (typeof fbDB !== 'undefined') fbDB.ref('world/sharedItems/' + id).set(item);
-    sharedItems[id] = item;
-    xmd();
-    updateSharedNavVisibility();
-    go('shared');
-    openSharedDocEditor(id);
-}
-
+// ---- DOCUMENTOS PARTILHADOS: agora sao os documentos DE VERDADE do Banco de
+// Dados/Laboratorio (array `documents`), criados/editados via renderDocumentForm.
+// A aba PARTILHADOS aqui embaixo e' so' uma vitrine que lista, num so lugar, os
+// documentos + logs de teste/entrevista em que voce e' dono ou colaborador.
 function renderShared(c) {
     var h = '<div style="max-width:900px;">' +
         '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:8px;">&gt; DOCUMENTOS E LOGS PARTILHADOS</div>' +
         '<div style="color:var(--td); font-size:0.8em; margin-bottom:18px;">Itens que voce criou ou que outro jogador partilhou com voce. Editar aqui aparece pra todos os colaboradores quase em tempo real.</div>';
     var rows = [];
-    for (var id in sharedItems) if (sharedItems.hasOwnProperty(id)) {
-        var it = sharedItems[id];
-        if (!(lvl >= 6 || (it.collaborators && it.collaborators.indexOf(userKey) !== -1))) continue;
-        rows.push({ type: 'doc', id: id, title: it.title || '(sem titulo)', updatedAt: it.updatedAt, collaborators: it.collaborators || [] });
+    for (var i = 0; i < documents.length; i++) {
+        var doc = documents[i];
+        if (doc.collaborators && doc.collaborators.length && (lvl >= 6 || doc.collaborators.indexOf(userKey) !== -1))
+            rows.push({ type: 'doc', id: doc.id, title: doc.title || '(sem titulo)', updatedAt: doc.dt, collaborators: doc.collaborators, owner: doc.owner });
     }
     for (var i = 0; i < testLogs.length; i++) {
         var t = testLogs[i];
@@ -8929,102 +8927,31 @@ function renderShared(c) {
     for (var i = 0; i < rows.length; i++) {
         var r = rows[i];
         var names = r.collaborators.map(function(k) { return PASS[k] ? PASS[k].nm : k; }).join(', ');
-        var openFn = r.type === 'doc' ? ("openSharedDocEditor('" + r.id + "')") : (r.type === 'testlog' ? ("editTestLog('" + r.id + "')") : ("editInterviewLog('" + r.id + "')"));
-        h += '<div class="item-card" style="margin-bottom:12px; cursor:pointer;" onclick="' + openFn + '">' +
-            '<div style="color:var(--g); font-weight:bold;">' + fpFurnEsc(r.title) + '</div>' +
-            '<div style="color:var(--td); font-size:0.75em; margin-top:2px;">Colaboradores: ' + fpFurnEsc(names || '-') + '</div>' +
-            '</div>';
+        var openFn = r.type === 'doc' ? ("editDocument('" + r.id + "')") : (r.type === 'testlog' ? ("editTestLog('" + r.id + "')") : ("editInterviewLog('" + r.id + "')"));
+        var canExport = r.type === 'doc' && shHasPerm(userKey, 'export');
+        h += '<div class="item-card" style="margin-bottom:12px;">' +
+            '<div style="cursor:pointer;" onclick="' + openFn + '"><div style="color:var(--g); font-weight:bold;">' + fpFurnEsc(r.title) + '</div>' +
+            '<div style="color:var(--td); font-size:0.75em; margin-top:2px;">Colaboradores: ' + fpFurnEsc(names || '-') + '</div></div>';
+        if (canExport) h += '<button class="btn btn-s" style="margin-top:8px;" onclick="event.stopPropagation(); shDocExport(\'' + r.id + '\')">EXPORTAR (.TXT)</button>';
+        h += '</div>';
     }
     h += '</div>';
     c.innerHTML = h;
 }
 
-function openSharedDocEditor(id) {
-    var it = sharedItems[id];
-    if (!it) { alert('DOCUMENTO NAO ENCONTRADO (pode ter sido apagado).'); go('shared'); return; }
-    if (!(lvl >= 6 || (it.collaborators && it.collaborators.indexOf(userKey) !== -1))) { alert('SEM ACESSO A ESTE DOCUMENTO.'); return; }
-    _shOpenId = id;
-    var canEdit = shHasPerm(userKey, 'edit');
-    var canExport = shHasPerm(userKey, 'export');
-    var c = document.getElementById('tcnt');
-    var collabNames = (it.collaborators || []).map(function(k) { return PASS[k] ? PASS[k].nm : k; }).join(', ');
-    var ro = canEdit ? '' : ' readonly disabled';
-    var h = '<div style="max-width:900px;">' +
-        '<button class="btn btn-s" onclick="closeSharedDocEditor()">&larr; VOLTAR</button>' +
-        '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin:14px 0 6px;">&gt; DOCUMENTO PARTILHADO // COLABORATIVO</div>' +
-        '<div style="color:var(--td); font-size:0.78em; margin-bottom:14px;">Editado em conjunto com: ' + fpFurnEsc(collabNames || '-') + '. Alteracoes aparecem para todos em tempo real.' + (canEdit ? '' : ' Voce tem apenas permissao de leitura neste documento (o Mestre nao deu a patente EDITAR).') + '</div>' +
-        '<div class="fg" style="margin-bottom:10px;"><label>TITULO</label><input type="text" id="shDocTitle" value="' + fpFurnEsc(it.title || '') + '" oninput="shDocLiveInput()"' + ro + '></div>' +
-        '<div class="fg"><label>CONTEUDO</label><textarea id="shDocContent" style="min-height:500px; font-size:0.9em; line-height:1.6;" oninput="shDocLiveInput()"' + ro + '>' + (it.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</textarea></div>' +
-        '<div id="shDocStatus" style="color:var(--g); font-size:0.78em; min-height:18px; margin-top:8px;"></div>' +
-        '<div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">';
-    if (canExport) h += '<button class="btn btn-s" onclick="shExportItem(\'' + id + '\')">EXPORTAR (.TXT)</button>';
-    if (it.owner === userKey || lvl >= 6) h += '<button class="btn btn-r" onclick="shDeleteItem(\'' + id + '\')">EXCLUIR DOCUMENTO</button>';
-    else h += '<button class="btn btn-r" onclick="shLeaveItem(\'' + id + '\')">SAIR DA PARTILHA</button>';
-    h += '</div></div>';
-    c.innerHTML = h;
-}
-
-function shExportItem(id) {
-    var it = sharedItems[id];
-    if (!it) return;
-    var txt = (it.title || 'documento') + '\n\n' + (it.content || '');
+function shDocExport(id) {
+    var d = fpFindDocument(id);
+    if (!d) return;
+    var txt = (d.title || 'documento') + '\n\n' + (d.body || '');
     var blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
-    a.download = (it.title || 'documento').replace(/[^a-z0-9\-_ ]/gi, '_') + '.txt';
+    a.download = (d.title || 'documento').replace(/[^a-z0-9\-_ ]/gi, '_') + '.txt';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     setTimeout(function() { URL.revokeObjectURL(url); }, 2000);
-}
-
-function closeSharedDocEditor() { _shOpenId = null; go('shared'); }
-
-function shDocLiveInput() {
-    if (!_shOpenId || typeof fbDB === 'undefined') return;
-    var st = document.getElementById('shDocStatus');
-    if (st) st.textContent = 'A guardar...';
-    if (_shSaveTimer) clearTimeout(_shSaveTimer);
-    var id = _shOpenId;
-    _shSaveTimer = setTimeout(function() {
-        var tEl = document.getElementById('shDocTitle'), cEl = document.getElementById('shDocContent');
-        if (!tEl || !cEl) return;
-        var data = { title: tEl.value, content: cEl.value, updatedAt: new Date().toISOString(), updatedBy: userKey };
-        fbDB.ref('world/sharedItems/' + id).update(data);
-        var st2 = document.getElementById('shDocStatus');
-        if (st2) st2.textContent = 'GUARDADO // ' + new Date().toLocaleTimeString('pt-BR');
-    }, 500);
-}
-
-function shLiveRefreshDocEditor() {
-    if (!_shOpenId) return;
-    var it = sharedItems[_shOpenId];
-    if (!it) { alert('ESTE DOCUMENTO FOI APAGADO.'); closeSharedDocEditor(); return; }
-    var tEl = document.getElementById('shDocTitle'), cEl = document.getElementById('shDocContent');
-    if (tEl && document.activeElement !== tEl && tEl.value !== (it.title || '')) tEl.value = it.title || '';
-    if (cEl && document.activeElement !== cEl && cEl.value !== (it.content || '')) cEl.value = it.content || '';
-}
-
-function shDeleteItem(id) {
-    var it = sharedItems[id];
-    if (!it) return;
-    if (!(it.owner === userKey || lvl >= 6)) { alert('SO O CRIADOR OU O MESTRE PODE EXCLUIR ESTE DOCUMENTO.'); return; }
-    if (!confirm('EXCLUIR ESTE DOCUMENTO PARTILHADO PRA TODOS?')) return;
-    if (typeof fbDB !== 'undefined') fbDB.ref('world/sharedItems/' + id).remove();
-    delete sharedItems[id];
-    _shOpenId = null;
-    go('shared');
-}
-
-function shLeaveItem(id) {
-    var it = sharedItems[id];
-    if (!it) return;
-    if (!confirm('SAIR DESTA PARTILHA? VOCE PERDE O ACESSO A ESTE DOCUMENTO.')) return;
-    var newCollabs = (it.collaborators || []).filter(function(k) { return k !== userKey; });
-    if (typeof fbDB !== 'undefined') fbDB.ref('world/sharedItems/' + id + '/collaborators').set(newCollabs);
-    _shOpenId = null;
-    go('shared');
 }
 
 // ---- SINCRONIZACAO AO VIVO DOS LOGS DE TESTE/ENTREVISTA (enquanto o formulario esta aberto) ----
@@ -9089,6 +9016,59 @@ function shLiveRefreshLogForm(field) {
     var cur = null;
     for (var i = 0; i < arr.length; i++) if (arr[i].id === _logLiveId) { cur = arr[i]; break; }
     if (cur) shApplyLiveLogFields(field, cur);
+    updateSharedNavVisibility();
+}
+
+// ---- SINCRONIZACAO AO VIVO DOS DOCUMENTOS (Banco de Dados/Laboratorio) ----
+// Mesmo esquema dos logs (canal paralelo por documento, so' enquanto alguem tem
+// aquele documento aberto no formulario), aplicado aos campos de renderDocumentForm.
+var _docLiveId = null, _docLiveTimer = null;
+
+function shDocLiveStart(id) {
+    shDocLiveStop();
+    if (typeof fbDB === 'undefined') return;
+    _docLiveId = id;
+    fbDB.ref('world/liveDocEdits/' + id).on('value', function(snap) {
+        if (_docLiveId !== id) return;
+        var v = snap.val();
+        if (!v || v.by === userKey) return;
+        shApplyLiveDocFields(v);
+    });
+}
+
+function shDocLiveStop() {
+    if (_docLiveId && typeof fbDB !== 'undefined') { try { fbDB.ref('world/liveDocEdits/' + _docLiveId).off(); } catch (e) {} }
+    _docLiveId = null;
+    if (_docLiveTimer) { clearTimeout(_docLiveTimer); _docLiveTimer = null; }
+}
+
+function shApplyLiveDocFields(v) {
+    var map = { title: 'fdtitle', tag: 'fdtag', code: 'fdcode', body: 'fdbody' };
+    for (var f in map) {
+        if (!map.hasOwnProperty(f) || v[f] === undefined) continue;
+        var el = document.getElementById(map[f]);
+        if (el && document.activeElement !== el) el.value = v[f];
+    }
+}
+
+function shDocLiveInput() {
+    if (!_docLiveId) return;
+    if (_docLiveTimer) clearTimeout(_docLiveTimer);
+    var id = _docLiveId;
+    _docLiveTimer = setTimeout(function() {
+        if (!_docLiveId || typeof fbDB === 'undefined') return;
+        var data = { title: shFieldVal('fdtitle'), tag: shFieldVal('fdtag'), code: shFieldVal('fdcode'), body: shFieldVal('fdbody'), by: userKey, ts: Date.now() };
+        fbDB.ref('world/liveDocEdits/' + id).set(data);
+    }, 500);
+}
+
+// Chamado de dentro de worldSyncStart quando `documents` muda: se o formulario
+// aberto agora e' justamente o documento que acabou de mudar (alguem salvou pelo
+// botao SALVAR, nao so' pelo canal ao vivo), refaz os campos fora de foco.
+function shLiveRefreshDocForm() {
+    if (!_docLiveId) { updateSharedNavVisibility(); return; }
+    var d = fpFindDocument(_docLiveId);
+    if (d) shApplyLiveDocFields({ title: d.title, tag: d.tag, code: d.code, body: d.body });
     updateSharedNavVisibility();
 }
 
@@ -9259,6 +9239,7 @@ function fpEnsureMyPosition(roomId, floorIdx, floor) {
   var sp = floor.spawn;
   var data = { roomId: roomId, floorIdx: floorIdx, x: sp ? sp.x : Math.floor(floor.cols / 2), y: sp ? sp.y : Math.floor(floor.rows / 2), nm: (user && user.nm) || userKey };
   if (me && me.color) data.color = me.color;
+  if (me && me.ringColor) data.ringColor = me.ringColor;
   if (lvl >= 6) data.hidden = !_fpMestreVisible;
   fbPlayers[userKey] = data;
   if (typeof fbDB !== 'undefined') fbDB.ref('players/' + userKey).set(data);
@@ -9406,6 +9387,7 @@ function fpPlayerMove(dx, dy) {
 
   var data = { roomId: _fpViewRoomId, floorIdx: _fpViewFloor, x: nx, y: ny, nm: (user && user.nm) || userKey, sit: sitFt, sitDir: sitDir };
   if (me && me.color) data.color = me.color;
+  if (me && me.ringColor) data.ringColor = me.ringColor;
   if (lvl >= 6) data.hidden = !_fpMestreVisible;
   fbPlayers[userKey] = data; // atualizacao otimista local — o listener do Firebase confirma/propaga
   if (typeof fbDB !== 'undefined') fbDB.ref('players/' + userKey).set(data);
@@ -9423,6 +9405,7 @@ function fpPlayerMove(dx, dy) {
       _fpViewFloor = target;
       data = { roomId: _fpViewRoomId, floorIdx: target, x: dnx, y: dny, nm: (user && user.nm) || userKey, sit: null, sitDir: null };
       if (me && me.color) data.color = me.color;
+      if (me && me.ringColor) data.ringColor = me.ringColor;
       if (lvl >= 6) data.hidden = !_fpMestreVisible;
       fbPlayers[userKey] = data;
       if (typeof fbDB !== 'undefined') fbDB.ref('players/' + userKey).set(data);
@@ -10242,6 +10225,7 @@ function fpNeighborIsWall(floor, c, r, dc, dr) {
 }
 
 function fpIsDoorLocked(roomId, floorIdx, key, cell) {
+  if (cell.lockType === 'none') return false; // porta publica sem tranca: sempre passavel
   if (cell.lockType === 'code') return !_fpUnlockedCodes[roomId + '|' + floorIdx + '|' + key];
   return lvl < (cell.lvl || 1);
 }
@@ -10316,14 +10300,51 @@ function fpShapePreviewIcon(shapeId) {
   return '<svg width="' + s + '" height="' + s + '" viewBox="0 0 ' + s + ' ' + s + '" style="background:rgba(0,20,0,0.55); border:1px solid var(--bd); border-radius:2px; flex-shrink:0;">' + markup + '</svg>';
 }
 
+// Sprites de porta, vista de cima, no estilo das plantas da Fundacao: cada
+// TIPO tem sua propria cor/normal de seguranca (verde = zona publica, branco =
+// SCP/segura padrao, vermelho + moldura dupla e mais espessa = segura
+// reforcada/blindada). A orientacao (porta numa parede vertical ou horizontal)
+// usa a mesma deteccao de vizinhos que as paredes normais.
+function fpDoorSVG(roomId, floorIdx, floor, c, r, cell, s) {
+  var cx = s / 2, cy = s / 2;
+  var locked = fpIsDoorLocked(roomId, floorIdx, c + '_' + r, cell);
+  var dType = cell.doorType || 'safe';
+  var pal = dType === 'public' ? { base: '#3ddc6a', frame: '#3ddc6a' } :
+             dType === 'secure' ? { base: '#ff3b4a', frame: '#ff3b4a' } :
+             { base: '#eaf6ff', frame: '#9fd0e6' };
+  var leafColor = locked ? '#ff3b4a' : pal.base;
+  var N = fpNeighborIsWall(floor, c, r, 0, -1), S = fpNeighborIsWall(floor, c, r, 0, 1);
+  var E = fpNeighborIsWall(floor, c, r, 1, 0), W = fpNeighborIsWall(floor, c, r, -1, 0);
+  var vertical = !((E || W) && !(N || S)); // por padrao a porta fica numa parede vertical (abre E-W)
+  var thick = dType === 'secure' ? Math.max(3, s * 0.16) : Math.max(1.6, s * 0.09);
+  var frameAttrs = ' stroke="' + pal.frame + '" stroke-width="' + thick + '" fill="none" stroke-linecap="round"';
+  var gap = s * 0.30;
+  var p = '';
+  if (vertical) {
+    p += '<line x1="' + cx + '" y1="0" x2="' + cx + '" y2="' + (cy - gap) + '"' + frameAttrs + '></line>';
+    p += '<line x1="' + cx + '" y1="' + (cy + gap) + '" x2="' + cx + '" y2="' + s + '"' + frameAttrs + '></line>';
+  } else {
+    p += '<line x1="0" y1="' + cy + '" x2="' + (cx - gap) + '" y2="' + cy + '"' + frameAttrs + '></line>';
+    p += '<line x1="' + (cx + gap) + '" y1="' + cy + '" x2="' + s + '" y2="' + cy + '"' + frameAttrs + '></line>';
+  }
+  // Folha da porta (o retangulo do meio, visto de cima) — mais grossa/dupla nas seguras.
+  var leafW = vertical ? s * 0.62 : gap * 2 - 2;
+  var leafH = vertical ? gap * 2 - 2 : s * 0.62;
+  p += '<rect x="' + (cx - leafW / 2) + '" y="' + (cy - leafH / 2) + '" width="' + leafW + '" height="' + leafH + '" rx="2" fill="' + leafColor + '" fill-opacity="0.25" stroke="' + leafColor + '" stroke-width="' + (thick * 0.8) + '"></rect>';
+  if (dType === 'secure') {
+    // moldura extra por fora, pra dar a sensacao de porta blindada/mais espessa
+    p += '<rect x="' + (cx - leafW / 2 - 1.5) + '" y="' + (cy - leafH / 2 - 1.5) + '" width="' + (leafW + 3) + '" height="' + (leafH + 3) + '" rx="3" fill="none" stroke="' + leafColor + '" stroke-width="1" stroke-opacity="0.6"></rect>';
+  }
+  return '<svg width="' + s + '" height="' + s + '" style="position:absolute; left:0; top:0; pointer-events:none;">' + p + '</svg>';
+}
+
 function fpCellLineSVG(roomId, floorIdx, floor, c, r, cell) {
   var s = FP_CELL, cx = s / 2, cy = s / 2;
-  var isDoor = cell.t === 'd', isStairs = cell.t === 's';
-  var locked = isDoor && fpIsDoorLocked(roomId, floorIdx, c + '_' + r, cell);
-  var stroke = isDoor ? (locked ? 'var(--r)' : 'var(--g)') : (isStairs ? 'var(--y)' : 'var(--gd)');
-  var sw = (isDoor || isStairs) ? 2 : 2.5;
-  var dashAttr = isDoor ? ' stroke-dasharray="3,2"' : '';
-  var common = ' stroke="' + stroke + '" stroke-width="' + sw + '"' + dashAttr + ' stroke-linecap="round" fill="none"';
+  if (cell.t === 'd') return fpDoorSVG(roomId, floorIdx, floor, c, r, cell, s);
+  var isStairs = cell.t === 's';
+  var stroke = isStairs ? 'var(--y)' : 'var(--gd)';
+  var sw = isStairs ? 2 : 2.5;
+  var common = ' stroke="' + stroke + '" stroke-width="' + sw + '" stroke-linecap="round" fill="none"';
   var shape = cell.shape;
   var p = '';
   function cornerArc(which) { return fpCornerArc(which, s, common); }
@@ -10357,7 +10378,7 @@ function fpCellLineSVG(roomId, floorIdx, floor, c, r, cell) {
 }
 
 function fpRenderGrid(roomId, floorIdx, floor, editable) {
-  var h = '<div style="position:relative; width:' + (floor.cols * FP_CELL) + 'px; height:' + (floor.rows * FP_CELL) + 'px; margin:0 auto; background:rgba(0,10,0,0.5); border:1px solid var(--bd);">';
+  var h = '<div style="position:relative; box-sizing:border-box; width:' + (floor.cols * FP_CELL) + 'px; height:' + (floor.rows * FP_CELL) + 'px; margin:0 auto; background:rgba(0,10,0,0.5); border:1px solid var(--bd);">';
   for (var r = 0; r < floor.rows; r++) {
     for (var c = 0; c < floor.cols; c++) {
       var key = c + '_' + r;
@@ -10508,8 +10529,11 @@ function fpRenderView() {
     if (_fpViewFloor < 0) _fpViewFloor = 0;
     var curFloor = plan.floors[_fpViewFloor];
     h += fpFloorTabs(plan, _fpViewFloor, 'fpViewSwitchFloor');
-    h += '<div id="fpPlanScroll" style="margin:18px 0; overflow:auto; max-width:100%;">';
-    h += '<div style="position:relative; width:' + (curFloor.cols * FP_CELL) + 'px; margin:0 auto;">';
+    // Mesma logica do editor: encolhe a celula pra planta caber sem scroll
+    // vertical. A tela de visualizacao tem menos coisa acima/abaixo do grid.
+    FP_CELL = fpAutoCellSize(curFloor.cols, curFloor.rows, 340);
+    h += '<div id="fpPlanScroll" style="margin:18px 0; overflow:auto; max-width:100%; box-sizing:border-box;">';
+    h += '<div style="position:relative; box-sizing:border-box; width:' + (curFloor.cols * FP_CELL) + 'px; margin:0 auto;">';
     h += fpRenderGrid(roomId, _fpViewFloor, curFloor, false);
     h += fpRenderTokensLayer(roomId, _fpViewFloor);
     h += '</div></div>';
@@ -10590,6 +10614,10 @@ function fpDoorInfo(c, r) {
   var key = c + '_' + r;
   var cell = floor.cells[key];
   if (!cell || cell.t !== 'd') return;
+  if (cell.lockType === 'none') {
+    alert('PORTA PUBLICA (sempre passavel)' + (cell.label ? '\n' + cell.label : ''));
+    return;
+  }
   if (cell.lockType === 'code') {
     if (_fpUnlockedCodes[_fpViewRoomId + '|' + _fpViewFloor + '|' + key]) {
       alert('PORTA (destrancada)' + (cell.label ? '\n' + cell.label : ''));
@@ -11147,7 +11175,7 @@ function fpRenderEditor() {
     h += '</div>';
     h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">AUTO liga a celula as vizinhas sozinha (reta/canto/cruzamento conforme o desenho). Os outros formatos fixam o desenho daquela celula, incluindo diagonais, ignorando os vizinhos.</div>';
   } else if (_fpEdit.tool === 'd') {
-    h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Ao clicar, escolha se a porta e\' trancada por NIVEL DE ACESSO ou por um CODIGO/SENHA que voce define. O jogador so' + ' resolve a tranca ao ANDAR ate' + ' a porta — nao da mais pra clicar nela na tela de visualizacao.</div>';
+    h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Ao clicar, escolha primeiro o TIPO da porta — PUBLICA (zona comum, verde, pode ser sempre passavel ou so\' com chave/codigo), SCP/SEGURA PADRAO (branca) ou SEGURA REFORCADA (vermelha, mais espessa, tipo blindada) — e depois a tranca (NIVEL DE ACESSO ou CODIGO/SENHA, quando aplicavel). O jogador so' + ' resolve a tranca ao ANDAR ate' + ' a porta — nao da mais pra clicar nela na tela de visualizacao.</div>';
   } else if (_fpEdit.tool === 's') {
     h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Escada que sobe para o andar seguinte ou desce para o anterior. Precisa de pelo menos 2 andares para funcionar. O jogador troca de andar automaticamente ao ANDAR ate' + ' a escada — nao da mais pra clicar nela na tela de visualizacao.</div>';
   } else if (_fpEdit.tool === 'n') {
@@ -11232,10 +11260,14 @@ function fpRenderEditor() {
     h += '<div class="help-text" style="color:var(--td); font-size:0.72em; margin-bottom:10px;">Clique (ou arraste) para marcar celulas como IMPOSSIVEIS DE PISAR: bloqueiam a passagem de jogadores e NPCs como se fossem solidas, mas ficam totalmente INVISIVEIS para Niveis 1-5 — so\' o Mestre (Nivel 6) ve a marcacao (hachurado vermelho), tanto aqui no editor como na planta normal. Nao apaga nem substitui o que ja estiver na celula (parede, mobilia, chao vazio...) — fica por cima, como uma camada extra. Para remover, use APAGAR (CHAO) na mesma celula.</div>';
   }
 
-  h += '<div id="fpEditGridWrap" style="margin:10px 0; overflow:auto; max-width:100%;">' + fpRenderGrid(_fpEdit.roomId, _fpEdit.floorIdx, floor, true) + '</div>';
+  // Encolhe a celula automaticamente pra planta inteira caber na tela sem
+  // precisar rolar pra cima/baixo — o editor tem bastante coisa acima e abaixo
+  // do grid (ferramentas, colunas/linhas, botoes), entao reserva mais espaco.
+  FP_CELL = fpAutoCellSize(floor.cols, floor.rows, 460);
+  h += '<div id="fpEditGridWrap" style="margin:10px 0; overflow:auto; max-width:100%; box-sizing:border-box;">' + fpRenderGrid(_fpEdit.roomId, _fpEdit.floorIdx, floor, true) + '</div>';
   h += '<div style="display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; margin:14px 0;">' +
-    '<label style="font-size:0.75em; color:var(--gd);">COLUNAS<br><input id="fpCols" type="number" min="4" max="30" value="' + floor.cols + '" style="width:60px; background:rgba(0,20,0,0.5); border:1px solid var(--bd); color:var(--g); padding:5px; margin-top:3px;"></label>' +
-    '<label style="font-size:0.75em; color:var(--gd);">LINHAS<br><input id="fpRows" type="number" min="4" max="30" value="' + floor.rows + '" style="width:60px; background:rgba(0,20,0,0.5); border:1px solid var(--bd); color:var(--g); padding:5px; margin-top:3px;"></label>' +
+    '<label style="font-size:0.75em; color:var(--gd);">COLUNAS<br><input id="fpCols" type="number" min="4" max="' + FP_MAX_DIM + '" value="' + floor.cols + '" style="width:60px; background:rgba(0,20,0,0.5); border:1px solid var(--bd); color:var(--g); padding:5px; margin-top:3px;"></label>' +
+    '<label style="font-size:0.75em; color:var(--gd);">LINHAS<br><input id="fpRows" type="number" min="4" max="' + FP_MAX_DIM + '" value="' + floor.rows + '" style="width:60px; background:rgba(0,20,0,0.5); border:1px solid var(--bd); color:var(--g); padding:5px; margin-top:3px;"></label>' +
     '<button class="btn btn-s" onclick="fpResize()">REDIMENSIONAR</button></div>';
   h += '<div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:6px;">' +
     '<button class="btn" style="border-color:var(--r); color:var(--r);" onclick="fpClearAll()">LIMPAR ESTE ANDAR</button>' +
@@ -11542,23 +11574,42 @@ function fpCellClick(c, r) {
   } else if (_fpEdit.tool === 'w') {
     floor.cells[key] = { t: 'w', shape: _fpEdit.wallShape || 'auto' };
   } else if (_fpEdit.tool === 'd') {
-    var typeStr = prompt('TIPO DE TRANCA DA PORTA:\n1 = Nivel de acesso\n2 = Codigo/senha escolhido por voce', '1');
-    if (typeStr === null) return;
-    if (typeStr.trim() === '2') {
-      var code = prompt('CODIGO/SENHA que o jogador precisa introduzir:', '');
-      if (code === null || !code.trim()) return;
-      var label2 = prompt('DESCRICAO DA PORTA (opcional — ex.: "painel eletronico vermelho"):', '');
-      if (label2 === null) return;
-      floor.cells[key] = { t: 'd', lockType: 'code', code: code.trim(), label: label2.trim() };
+    var dtStr = prompt('TIPO DE PORTA:\n1 = Publica (zona comum, verde)\n2 = SCP / Segura padrao (branca)\n3 = Segura reforcada / blindada (vermelha, mais espessa)', '2');
+    if (dtStr === null) return;
+    var dType = dtStr.trim() === '1' ? 'public' : dtStr.trim() === '3' ? 'secure' : 'safe';
+    if (dType === 'public') {
+      var pubStr = prompt('TRANCA DA PORTA PUBLICA:\n1 = Sem tranca (sempre passavel por qualquer um)\n2 = Tem chave/codigo', '1');
+      if (pubStr === null) return;
+      if (pubStr.trim() === '2') {
+        var codeP = prompt('CODIGO/SENHA (chave) que o jogador precisa introduzir:', '');
+        if (codeP === null || !codeP.trim()) return;
+        var labelP = prompt('DESCRICAO DA PORTA (opcional):', '');
+        if (labelP === null) return;
+        floor.cells[key] = { t: 'd', doorType: 'public', lockType: 'code', code: codeP.trim(), label: labelP.trim() };
+      } else {
+        var labelP2 = prompt('DESCRICAO DA PORTA (opcional):', '');
+        if (labelP2 === null) return;
+        floor.cells[key] = { t: 'd', doorType: 'public', lockType: 'none', label: labelP2.trim() };
+      }
     } else {
-      var lvlStr = prompt('NIVEL DE ACESSO NECESSARIO PARA ESTA PORTA (1 a 6):', '1');
-      if (lvlStr === null) return;
-      var lv = parseInt(lvlStr, 10);
-      if (isNaN(lv) || lv < 1) lv = 1;
-      if (lv > 6) lv = 6;
-      var label = prompt('DESCRICAO DA PORTA (opcional — ex.: "codigo 4471", "exige cartao vermelho"):', '');
-      if (label === null) return;
-      floor.cells[key] = { t: 'd', lockType: 'lvl', lvl: lv, label: label.trim() };
+      var typeStr = prompt('TIPO DE TRANCA DA PORTA:\n1 = Nivel de acesso\n2 = Codigo/senha escolhido por voce', '1');
+      if (typeStr === null) return;
+      if (typeStr.trim() === '2') {
+        var code = prompt('CODIGO/SENHA que o jogador precisa introduzir:', '');
+        if (code === null || !code.trim()) return;
+        var label2 = prompt('DESCRICAO DA PORTA (opcional — ex.: "painel eletronico vermelho"):', '');
+        if (label2 === null) return;
+        floor.cells[key] = { t: 'd', doorType: dType, lockType: 'code', code: code.trim(), label: label2.trim() };
+      } else {
+        var lvlStr = prompt('NIVEL DE ACESSO NECESSARIO PARA ESTA PORTA (1 a 6):', dType === 'secure' ? '4' : '1');
+        if (lvlStr === null) return;
+        var lv = parseInt(lvlStr, 10);
+        if (isNaN(lv) || lv < 1) lv = 1;
+        if (lv > 6) lv = 6;
+        var label = prompt('DESCRICAO DA PORTA (opcional — ex.: "codigo 4471", "exige cartao vermelho"):', '');
+        if (label === null) return;
+        floor.cells[key] = { t: 'd', doorType: dType, lockType: 'lvl', lvl: lv, label: label.trim() };
+      }
     }
   } else if (_fpEdit.tool === 's') {
     var dirStr = prompt('ESTA ESCADA:\n1 = Sobe para o andar seguinte\n2 = Desce para o andar anterior', '1');
@@ -11731,8 +11782,8 @@ function fpResize() {
   var floor = fpCurFloor();
   var cols = parseInt(document.getElementById('fpCols').value, 10);
   var rows = parseInt(document.getElementById('fpRows').value, 10);
-  if (isNaN(cols) || cols < 4) cols = 4; if (cols > 30) cols = 30;
-  if (isNaN(rows) || rows < 4) rows = 4; if (rows > 30) rows = 30;
+  if (isNaN(cols) || cols < 4) cols = 4; if (cols > FP_MAX_DIM) cols = FP_MAX_DIM;
+  if (isNaN(rows) || rows < 4) rows = 4; if (rows > FP_MAX_DIM) rows = FP_MAX_DIM;
   var newCells = {}, newNpcs = {};
   for (var key in floor.cells) {
     var parts = key.split('_'), c = parseInt(parts[0], 10), r = parseInt(parts[1], 10);
