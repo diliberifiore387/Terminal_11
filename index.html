@@ -3308,9 +3308,10 @@ function rGrid(items) {
         var tg = Array.isArray(x.tags) ? x.tags : [];
         var t = '';
         for (var j = 0; j < Math.min(tg.length, 3); j++) t += '<span style="color:var(--td); font-size:0.72em;">' + tg[j] + '</span> ';
+        var shared = x.collaborators && x.collaborators.length;
         h += '<div class="card" onclick="vItem(' + x.id + ')">' +
             '<div class="c-h"><span class="c-n">' + (x.num || '') + '</span><span class="c-cl ' + x.cls + '">' + x.cls + '</span></div>' +
-            '<div class="c-t">' + (x.tit || '') + '</div>' +
+            '<div class="c-t">' + (x.tit || '') + (shared ? ' <span style="color:var(--y); font-size:0.68em; border:1px solid var(--y); padding:1px 6px; letter-spacing:1px; vertical-align:middle;">PARTILHADO</span>' : '') + '</div>' +
             '<div class="c-p">' + (x.desc ? x.desc.substring(0,110) + '...' : '') + '</div>' +
             '<div class="c-m"><span>' + t + '</span></div></div>';
     }
@@ -3370,6 +3371,7 @@ function vItem(id) {
     var h = '<div class="dv">' +
         '<div class="dh"><h1>' + x.num + '</h1><h2>' + x.tit + '</h2>' +
         '<span class="dc ' + x.cls + '">' + x.cls + '</span>' +
+        (x.collaborators && x.collaborators.length ? '<span style="display:inline-block; margin-left:8px; color:var(--y); font-size:0.68em; border:1px solid var(--y); padding:1px 6px; letter-spacing:1px; vertical-align:middle;">PARTILHADO</span>' : '') +
         (lvl >= 6 ? '<div style="margin-top:8px; color:var(--y); font-size:0.82em;">ACESSO LIBERADO PARA: ' + (dbAllowedNames(x).length ? dbAllowedNames(x).join(', ') : '(ninguem ainda — so' + ' voce, Mestre)') + '</div>' : '') +
         '</div>' +
         wf + im +
@@ -8861,7 +8863,6 @@ function shMyItemsCount() {
     for (var i = 0; i < documents.length; i++) { var doc = documents[i]; if (doc.collaborators && doc.collaborators.length && (lvl >= 6 || doc.collaborators.indexOf(userKey) !== -1)) n++; }
     for (var i = 0; i < testLogs.length; i++) { var t = testLogs[i]; if (t.collaborators && t.collaborators.length && (lvl >= 6 || t.collaborators.indexOf(userKey) !== -1)) n++; }
     for (var i = 0; i < interviewLogs.length; i++) { var t2 = interviewLogs[i]; if (t2.collaborators && t2.collaborators.length && (lvl >= 6 || t2.collaborators.indexOf(userKey) !== -1)) n++; }
-    for (var i = 0; i < db.length; i++) { var dbx = db[i]; if (dbx.collaborators && dbx.collaborators.length && (lvl >= 6 || dbx.collaborators.indexOf(userKey) !== -1)) n++; }
     return n;
 }
 
@@ -8940,11 +8941,6 @@ function renderShared(c) {
         if (t2.collaborators && t2.collaborators.length && (lvl >= 6 || t2.collaborators.indexOf(userKey) !== -1))
             rows.push({ type: 'interviewlog', id: t2.id, title: 'LOG DE ENTREVISTA — ' + (t2.scpNum || 'sem SCP'), updatedAt: t2.dt, collaborators: t2.collaborators });
     }
-    for (var i = 0; i < db.length; i++) {
-        var dbx = db[i];
-        if (dbx.collaborators && dbx.collaborators.length && (lvl >= 6 || dbx.collaborators.indexOf(userKey) !== -1))
-            rows.push({ type: 'db', id: dbx.id, title: 'DOCUMENTO SCP — ' + (dbx.num || '?') + ' ' + (dbx.tit || ''), updatedAt: dbx.dt, collaborators: dbx.collaborators });
-    }
     if (!rows.length) {
         h += '<div style="text-align:center; padding:30px 20px; color:var(--td); border:1px dashed var(--bd);">NENHUM ITEM PARTILHADO NO MOMENTO.</div></div>';
         c.innerHTML = h;
@@ -8954,13 +8950,12 @@ function renderShared(c) {
     for (var i = 0; i < rows.length; i++) {
         var r = rows[i];
         var names = r.collaborators.map(function(k) { return PASS[k] ? PASS[k].nm : k; }).join(', ');
-        var openFn = r.type === 'doc' ? ("editDocument('" + r.id + "')") : (r.type === 'testlog' ? ("editTestLog('" + r.id + "')") : (r.type === 'interviewlog' ? ("editInterviewLog('" + r.id + "')") : ("eItem(" + r.id + ")")));
-        var canExport = (r.type === 'doc' || r.type === 'db') && shHasPerm(userKey, 'export');
+        var openFn = r.type === 'doc' ? ("editDocument('" + r.id + "')") : (r.type === 'testlog' ? ("editTestLog('" + r.id + "')") : ("editInterviewLog('" + r.id + "')"));
+        var canExport = r.type === 'doc' && shHasPerm(userKey, 'export');
         h += '<div class="item-card" style="margin-bottom:12px;">' +
             '<div style="cursor:pointer;" onclick="' + openFn + '"><div style="color:var(--g); font-weight:bold;">' + fpFurnEsc(r.title) + '</div>' +
             '<div style="color:var(--td); font-size:0.75em; margin-top:2px;">Colaboradores: ' + fpFurnEsc(names || '-') + '</div></div>';
-        if (canExport && r.type === 'doc') h += '<button class="btn btn-s" style="margin-top:8px;" onclick="event.stopPropagation(); shDocExport(\'' + r.id + '\')">EXPORTAR (.TXT)</button>';
-        if (canExport && r.type === 'db') h += '<button class="btn btn-s" style="margin-top:8px;" onclick="event.stopPropagation(); exportItem(' + r.id + ')">EXPORTAR</button>';
+        if (canExport) h += '<button class="btn btn-s" style="margin-top:8px;" onclick="event.stopPropagation(); shDocExport(\'' + r.id + '\')">EXPORTAR (.TXT)</button>';
         h += '</div>';
     }
     h += '</div>';
