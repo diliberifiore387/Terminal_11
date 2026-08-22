@@ -1416,6 +1416,7 @@ function toggleSimpleMode() {
 var db = [], labCards = [], items = [], dclass = [], documents = [];
 var testLogs = [], interviewLogs = [];
 var user = null, userKey = null, lvl = 0, nav = 'db', editId = null, imgs = [];
+var _curVItemId = null; // id do documento SCP (Banco de Dados) atualmente aberto no popup, pra poder atualizar os botoes EDITAR/EXPORTAR em tempo real quando o Mestre muda as patentes de partilha
 // ============== PARTILHA ENTRE JOGADORES (documentos e logs colaborativos) ==============
 // shareMatrix: patentes de partilha por jogador, definidas pelo Mestre no Painel Admin.
 // Formato: { loginKey: { share: bool, edit: bool, export: bool } }.
@@ -3351,8 +3352,12 @@ function vItem(id) {
     if (typeof x.tit !== 'string') x.tit = x.tit ? String(x.tit) : '(sem titulo)';
     if (typeof x.cls !== 'string') x.cls = x.cls || 'Safe';
     if (!x.dt) x.dt = new Date().toISOString();
+    _curVItemId = id; // guarda o doc aberto pra dar pra atualizar os botoes ao vivo se o Mestre mudar as patentes
     try {
-    var ce = lvl >= 1, cd = lvl >= 5; // Nível 1 pode editar
+    // Nível 1 pode editar, MAS so' se o Mestre nao tiver desligado a patente de Editar/Exportar
+    // pra este jogador (PAINEL ADMIN > PERMISSOES DE PARTILHA). Mestre (lvl>=6) sempre pode tudo.
+    var ce = lvl >= 1 && shHasPerm(userKey, 'edit'), cd = lvl >= 5;
+    var canExportDoc = shHasPerm(userKey, 'export');
     var t = '';
     for (var i = 0; i < x.tags.length; i++) t += '<span style="display:inline-block; background:rgba(0,255,65,0.05); border:1px solid var(--bd); padding:2px 8px; margin:2px; font-size:0.78em; color:var(--td);">' + x.tags[i] + '</span>';
     var im = '';
@@ -3374,11 +3379,11 @@ function vItem(id) {
         '<div style="margin-top:25px; padding-top:18px; border-top:1px solid var(--bd);">' +
         '<div style="margin-bottom:12px;"><span style="color:var(--td);">Tags:</span> ' + t + '</div>' +
         '<div style="color:var(--td); font-size:0.78em;">Criado: ' + new Date(x.dt).toLocaleString('pt-BR') + '</div></div>';
-    if (ce || cd || lvl >= 6) {
+    if (ce || cd || lvl >= 6 || canExportDoc) {
         h += '<div style="margin-top:18px; display:flex; gap:10px; flex-wrap:wrap;">';
         if (ce) h += '<button class="btn" onclick="eItem(' + x.id + ')">EDITAR</button>';
         if (lvl >= 6) h += '<button class="btn" style="border-color:var(--y); color:var(--y);" onclick="dbManageAccess(' + x.id + ')">GERENCIAR ACESSO</button>';
-        h += '<button class="btn" onclick="exportItem(' + x.id + ')">EXPORTAR</button>';
+        if (canExportDoc) h += '<button class="btn" onclick="exportItem(' + x.id + ')">EXPORTAR</button>';
         if (cd) h += '<button class="btn btn-r" onclick="dItem(' + x.id + ')">EXCLUIR</button>';
         h += '</div>';
     }
@@ -3458,6 +3463,7 @@ function dbSaveAccess(id) {
 }
 
 function exportItem(id) {
+    if (!shHasPerm(userKey, 'export')) { alert('SEM PERMISSAO PARA EXPORTAR.\nO Mestre desativou a patente de Exportar pra voce em PAINEL ADMIN > PERMISSOES DE PARTILHA.'); return; }
     var x = null;
     for (var i = 0; i < db.length; i++) { if (db[i].id === id) { x = db[i]; break; } }
     if (!x) return;
@@ -3485,7 +3491,7 @@ function fmt(t) {
             .replace(/\n/g, '<br>');
 }
 
-function xmd() { document.getElementById('md').classList.remove('on'); _fpFurnitureModalKey = null; _invModalOpen = false; mdSetWide(false); _mapRenderTarget = 'tcnt'; shLogLiveStop(); }
+function xmd() { document.getElementById('md').classList.remove('on'); _fpFurnitureModalKey = null; _invModalOpen = false; mdSetWide(false); _mapRenderTarget = 'tcnt'; shLogLiveStop(); _curVItemId = null; }
 // Alarga (ou devolve ao tamanho normal) a janela popup (#md .mbox). Usado pelo
 // editor/visualizador de plantas, que precisa de mais espaco pra caber o grid
 // sem obrigar a rolar dentro de uma caixinha pequena dentro do popup.
@@ -3621,6 +3627,7 @@ function sItem(e) {
 }
 
 function eItem(id) {
+    if (!shHasPerm(userKey, 'edit')) { alert('SEM PERMISSAO PARA EDITAR.\nO Mestre desativou a patente de Editar pra voce em PAINEL ADMIN > PERMISSOES DE PARTILHA.'); return; }
     xmd();
     var x = null;
     for (var i = 0; i < db.length; i++) if (db[i].id === id) { x = db[i]; break; }
@@ -8827,6 +8834,12 @@ function shareSyncStart() {
         shareMatrix = snap.val() || {};
         if (nav === 'adm') { try { renderAdmin(document.getElementById('tcnt')); } catch (e) {} }
         updateSharedNavVisibility();
+        // Se o jogador estiver com um documento SCP aberto no popup nesse exato momento,
+        // reabre ele pra atualizar os botoes EDITAR/EXPORTAR na hora, sem precisar fechar
+        // e reabrir manualmente — e' o que da o "controle em tempo real" pro Mestre.
+        if (_curVItemId !== null && document.getElementById('md') && document.getElementById('md').classList.contains('on')) {
+            try { vItem(_curVItemId); } catch (e) {}
+        }
     });
 }
 
