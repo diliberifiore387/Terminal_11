@@ -3526,35 +3526,37 @@ function renderForm(c, ed) {
     var h = '<div style="max-width:650px;">' +
         '<div style="color:var(--gd); font-size:0.75em; letter-spacing:3px; margin-bottom:18px;">&gt; ' + (isE ? 'EDITAR' : 'NOVO') + ' DOCUMENTO SCP</div>' +
         '<form onsubmit="sItem(event)">' +
-        '<div class="fr"><div class="fg"><label>Numero SCP</label><input type="text" id="fn" value="' + (isE ? ed.num : '') + '" required></div>' +
-        '<div class="fg"><label>Classe</label><select id="fc">' +
+        '<div class="fr"><div class="fg"><label>Numero SCP</label><input type="text" id="fn" value="' + (isE ? ed.num : '') + '" oninput="shDbLiveInput()" required></div>' +
+        '<div class="fg"><label>Classe</label><select id="fc" onchange="shDbLiveInput()">' +
         '<option' + ((isE && ed.cls==='Safe') || !isE ? ' selected' : '') + '>Safe</option>' +
         '<option' + (isE && ed.cls==='Euclid' ? ' selected' : '') + '>Euclid</option>' +
         '<option' + (isE && ed.cls==='Keter' ? ' selected' : '') + '>Keter</option>' +
         '<option' + (isE && ed.cls==='Thaumiel' ? ' selected' : '') + '>Thaumiel</option>' +
         '<option' + (isE && ed.cls==='Apollyon' ? ' selected' : '') + '>Apollyon</option>' +
         '</select></div></div>' +
-        '<div class="fg"><label>Titulo</label><input type="text" id="ft" value="' + (isE ? ed.tit : '') + '" required></div>' +
-        '<div class="fr"><div class="fg"><label>Nivel de Classificacao (informativo)</label><select id="fl">';
+        '<div class="fg"><label>Titulo</label><input type="text" id="ft" value="' + (isE ? ed.tit : '') + '" oninput="shDbLiveInput()" required></div>' +
+        '<div class="fr"><div class="fg"><label>Nivel de Classificacao (informativo)</label><select id="fl" onchange="shDbLiveInput()">';
     var flMax = Math.min(lvl + 1, 5);
     for (var i = 1; i <= flMax; i++) h += '<option value="' + i + '"' + ((isE && ed.clr===i) || (!isE && i===1) ? ' selected' : '') + '>Nivel ' + i + '</option>';
-    h += '</select><span style="display:block; color:var(--td); font-size:0.7em; margin-top:4px;">So' + ' aparece no documento como classificacao — nao controla mais quem pode ver.</span></div><div class="fg"><label>Tags (virgula)</label><input type="text" id="ftg" value="' + (isE ? ed.tags.join(', ') : '') + '"></div></div>' +
-        '<div class="fg"><label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:normal;"><input type="checkbox" id="finterv"' + (isE && ed.interv ? ' checked' : '') + '> Pode ser entrevistado (possui comunicacao/consciencia)</label></div>' +
+    h += '</select><span style="display:block; color:var(--td); font-size:0.7em; margin-top:4px;">So' + ' aparece no documento como classificacao — nao controla mais quem pode ver.</span></div><div class="fg"><label>Tags (virgula)</label><input type="text" id="ftg" value="' + (isE ? ed.tags.join(', ') : '') + '" oninput="shDbLiveInput()"></div></div>' +
+        '<div class="fg"><label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:normal;"><input type="checkbox" id="finterv"' + (isE && ed.interv ? ' checked' : '') + ' onchange="shDbLiveInput()"> Pode ser entrevistado (possui comunicacao/consciencia)</label></div>' +
         (lvl >= 6 ? renderFormAllowedBlock(isE ? ed : null) : '') +
-        '<div class="fg"><label>Procedimentos de Contencao</label><textarea id="fcnt">' + (isE ? ed.cnt : '') + '</textarea></div>' +
-        '<div class="fg"><label>Descricao</label><textarea id="fd">' + (isE ? ed.desc : '') + '</textarea></div>' +
-        '<div class="fg"><label>Adendos</label><textarea id="fa">' + (isE ? (ed.add || '') : '') + '</textarea></div>' +
+        '<div class="fg"><label>Procedimentos de Contencao</label><textarea id="fcnt" oninput="shDbLiveInput()">' + (isE ? ed.cnt : '') + '</textarea></div>' +
+        '<div class="fg"><label>Descricao</label><textarea id="fd" oninput="shDbLiveInput()">' + (isE ? ed.desc : '') + '</textarea></div>' +
+        '<div class="fg"><label>Adendos</label><textarea id="fa" oninput="shDbLiveInput()">' + (isE ? (ed.add || '') : '') + '</textarea></div>' +
         '<div class="fg"><label>Anexos (Imagens)</label>' +
         '<div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:10px;" id="fim">' +
         '<div style="height:110px; background:rgba(0,10,0,0.5); border:1px dashed var(--bd); display:flex; align-items:center; justify-content:center; color:var(--td); cursor:pointer; font-size:0.85em;" onclick="document.getElementById(\'fii\').click()">+ ADICIONAR</div></div>' +
         '<input type="file" id="fii" accept="image/*" multiple style="display:none" onchange="hImg(event)">' +
         '</div>' +
+        '<div class="fg"><label>Partilhar com (edicao em conjunto, em tempo real)</label>' + shColabCheckboxesHTML(isE ? (ed.collaborators || []) : [], 'shColabDb') +
+        '<span style="display:block; color:var(--td); font-size:0.7em; margin-top:4px;">Marque os colegas que devem poder digitar neste MESMO documento ao mesmo tempo que voce (precisa ter a patente "Editar" liberada pelo Mestre). So' + ' funciona depois de salvar pelo menos uma vez.</span></div>' +
         '<div style="display:flex; gap:10px; margin-top:18px;">' +
         '<button type="submit" class="btn">' + (isE ? 'ATUALIZAR' : 'SALVAR') + '</button>' +
-        '<button type="button" class="btn btn-r" onclick="go(\'db\')">CANCELAR</button></div></form></div>';
+        '<button type="button" class="btn btn-r" onclick="dbFormCancel()">CANCELAR</button></div></form></div>';
     c.innerHTML = h;
-    if (isE) { imgs = ed.imgs || []; wfImgs = ed.wireframes || []; editId = ed.id; rFImgs(); rWfImgs(); }
-    else { imgs = []; wfImgs = []; editId = null; }
+    if (isE) { imgs = ed.imgs || []; wfImgs = ed.wireframes || []; editId = ed.id; rFImgs(); rWfImgs(); if (ed.collaborators && ed.collaborators.length) shDbLiveStart(ed.id); else shDbLiveStop(); }
+    else { imgs = []; wfImgs = []; editId = null; shDbLiveStop(); }
 }
 
 function hImg(e) {
@@ -3613,6 +3615,7 @@ function sItem(e) {
         imgs: imgs,
         wireframes: wfImgs,
         allowed: allowedVal,
+        collaborators: shReadCheckedColabs('shColabDb'),
         dt: editId ? ((function(){for(var i=0;i<db.length;i++)if(db[i].id===editId)return db[i].dt;return new Date().toISOString()})()) : new Date().toISOString()
     };
     if (editId) {
@@ -3621,8 +3624,12 @@ function sItem(e) {
         if (idx !== -1) db[idx] = x;
     } else db.push(x);
     saveDB();
+    if (typeof fbDB !== 'undefined') { try { fbDB.ref('world/liveDbEdits/' + x.id).remove(); } catch (e) {} }
+    shDbLiveStop();
+    updateSharedNavVisibility();
+    var wasEditing = !!editId;
     editId = null; imgs = []; wfImgs = [];
-    alert('DOCUMENTO ' + x.num + ' ' + (editId ? 'ATUALIZADO' : 'SALVO'));
+    alert('DOCUMENTO ' + x.num + ' ' + (wasEditing ? 'ATUALIZADO' : 'SALVO'));
     go('db');
 }
 
@@ -8739,6 +8746,7 @@ function worldSyncStart() {
       try { localStorage.setItem(WORLD_KEYS[field], JSON.stringify(v)); } catch(e) {}
       if (field === 'testLogs' || field === 'interviewLogs') { try { shLiveRefreshLogForm(field); } catch (e) {} }
       if (field === 'documents') { try { shLiveRefreshDocForm(); } catch (e) {} }
+      if (field === 'db') { try { shLiveRefreshDbForm(); } catch (e) {} }
       try { refreshCurrentPage(); } catch (e) { console.error('ERRO AO ATUALIZAR TELA APOS SYNC DE "' + field + '":', e); }
     });
   });
@@ -8853,6 +8861,7 @@ function shMyItemsCount() {
     for (var i = 0; i < documents.length; i++) { var doc = documents[i]; if (doc.collaborators && doc.collaborators.length && (lvl >= 6 || doc.collaborators.indexOf(userKey) !== -1)) n++; }
     for (var i = 0; i < testLogs.length; i++) { var t = testLogs[i]; if (t.collaborators && t.collaborators.length && (lvl >= 6 || t.collaborators.indexOf(userKey) !== -1)) n++; }
     for (var i = 0; i < interviewLogs.length; i++) { var t2 = interviewLogs[i]; if (t2.collaborators && t2.collaborators.length && (lvl >= 6 || t2.collaborators.indexOf(userKey) !== -1)) n++; }
+    for (var i = 0; i < db.length; i++) { var dbx = db[i]; if (dbx.collaborators && dbx.collaborators.length && (lvl >= 6 || dbx.collaborators.indexOf(userKey) !== -1)) n++; }
     return n;
 }
 
@@ -8931,6 +8940,11 @@ function renderShared(c) {
         if (t2.collaborators && t2.collaborators.length && (lvl >= 6 || t2.collaborators.indexOf(userKey) !== -1))
             rows.push({ type: 'interviewlog', id: t2.id, title: 'LOG DE ENTREVISTA — ' + (t2.scpNum || 'sem SCP'), updatedAt: t2.dt, collaborators: t2.collaborators });
     }
+    for (var i = 0; i < db.length; i++) {
+        var dbx = db[i];
+        if (dbx.collaborators && dbx.collaborators.length && (lvl >= 6 || dbx.collaborators.indexOf(userKey) !== -1))
+            rows.push({ type: 'db', id: dbx.id, title: 'DOCUMENTO SCP — ' + (dbx.num || '?') + ' ' + (dbx.tit || ''), updatedAt: dbx.dt, collaborators: dbx.collaborators });
+    }
     if (!rows.length) {
         h += '<div style="text-align:center; padding:30px 20px; color:var(--td); border:1px dashed var(--bd);">NENHUM ITEM PARTILHADO NO MOMENTO.</div></div>';
         c.innerHTML = h;
@@ -8940,12 +8954,13 @@ function renderShared(c) {
     for (var i = 0; i < rows.length; i++) {
         var r = rows[i];
         var names = r.collaborators.map(function(k) { return PASS[k] ? PASS[k].nm : k; }).join(', ');
-        var openFn = r.type === 'doc' ? ("editDocument('" + r.id + "')") : (r.type === 'testlog' ? ("editTestLog('" + r.id + "')") : ("editInterviewLog('" + r.id + "')"));
-        var canExport = r.type === 'doc' && shHasPerm(userKey, 'export');
+        var openFn = r.type === 'doc' ? ("editDocument('" + r.id + "')") : (r.type === 'testlog' ? ("editTestLog('" + r.id + "')") : (r.type === 'interviewlog' ? ("editInterviewLog('" + r.id + "')") : ("eItem(" + r.id + ")")));
+        var canExport = (r.type === 'doc' || r.type === 'db') && shHasPerm(userKey, 'export');
         h += '<div class="item-card" style="margin-bottom:12px;">' +
             '<div style="cursor:pointer;" onclick="' + openFn + '"><div style="color:var(--g); font-weight:bold;">' + fpFurnEsc(r.title) + '</div>' +
             '<div style="color:var(--td); font-size:0.75em; margin-top:2px;">Colaboradores: ' + fpFurnEsc(names || '-') + '</div></div>';
-        if (canExport) h += '<button class="btn btn-s" style="margin-top:8px;" onclick="event.stopPropagation(); shDocExport(\'' + r.id + '\')">EXPORTAR (.TXT)</button>';
+        if (canExport && r.type === 'doc') h += '<button class="btn btn-s" style="margin-top:8px;" onclick="event.stopPropagation(); shDocExport(\'' + r.id + '\')">EXPORTAR (.TXT)</button>';
+        if (canExport && r.type === 'db') h += '<button class="btn btn-s" style="margin-top:8px;" onclick="event.stopPropagation(); exportItem(' + r.id + ')">EXPORTAR</button>';
         h += '</div>';
     }
     h += '</div>';
@@ -9083,6 +9098,77 @@ function shLiveRefreshDocForm() {
     var d = fpFindDocument(_docLiveId);
     if (d) shApplyLiveDocFields({ title: d.title, tag: d.tag, code: d.code, body: d.body });
     updateSharedNavVisibility();
+}
+
+// ---- SINCRONIZACAO AO VIVO DO BANCO DE DADOS (documentos SCP) ----
+// Mesmo esquema dos logs/documentos: canal paralelo por SCP (world/liveDbEdits/<id>),
+// so' ativo enquanto o formulario de EDITAR daquele SCP estiver aberto E o documento
+// ja' tiver colaboradores marcados em "Partilhar com" (renderForm). Isso e' o que
+// permite dois jogadores editarem/criarem o MESMO documento SCP ao mesmo tempo.
+var _dbLiveId = null, _dbLiveTimer = null;
+
+function shDbLiveStart(id) {
+    shDbLiveStop();
+    if (typeof fbDB === 'undefined') return;
+    _dbLiveId = id;
+    fbDB.ref('world/liveDbEdits/' + id).on('value', function(snap) {
+        if (_dbLiveId !== id) return;
+        var v = snap.val();
+        if (!v || v.by === userKey) return; // ignora eco do proprio autosave
+        shApplyLiveDbFields(v);
+    });
+}
+
+function shDbLiveStop() {
+    if (_dbLiveId && typeof fbDB !== 'undefined') { try { fbDB.ref('world/liveDbEdits/' + _dbLiveId).off(); } catch (e) {} }
+    _dbLiveId = null;
+    if (_dbLiveTimer) { clearTimeout(_dbLiveTimer); _dbLiveTimer = null; }
+}
+
+function shApplyLiveDbFields(v) {
+    var map = { num: 'fn', cls: 'fc', tit: 'ft', clr: 'fl', tags: 'ftg', cnt: 'fcnt', desc: 'fd', add: 'fa' };
+    for (var f in map) {
+        if (!map.hasOwnProperty(f) || v[f] === undefined) continue;
+        var el = document.getElementById(map[f]);
+        if (el && document.activeElement !== el) el.value = v[f];
+    }
+    if (v.interv !== undefined) {
+        var ei = document.getElementById('finterv');
+        if (ei && document.activeElement !== ei) ei.checked = !!v.interv;
+    }
+}
+
+function shDbLiveInput() {
+    if (!_dbLiveId) return;
+    if (_dbLiveTimer) clearTimeout(_dbLiveTimer);
+    var id = _dbLiveId;
+    _dbLiveTimer = setTimeout(function() {
+        if (!_dbLiveId || typeof fbDB === 'undefined') return;
+        var data = {
+            num: shFieldVal('fn'), cls: shFieldVal('fc'), tit: shFieldVal('ft'), clr: shFieldVal('fl'),
+            tags: shFieldVal('ftg'), cnt: shFieldVal('fcnt'), desc: shFieldVal('fd'), add: shFieldVal('fa'),
+            interv: (document.getElementById('finterv') ? document.getElementById('finterv').checked : false),
+            by: userKey, ts: Date.now()
+        };
+        fbDB.ref('world/liveDbEdits/' + id).set(data);
+    }, 500);
+}
+
+// Chamado de dentro de worldSyncStart quando `db` muda: se o formulario aberto agora
+// e' justamente o SCP que acabou de mudar (alguem salvou pelo botao ATUALIZAR, nao so'
+// pelo canal ao vivo), refaz os campos fora de foco.
+function shLiveRefreshDbForm() {
+    if (!_dbLiveId) { updateSharedNavVisibility(); return; }
+    var cur = null;
+    for (var i = 0; i < db.length; i++) if (db[i].id === _dbLiveId) { cur = db[i]; break; }
+    if (cur) shApplyLiveDbFields({ num: cur.num, cls: cur.cls, tit: cur.tit, clr: cur.clr, tags: (cur.tags || []).join(', '), cnt: cur.cnt, desc: cur.desc, add: cur.add, interv: cur.interv });
+    updateSharedNavVisibility();
+}
+
+// Fecha o formulario de EDITAR/NOVO documento SCP, parando o canal ao vivo antes.
+function dbFormCancel() {
+    shDbLiveStop();
+    go('db');
 }
 
 // ============== GLITCH (efeito visual disparado pelo Mestre para todos) ==============
